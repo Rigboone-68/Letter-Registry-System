@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.config import settings  # noqa: E402
 from app.database.base import Base  # noqa: E402
+import app.models  # noqa: E402,F401 — registers every model on Base.metadata
 
 config = context.config
 

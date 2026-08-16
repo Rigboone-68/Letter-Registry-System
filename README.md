@@ -2,11 +2,15 @@
 
 **A Production of AJ-Labs**
 
-> **Current status: Phase 1 — project foundation only.**
-> This repository contains the folder structure, configuration scaffolding, and
-> documentation for the system. **No application functionality is implemented.**
-> There is no authentication, no database model, no endpoint, no dashboard, and
-> no upload handling. Features are added module by module in later phases.
+> **Current status: Phase 2 — database architecture & core models.**
+> The database schema and SQLAlchemy models for every core entity now exist,
+> with working Alembic migrations, validated against a real local
+> PostgreSQL instance — including a corrective hardening pass from a
+> self-review (see `docs/PROJECT_STATUS.md`). **There is still no
+> authentication, no API endpoint, no dashboard, and no upload handling** —
+> those are added module by module in later phases. See
+> `docs/PROJECT_STATUS.md` for the full picture and
+> `docs/database/schema.md` for the schema itself.
 
 ---
 
@@ -87,14 +91,14 @@ letter-registry-system/
 │   │   ├── main.py              # FastAPI application factory
 │   │   ├── core/                # config, security, logging
 │   │   ├── database/            # declarative base, engine, session
-│   │   ├── models/              # ORM models            (empty — Phase 2+)
-│   │   ├── schemas/             # Pydantic contracts    (empty — Phase 2+)
-│   │   ├── api/v1/endpoints/    # versioned routers     (empty — Phase 2+)
-│   │   ├── services/            # business logic        (empty — Phase 2+)
-│   │   ├── repositories/        # data access           (empty — Phase 2+)
-│   │   ├── middleware/          # request ID, audit     (empty — Phase 2+)
-│   │   └── utils/               # shared helpers        (empty — Phase 2+)
-│   ├── alembic/                 # migration environment (no revisions yet)
+│   │   ├── models/              # ORM models            (9 core entities — Phase 2)
+│   │   ├── schemas/             # Pydantic contracts    (empty — Phase 3+)
+│   │   ├── api/v1/endpoints/    # versioned routers     (empty — Phase 3+)
+│   │   ├── services/            # business logic        (empty — Phase 3+)
+│   │   ├── repositories/        # data access           (empty — Phase 3+)
+│   │   ├── middleware/          # request ID, audit     (empty — Phase 3+)
+│   │   └── utils/               # shared helpers        (empty — Phase 3+)
+│   ├── alembic/                 # migration environment (2 revisions: core schema + hardening)
 │   ├── tests/{unit,integration}
 │   ├── alembic.ini
 │   ├── requirements.txt
@@ -133,7 +137,8 @@ letter-registry-system/
 
 * Python 3.11 or newer
 * Node.js 18 or newer, with npm
-* PostgreSQL 14 or newer, running and reachable
+* PostgreSQL 14 or newer, running and reachable — use a disposable local
+  database, never a real departmental one (see `docs/database/README.md`)
 * Git
 
 ### Backend
@@ -144,11 +149,14 @@ python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env               # then fill in your local values
+alembic upgrade head                # creates the Phase 2 schema
 uvicorn app.main:app --reload
 ```
 
 The API starts on `http://localhost:8000`. Only `/health`, `/docs`, and
-`/redoc` respond in Phase 1.
+`/redoc` respond — no business endpoints exist until Phase 4. The database
+schema behind those future endpoints is in place as of Phase 2; see
+`docs/database/schema.md`.
 
 ### Frontend
 
@@ -169,13 +177,16 @@ backend.
 
 | Phase | Scope | Status |
 |---|---|---|
-| **1** | Project foundation: structure, configuration, documentation | **Complete** |
-| 2 | Database models, migrations, authentication and RBAC | Not started |
-| 3 | Letter registry CRUD and document upload/viewing | Not started |
-| 4 | Dashboards, search, notifications, reporting | Not started |
-| 5 | Administration, audit trail, deployment hardening | Not started |
+| 1 | Project foundation: structure, configuration, documentation | **Complete** |
+| **2** | Database architecture & core models: SQLAlchemy models, Alembic migrations | **Complete** |
+| 3 | Authentication and RBAC | Not started |
+| 4 | Letter registry CRUD and document upload/viewing | Not started |
+| 5 | Dashboards, search, notifications, reporting | Not started |
+| 6 | Administration, audit trail, deployment hardening | Not started |
 
-Phase 2 begins only when explicitly instructed.
+See `docs/PROJECT_STATUS.md` for what Phase 2 delivered, what's pending
+S&IT confirmation, and known limitations. Phase 3 begins only when
+explicitly instructed.
 
 ---
 

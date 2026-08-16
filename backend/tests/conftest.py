@@ -1,5 +1,86 @@
 """Shared pytest fixtures.
 
-PHASE 1: no fixtures yet. Database and API client fixtures are added
-alongside the first implemented module.
+PHASE 2: database fixtures for model tests. These connect to a *dedicated
+local PostgreSQL test database* — never the application's development or
+production database, and never a real departmental database. See
+docs/database/README.md, "Providing a local test database" for setup
+instructions.
+
+If that test database isn't reachable, model tests are skipped (not failed)
+so the rest of the suite still runs in environments without PostgreSQL —
+see docs/PROJECT_STATUS.md, "Known Limitations" for why this repository's
+current environment cannot run them.
+
+PostgreSQL, not SQLite, is used here on purpose: this schema relies on
+PostgreSQL-specific behavior (native ENUM types, JSONB, functional unique
+indexes) that SQLite either can't represent or would silently emulate
+differently, which would make a passing test suite meaningless for this
+schema.
 """
+
+import os
+
+import pytest
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+
+from app.database.base import Base
+# `Base` alone does not register any model (see app/database/base.py) —
+# importing app.models is what populates Base.metadata, required before
+# create_all()/drop_all() below.
+import app.models  # noqa: F401
+
+TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql+psycopg2://lrs_test:lrs_test@localhost:5432/lrs_test",
+)
+
+
+@pytest.fixture(scope="session")
+def engine():
+    """Session-scoped engine bound to the local PostgreSQL test database.
+
+    Creates the full schema once per test session and drops it afterward.
+    Skips (does not fail) the tests that depend on this fixture when no
+    PostgreSQL test database is reachable.
+    """
+    try:
+        eng = create_engine(TEST_DATABASE_URL, future=True)
+        with eng.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as exc:  # pragma: no cover - environment-dependent
+        pytest.skip(
+            "No local PostgreSQL test database reachable at "
+            f"{TEST_DATABASE_URL} ({exc.__class__.__name__}). "
+            "See docs/database/README.md to provision one; "
+            "override the target with the TEST_DATABASE_URL env var."
+        )
+        return
+
+    Base.metadata.create_all(eng)
+    try:
+        yield eng
+    finally:
+        Base.metadata.drop_all(eng)
+        eng.dispose()
+
+
+@pytest.fixture()
+def db_session(engine):
+    """Function-scoped session wrapped in a transaction that is always rolled
+    back, so each test starts from a clean, empty schema regardless of what
+    earlier tests inserted."""
+    connection = engine.connect()
+    transaction = connection.begin()
+    session_factory = sessionmaker(bind=connection, future=True, expire_on_commit=False)
+    session = session_factory()
+    try:
+        yield session
+    finally:
+        session.close()
+        # A failed flush (e.g. an expected IntegrityError from a constraint
+        # test) already rolls back and deassociates this transaction at the
+        # DBAPI level, so it may no longer be active by the time we get here.
+        if transaction.is_active:
+            transaction.rollback()
+        connection.close()

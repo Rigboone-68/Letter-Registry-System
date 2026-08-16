@@ -2,12 +2,13 @@
 
 | Directory | Contents |
 |---|---|
-| `architecture/` | System design, layering rules, deployment topology, decision records |
-| `api/` | REST API reference for `/api/v1`, request/response contracts, error format |
-| `database/` | Schema design, entity relationships, migration history and conventions |
-| `user-guides/` | End-user and administrator guides per role |
+| [`architecture/`](architecture/) | Role hierarchy, department isolation, layering rules, deployment topology (planned), decision records (planned) |
+| `api/` | REST API reference for `/api/v1` — placeholder until Phase 4 adds endpoints |
+| [`database/`](database/) | Schema design, entity relationships, migration guide (Phase 2 — complete) |
+| `user-guides/` | End-user and administrator guides per role — placeholder until roles have a UI |
 
-Documentation is written alongside each module as it is implemented. In Phase 1
-these directories hold placeholders only.
+Documentation is written alongside each module as it is implemented.
+[`PROJECT_STATUS.md`](PROJECT_STATUS.md) is the current, supervisor-facing
+summary of what's done, in progress, and pending S&IT confirmation.
 
 Technical documentation and UI/UX support: **Faiza**.

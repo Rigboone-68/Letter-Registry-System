@@ -7,10 +7,10 @@ committed — see `.env.example` for the expected keys).
 """
 
 from functools import lru_cache
-from typing import List
+from typing import Annotated, List
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -42,8 +42,12 @@ class Settings(BaseSettings):
     DATABASE_URL: str = ""
 
     # --- CORS -----------------------------------------------------------
-    # Comma-separated list in the environment, e.g. "http://localhost:5173"
-    CORS_ORIGINS: List[str] = []
+    # Comma-separated list in the environment, e.g. "http://localhost:5173".
+    # `NoDecode` stops pydantic-settings from JSON-decoding this env value
+    # before the validator below runs (its default behavior for list-typed
+    # fields, which fails on a plain comma-separated string like the one
+    # above and crashes settings loading before the validator gets a turn).
+    CORS_ORIGINS: Annotated[List[str], NoDecode] = Field(default=[])
 
     # --- Document storage ----------------------------------------------
     # Filesystem root for scanned letters. The database stores only metadata
