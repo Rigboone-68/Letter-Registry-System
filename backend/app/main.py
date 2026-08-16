@@ -1,8 +1,8 @@
 """Application entry point.
 
-Creates and configures the FastAPI application. No business endpoints are
-registered in Phase 1 — only the application factory, logging setup, CORS
-policy, and a liveness probe used by operations to confirm the service is up.
+Creates and configures the FastAPI application: the application factory,
+logging setup, CORS policy, the versioned API router, and a liveness probe
+used by operations to confirm the service is up.
 
 Run locally:
     uvicorn app.main:app --reload
@@ -11,6 +11,7 @@ Run locally:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
 
@@ -40,11 +41,7 @@ def create_application() -> FastAPI:
             allow_headers=["*"],
         )
 
-    # ------------------------------------------------------------------
-    # API v1 routers are mounted here in Phase 2:
-    #     from app.api.v1.router import api_router
-    #     application.include_router(api_router, prefix=settings.API_V1_PREFIX)
-    # ------------------------------------------------------------------
+    application.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
     @application.get("/health", tags=["system"])
     def health() -> dict:

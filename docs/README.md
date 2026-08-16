@@ -2,8 +2,8 @@
 
 | Directory | Contents |
 |---|---|
-| [`architecture/`](architecture/) | Role hierarchy, department isolation, layering rules, deployment topology (planned), decision records (planned) |
-| `api/` | REST API reference for `/api/v1` — placeholder until Phase 4 adds endpoints |
+| [`architecture/`](architecture/) | Role hierarchy, department isolation, layering rules, [authentication design](architecture/authentication.md) (Phase 3A — complete), deployment topology (planned), decision records (planned) |
+| `api/` | REST API reference for `/api/v1` — placeholder; the three auth endpoints are documented in `architecture/authentication.md` §11 for now, ahead of a dedicated API reference in a later phase |
 | [`database/`](database/) | Schema design, entity relationships, migration guide (Phase 2 — complete) |
 | `user-guides/` | End-user and administrator guides per role — placeholder until roles have a UI |
 

@@ -1,9 +1,12 @@
 # LRS Backend
 
-FastAPI service for the Letter Registry System. **Phase 2: database
-architecture and core models.** No endpoints, services, repositories, or
-business logic are implemented yet — see `docs/architecture/overview.md`
-§4 for exactly what is and isn't in place.
+FastAPI service for the Letter Registry System. **Phase 3A: authentication
+foundation & account lifecycle.** Full design in
+`docs/architecture/authentication.md`. Role/department authorization,
+department/Admin management, letter CRUD, uploads, dashboards, and
+notifications are not implemented yet — see `docs/architecture/overview.md`
+§4 and `docs/architecture/authentication.md` §14 for exactly what is and
+isn't in place.
 
 ## Setup
 
@@ -12,29 +15,53 @@ python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env               # fill in local values; never commit .env
-alembic upgrade head                # creates the Phase 2 schema — see below
+alembic upgrade head                # creates the Phase 2 schema
 uvicorn app.main:app --reload
+python -m app.cli create-system-admin   # first run only — see below
 ```
 
-Available now: `GET /health`, plus `/docs` and `/redoc`.
+Available now: `GET /health`, `POST /api/v1/auth/signup`,
+`POST /api/v1/auth/login`, `GET /api/v1/auth/me`, plus `/docs` and
+`/redoc`.
+
+## Bootstrapping the first System Admin
+
+```bash
+python -m app.cli create-system-admin
+```
+
+Interactive (name/email typed, password masked via `getpass` — never a
+command-line argument, so it never lands in shell history). Refuses to run
+if an active System Admin already exists. See
+`docs/architecture/authentication.md` §8.
+
+> **Windows note:** `getpass.getpass()` reads directly from the console and
+> does not accept piped/redirected stdin — run this command in an actual
+> terminal, not via `echo ... | python -m app.cli ...`.
 
 ## Package layout
 
 | Path | Responsibility |
 |---|---|
-| `app/main.py` | Application factory: logging, CORS, router mounting |
+| `app/main.py` | Application factory: logging, CORS, versioned API router mounting |
+| `app/cli.py` | `python -m app.cli create-system-admin` — server-side bootstrap only, no HTTP endpoint |
 | `app/core/config.py` | Environment-based settings (single source of truth) |
-| `app/core/security.py` | Placeholder — all hashing and token logic goes here |
+| `app/core/security.py` | Password hashing (Argon2id) and JWT creation/validation — the one place either lives |
 | `app/core/logging.py` | Uniform log format and level |
 | `app/database/base.py` | Declarative `Base` only — deliberately does not import `app.models` (see its docstring, and `docs/database/schema.md` §1) |
 | `app/database/session.py` | Lazy engine, session factory, `get_db()` dependency |
 | `app/models/` | SQLAlchemy models — 9 core entities (see `docs/database/schema.md`) |
-| `app/schemas/` | Pydantic request/response contracts (empty) |
-| `app/api/v1/endpoints/` | One router per resource (empty) |
-| `app/services/` | Business logic and workflow (empty) |
-| `app/repositories/` | The only layer that queries the database (empty) |
+| `app/schemas/auth.py` | Signup/login/token/current-user request-response contracts |
+| `app/api/deps.py` | `get_current_user` — the authenticated-identity dependency |
+| `app/api/v1/router.py` | Aggregate v1 router |
+| `app/api/v1/endpoints/auth.py` | `/auth/signup`, `/auth/login`, `/auth/me` |
+| `app/services/auth_service.py` | Signup and login business logic |
+| `app/services/bootstrap_service.py` | First-System-Admin creation logic (called by `app/cli.py`) |
+| `app/services/exceptions.py` | Service-layer domain errors, mapped to HTTP responses in the endpoint layer |
+| `app/repositories/user_repository.py` | The only code that queries `User` |
+| `app/repositories/user_authorization_repository.py` | The only code that queries `UserAuthorization`, including the race-safe `SELECT ... FOR UPDATE` signup consumes |
+| `app/utils/email.py` | `normalize_email` — the one place "same email" is defined |
 | `app/middleware/` | Request correlation and audit middleware (empty) |
-| `app/utils/` | Pure helpers, no framework imports (empty) |
 
 ## Layering rules
 
@@ -42,6 +69,11 @@ Available now: `GET /health`, plus `/docs` and `/redoc`.
 * Services call repositories. Services do not import routers.
 * Repositories own the SQLAlchemy session and are the only ORM consumers.
 * `utils` imports nothing from `api`, `services`, or `repositories`.
+
+This is now populated end-to-end for the first time by the authentication
+module (`app/api/v1/endpoints/auth.py` → `app/services/auth_service.py` →
+`app/repositories/user_repository.py`), using this structure rather than a
+second, competing one.
 
 ## Database & migrations
 
@@ -55,6 +87,10 @@ table, enum type, foreign key, index, and constraint) and
 self-review: two missed indexes and a database-level default for
 `notifications.is_read` — see `docs/database/schema.md` §1 "ORM deletion
 behavior" and §6 "Indexes"). Both are described in `docs/database/schema.md`.
+**Phase 3A (authentication) required no schema change** — every column
+authentication needs (`users.password_hash`, `user_authorizations.status`/
+`expires_at`, etc.) already existed from Phase 2; `alembic check` confirms
+zero drift.
 
 ```bash
 alembic upgrade head       # apply both, in order
@@ -87,20 +123,45 @@ and `uvicorn`) on startup. Fixed during Phase 2 validation since it broke
 this document's own setup instructions; see `docs/PROJECT_STATUS.md` for the
 record of the fix.
 
+`SECRET_KEY`, `ALGORITHM`, and `ACCESS_TOKEN_EXPIRE_MINUTES` (already
+present in `app/core/config.py` since Phase 1 as placeholders) are now
+actually used to sign and verify JWTs — see
+`docs/architecture/authentication.md` §12. `SECRET_KEY` has no usable
+default and is checked lazily, the first time a token is created or
+decoded, mirroring `DATABASE_URL`'s existing lazy-check pattern in
+`app/database/session.py:get_engine`.
+
 ## Tests
 
 ```bash
 pytest
 ```
 
-`tests/integration/test_models.py` covers the Phase 2 model layer (creation,
+96 tests total. `SECRET_KEY` must be set (via `.env`) for the JWT-dependent
+tests to run — copy `.env.example` to `.env` first if you haven't.
+
+**Model layer (Phase 2)** — `tests/integration/test_models.py`: creation,
 relationships, constraints, FK `RESTRICT`/`CASCADE` behavior, and database
-defaults for every entity) against a real local PostgreSQL test database —
+defaults for every entity, against a real local PostgreSQL test database —
 see `docs/database/README.md`, "Providing a local test database". If none
 is reachable, these tests are **skipped**, not failed, so `pytest` still
 exits cleanly in an environment without PostgreSQL.
 
+**Authentication (Phase 3A)**:
+
+* `tests/unit/test_security.py`, `test_email_utils.py` — password hashing,
+  password policy, JWT creation/validation/tampering/expiry, email
+  normalization. No database; always run.
+* `tests/integration/test_auth_bootstrap.py`, `test_auth_signup.py`,
+  `test_auth_login.py`, `test_auth_current_user.py` — against the same
+  PostgreSQL test database as the model tests, via a `client` fixture
+  (`tests/conftest.py`) that wires FastAPI's `TestClient` to the same
+  transactional `db_session` the test itself uses.
+  `test_auth_signup.py::test_concurrent_signup_attempts_consume_authorization_exactly_once`
+  is the one test that opens its own independent database connections (a
+  real race needs two) and cleans up its own committed rows explicitly.
+
 `tests/unit/test_imports.py` needs no database — it runs `from app.models
 import X` in fresh subprocesses to guard against the circular-import
-regression fixed in this phase (see `docs/database/schema.md` §1). It
-always runs.
+regression fixed in Phase 2 (see `docs/database/schema.md` §1). It always
+runs.

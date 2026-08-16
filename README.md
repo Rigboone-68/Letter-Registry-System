@@ -2,15 +2,15 @@
 
 **A Production of AJ-Labs**
 
-> **Current status: Phase 2 — database architecture & core models.**
-> The database schema and SQLAlchemy models for every core entity now exist,
-> with working Alembic migrations, validated against a real local
-> PostgreSQL instance — including a corrective hardening pass from a
-> self-review (see `docs/PROJECT_STATUS.md`). **There is still no
-> authentication, no API endpoint, no dashboard, and no upload handling** —
-> those are added module by module in later phases. See
-> `docs/PROJECT_STATUS.md` for the full picture and
-> `docs/database/schema.md` for the schema itself.
+> **Current status: Phase 3A — authentication foundation & account
+> lifecycle.** Local email/password login, JWT access tokens, the
+> pending-approval account lifecycle, authorized signup, and a CLI
+> bootstrap for the first System Admin are implemented and validated
+> against a real local PostgreSQL instance — see
+> `docs/architecture/authentication.md`. **There is still no role/department
+> authorization, no department or Admin management, no letter CRUD, no
+> dashboard, and no upload handling** — those are added module by module in
+> later phases. See `docs/PROJECT_STATUS.md` for the full picture.
 
 ---
 
@@ -49,7 +49,7 @@ repository assumes a single department.
 | Database | PostgreSQL |
 | Frontend | React 18, Vite, JavaScript, React Router, Axios |
 | Document storage | Server filesystem (`storage/letters/`) |
-| Authentication (planned) | Local JWT with hashed passwords — no external identity provider |
+| Authentication | Local JWT (PyJWT, HS256) with Argon2id-hashed passwords — no external identity provider. See `docs/architecture/authentication.md` |
 
 ## 4. High-level architecture
 
@@ -89,15 +89,16 @@ letter-registry-system/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py              # FastAPI application factory
-│   │   ├── core/                # config, security, logging
+│   │   ├── cli.py               # python -m app.cli create-system-admin
+│   │   ├── core/                # config, security (hashing + JWT), logging
 │   │   ├── database/            # declarative base, engine, session
 │   │   ├── models/              # ORM models            (9 core entities — Phase 2)
-│   │   ├── schemas/             # Pydantic contracts    (empty — Phase 3+)
-│   │   ├── api/v1/endpoints/    # versioned routers     (empty — Phase 3+)
-│   │   ├── services/            # business logic        (empty — Phase 3+)
-│   │   ├── repositories/        # data access           (empty — Phase 3+)
-│   │   ├── middleware/          # request ID, audit     (empty — Phase 3+)
-│   │   └── utils/               # shared helpers        (empty — Phase 3+)
+│   │   ├── schemas/             # Pydantic contracts    (auth — Phase 3A)
+│   │   ├── api/v1/endpoints/    # versioned routers     (auth — Phase 3A)
+│   │   ├── services/            # business logic        (auth, bootstrap — Phase 3A)
+│   │   ├── repositories/        # data access           (user, user_authorization — Phase 3A)
+│   │   ├── middleware/          # request ID, audit     (empty — Phase 3B+)
+│   │   └── utils/               # shared helpers        (email normalization — Phase 3A)
 │   ├── alembic/                 # migration environment (2 revisions: core schema + hardening)
 │   ├── tests/{unit,integration}
 │   ├── alembic.ini
@@ -150,13 +151,16 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env               # then fill in your local values
 alembic upgrade head                # creates the Phase 2 schema
+python -m app.cli create-system-admin   # first run only
 uvicorn app.main:app --reload
 ```
 
-The API starts on `http://localhost:8000`. Only `/health`, `/docs`, and
-`/redoc` respond — no business endpoints exist until Phase 4. The database
-schema behind those future endpoints is in place as of Phase 2; see
-`docs/database/schema.md`.
+The API starts on `http://localhost:8000`. `/health`, `/docs`, `/redoc`,
+and the authentication endpoints (`POST /api/v1/auth/signup`,
+`POST /api/v1/auth/login`, `GET /api/v1/auth/me`) respond — letter/
+department/dashboard endpoints don't exist until later phases. See
+`docs/architecture/authentication.md` for the authentication design and
+`docs/database/schema.md` for the schema behind it.
 
 ### Frontend
 
@@ -178,14 +182,15 @@ backend.
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Project foundation: structure, configuration, documentation | **Complete** |
-| **2** | Database architecture & core models: SQLAlchemy models, Alembic migrations | **Complete** |
-| 3 | Authentication and RBAC | Not started |
+| 2 | Database architecture & core models: SQLAlchemy models, Alembic migrations | **Complete** |
+| **3A** | Authentication foundation & account lifecycle: local login, JWT, signup, bootstrap | **Complete** |
+| 3B | RBAC & administrative authorization: role/department checks, department & Admin management, user approval | Pending |
 | 4 | Letter registry CRUD and document upload/viewing | Not started |
 | 5 | Dashboards, search, notifications, reporting | Not started |
 | 6 | Administration, audit trail, deployment hardening | Not started |
 
-See `docs/PROJECT_STATUS.md` for what Phase 2 delivered, what's pending
-S&IT confirmation, and known limitations. Phase 3 begins only when
+See `docs/PROJECT_STATUS.md` for what Phase 3A delivered, what's pending
+S&IT confirmation, and known limitations. Phase 3B begins only when
 explicitly instructed.
 
 ---

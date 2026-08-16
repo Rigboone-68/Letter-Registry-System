@@ -1,4 +1,4 @@
-# Letter Registry System — backend dependencies (Phase 1 foundation)
+# Letter Registry System — backend dependencies
 # Pinned to compatible ranges; run `pip install -r requirements.txt` inside a venv.
 
 # --- Web framework ---------------------------------------------------
@@ -9,6 +9,8 @@ uvicorn[standard]>=0.29,<1.0
 pydantic>=2.6,<3.0
 pydantic-settings>=2.2,<3.0
 python-dotenv>=1.0,<2.0
+# Backs pydantic's EmailStr, used by the signup/login request schemas.
+email-validator>=2.1,<3.0
 
 # --- Database ---------------------------------------------------------
 SQLAlchemy>=2.0,<3.0
@@ -21,8 +23,15 @@ pytest>=8.0,<9.0
 # `httpx2` package instead; verify which one your pinned Starlette requires.
 httpx>=0.27,<1.0
 
-# --- Reserved for Phase 2 (authentication) ---------------------------
-# Intentionally NOT installed yet; added when JWT auth is implemented.
-# python-jose[cryptography]
-# passlib[bcrypt]
-# python-multipart
+# --- Authentication (Phase 3A) ----------------------------------------
+# Password hashing: argon2-cffi's PasswordHasher defaults to Argon2id — the
+# algorithm requested for this project — used directly rather than through
+# passlib, whose own argon2 backend integration has a history of version
+# pinning friction. See docs/architecture/authentication.md, "Password
+# hashing".
+argon2-cffi>=23.1,<24.0
+# JWT: PyJWT, not the python-jose placeholder originally sketched in this
+# file — python-jose has had an algorithm-confusion CVE (CVE-2024-33663)
+# and slower maintenance; PyJWT is actively maintained and is what's used
+# here. See docs/architecture/authentication.md, "JWT design".
+PyJWT>=2.8,<3.0
