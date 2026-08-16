@@ -1,0 +1,5 @@
+Alembic migration environment for the Letter Registry System.
+
+Phase 1 contains no migration scripts. The `versions/` directory is empty
+except for a .gitkeep placeholder. Migrations will be generated in Phase 2,
+after the first ORM models are defined and imported in app/database/base.py.

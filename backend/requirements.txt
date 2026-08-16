@@ -1,0 +1,28 @@
+# Letter Registry System — backend dependencies (Phase 1 foundation)
+# Pinned to compatible ranges; run `pip install -r requirements.txt` inside a venv.
+
+# --- Web framework ---------------------------------------------------
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.29,<1.0
+
+# --- Configuration & validation --------------------------------------
+pydantic>=2.6,<3.0
+pydantic-settings>=2.2,<3.0
+python-dotenv>=1.0,<2.0
+
+# --- Database ---------------------------------------------------------
+SQLAlchemy>=2.0,<3.0
+alembic>=1.13,<2.0
+psycopg2-binary>=2.9,<3.0
+
+# --- Testing ----------------------------------------------------------
+pytest>=8.0,<9.0
+# HTTP client used by fastapi.testclient. Recent Starlette releases expect the
+# `httpx2` package instead; verify which one your pinned Starlette requires.
+httpx>=0.27,<1.0
+
+# --- Reserved for Phase 2 (authentication) ---------------------------
+# Intentionally NOT installed yet; added when JWT auth is implemented.
+# python-jose[cryptography]
+# passlib[bcrypt]
+# python-multipart
