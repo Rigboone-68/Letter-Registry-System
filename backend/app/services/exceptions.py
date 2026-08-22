@@ -75,3 +75,40 @@ class DuplicateDepartmentNameError(DuplicateDepartmentError):
 
 class DuplicateDepartmentCodeError(DuplicateDepartmentError):
     """A department with this code already exists (`uq_departments_code`)."""
+
+
+class DepartmentNotActiveError(ServiceError):
+    """A department exists but is `INACTIVE`, and the requested operation
+    (authorizing an Admin candidate for it, approving/reactivating an Admin
+    who belongs to it) requires it to be `ACTIVE` — see
+    app/services/admin_service.py."""
+
+
+class AdminNotFoundError(ServiceError):
+    """No `User` exists with this id *and* role `ADMIN`. Deliberately used
+    for both "no such user at all" and "a user exists but isn't an Admin"
+    (e.g. the id belongs to a SYSTEM_ADMIN or a regular USER) — the two
+    cases get an identical 404 from every endpoint in
+    app/api/v1/endpoints/admins.py, so a caller can't use this API to probe
+    which non-Admin ids exist, and a SYSTEM_ADMIN can never be targeted by
+    an Admin-lifecycle endpoint (brief §15) by construction, not by a
+    separate check."""
+
+
+class AdminNotPendingApprovalError(ServiceError):
+    """The target Admin exists but isn't `PENDING_APPROVAL`, so it cannot
+    be approved (again). Approval is a one-time state transition, not an
+    idempotent toggle — unlike Department activation/deactivation (Phase
+    3B.2) or Admin deactivation/reactivation (this phase), approving an
+    already-`ACTIVE` (or `DEACTIVATED`) account is rejected rather than
+    silently accepted."""
+
+
+class EmailAlreadyActiveAdminError(ServiceError):
+    """This email already belongs to an ACTIVE Admin — see
+    app/services/admin_service.py:authorize_admin."""
+
+
+class UnresolvedAdminAuthorizationExistsError(ServiceError):
+    """This email already has an ACTIVE, unexpired ADMIN-purpose
+    authorization — see app/services/admin_service.py:authorize_admin."""

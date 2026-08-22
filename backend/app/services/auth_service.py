@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, verify_password
-from app.models.enums import UserRole, UserStatus
+from app.models.enums import AuthorizationPurpose, UserRole, UserStatus
 from app.models.user import User
 from app.repositories.user_authorization_repository import UserAuthorizationRepository
 from app.repositories.user_repository import UserRepository
@@ -44,7 +44,16 @@ class AuthService:
         """Create a PENDING_APPROVAL User from a valid, unexpired, ACTIVE
         UserAuthorization, consuming it atomically. Role, department, and
         status are always derived here — never accepted from a caller; see
-        app/schemas/auth.py:SignupRequest, which has no fields for them."""
+        app/schemas/auth.py:SignupRequest, which has no fields for them.
+
+        Role (Phase 3B.3) comes from whichever authorization was found —
+        `authorization.purpose == ADMIN` produces an ADMIN, anything else
+        produces a USER. This is the *only* signup path for both: there is
+        no separate "admin signup" endpoint (the brief was explicit that
+        there must not be a second authentication workflow). A USER-purpose
+        authorization can never produce an ADMIN, and vice versa, because
+        role is read from this one field and nothing else — never guessed,
+        never independently chosen."""
         normalized_email = normalize_email(email)
 
         authorization = self.authorizations.find_and_lock_active(normalized_email)
@@ -53,11 +62,16 @@ class AuthService:
 
         self.authorizations.mark_used(authorization)
 
+        role = (
+            UserRole.ADMIN
+            if authorization.purpose == AuthorizationPurpose.ADMIN
+            else UserRole.USER
+        )
         user = self.users.create(
             full_name=full_name,
             email=normalized_email,
             password_hash=hash_password(password),
-            role=UserRole.USER,
+            role=role,
             department_id=authorization.department_id,
             status=UserStatus.PENDING_APPROVAL,
         )

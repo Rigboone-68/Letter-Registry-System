@@ -7,7 +7,13 @@ phase; the two are similar by design, not accidentally duplicated.
 """
 
 from app.models.department import Department
-from app.models.enums import ActiveStatus, AuthorizationStatus, UserRole, UserStatus
+from app.models.enums import (
+    ActiveStatus,
+    AuthorizationPurpose,
+    AuthorizationStatus,
+    UserRole,
+    UserStatus,
+)
 from app.models.user import User
 from app.models.user_authorization import UserAuthorization
 
@@ -47,6 +53,7 @@ def make_authorization(
     authorized_by,
     email="new.hire@example.gov",
     status=AuthorizationStatus.ACTIVE,
+    purpose=AuthorizationPurpose.USER,
     expires_at=None,
 ):
     authorization = UserAuthorization(
@@ -54,6 +61,7 @@ def make_authorization(
         department_id=department.id,
         authorized_by=authorized_by.id,
         status=status,
+        purpose=purpose,
         expires_at=expires_at,
     )
     db_session.add(authorization)

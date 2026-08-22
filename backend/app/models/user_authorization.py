@@ -16,6 +16,19 @@ The requirement that `authorized_by` must have ADMIN role is a workflow rule
 about *who is allowed to call* "authorize this email", not a fact about the
 column's value in isolation — it belongs at the service layer once the
 authorization API exists, not as a CHECK constraint here.
+
+`purpose` (Phase 3B.3) says what role the eventual signup produces —
+`USER` or `ADMIN`. Extending this table with an explicit column, rather
+than introducing a parallel `AdminAuthorization` table, was the brief's
+own preferred approach and remains a clean one: every other column here
+(department, expiry, race-safe consumption) means exactly the same thing
+regardless of purpose, so duplicating the whole table would only have
+duplicated that machinery for no benefit. `AuthService.signup`
+(`app/services/auth_service.py`) derives the created `User`'s `role`
+*from this field* on whichever authorization it finds — never the other
+way around, and never from anything client-supplied — which is what
+makes "a USER authorization cannot produce an ADMIN, and vice versa"
+true by construction rather than by a separate check.
 """
 
 import uuid
@@ -27,7 +40,12 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
-from app.models.enums import AuthorizationStatus, authorization_status_enum
+from app.models.enums import (
+    AuthorizationPurpose,
+    AuthorizationStatus,
+    authorization_purpose_enum,
+    authorization_status_enum,
+)
 from app.models.mixins import UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
@@ -52,6 +70,12 @@ class UserAuthorization(Base, UUIDPrimaryKeyMixin):
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
+        index=True,
+    )
+    purpose: Mapped[AuthorizationPurpose] = mapped_column(
+        authorization_purpose_enum,
+        nullable=False,
+        default=AuthorizationPurpose.USER,
         index=True,
     )
     status: Mapped[AuthorizationStatus] = mapped_column(

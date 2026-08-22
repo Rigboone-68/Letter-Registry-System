@@ -1,15 +1,16 @@
 # Architecture Overview — Roles, Hierarchy, and Department Isolation
 
-**Status:** Phase 3B.2 complete. This document explains the roles and
+**Status:** Phase 3B.3 complete. This document explains the roles and
 hierarchy the database schema is built to support, how a caller's identity
 is established (Phase 3A), how role/department authorization decisions are
-enforced on top of that identity (Phase 3B.1), and — as of Phase 3B.2 — the
-first real resource that authorization protects: departments themselves.
-See §4, "What is implemented vs. deferred",
-[`authentication.md`](authentication.md) for authentication,
-[`authorization.md`](authorization.md) for the RBAC/department-isolation
-design, and [`department-management.md`](department-management.md) for
-department CRUD and the inactive-department authorization extension.
+enforced on top of that identity (Phase 3B.1), how departments themselves
+are managed (Phase 3B.2), and — as of Phase 3B.3 — how Admin accounts are
+authorized, approved, and managed by System Admin. See §4, "What is
+implemented vs. deferred", [`authentication.md`](authentication.md) for
+authentication, [`authorization.md`](authorization.md) for the RBAC/
+department-isolation design, [`department-management.md`](department-management.md)
+for department CRUD, and [`admin-management.md`](admin-management.md) for
+the Admin lifecycle.
 
 ## 1. The hierarchy
 
@@ -37,25 +38,30 @@ bootstrap command, never through public signup — see
 [`authentication.md`](authentication.md) §8. As of Phase 3B.2, a System
 Admin can create, list, retrieve, update, activate, and deactivate
 departments (`POST`/`GET`/`PATCH /api/v1/departments...` —
-[`department-management.md`](department-management.md)) — the first real
-management capability this role has, and the first real resource the
-Phase 3B.1 authorization layer protects. Managing Departments' Admins,
-Categories, and Classifications remains future work (§4).
+[`department-management.md`](department-management.md)). As of Phase
+3B.3, a System Admin also authorizes Admin candidates, approves them,
+deactivates/reactivates Admin accounts, and moves an Admin between
+departments (`/api/v1/admins*` —
+[`admin-management.md`](admin-management.md)) — using the *same* signup
+workflow a regular User goes through, not a separate one. Managing
+Categories and Classifications remains future work (§4).
 
 ### Admin
 
 Bound to exactly one department (`users.department_id` is required for this
-role, same constraint). Will eventually manage that department's Users and
-be able to edit that department's Letter records. Also the role required to
-authorize new signups via `UserAuthorization` (see
-`docs/database/schema.md` §2.3) — though that permission check is a
-service-layer rule, not a database constraint, since it depends on *who is
-calling*, not on the row's own column values. There is still no API for an
-Admin to actually create a `UserAuthorization` or manage Users — that is
-Phase 3B.3/3B.4 (see §4 below). An Admin is enforced to be able to act
-only within their own department — [`authorization.md`](authorization.md)
-§3 — and, as of Phase 3B.2, only while that department is `ACTIVE`; see
-[`department-management.md`](department-management.md) §5.
+role, same constraint), and — as of Phase 3B.3 — a department may have any
+number of Admins (zero, one, or many; no uniqueness constraint enforces a
+single Admin per department). Will eventually manage that department's
+Users and be able to edit that department's Letter records — not yet
+implemented (Phase 3B.4/4). An Admin **cannot** authorize or manage other
+Admins, approve or create accounts, or change their own role or
+department — every Admin-management operation requires `SYSTEM_ADMIN`;
+see [`admin-management.md`](admin-management.md) §11. An Admin is enforced
+to be able to act only within their own department —
+[`authorization.md`](authorization.md) §3 — and only while that department
+is `ACTIVE`; see [`department-management.md`](department-management.md)
+§5. There is still no API for an Admin to manage Users or issue
+`UserAuthorization` records themselves — that remains Phase 3B.4.
 
 ### User
 
@@ -199,25 +205,60 @@ in the meantime.
   item in the brief's Authorization/Creation/Retrieval/Update/Status/
   Security test lists.
 
+### Implemented (Phase 3B.3 — Admin management)
+
+* `POST /api/v1/admins/authorizations`, `GET /api/v1/admins`,
+  `GET /api/v1/admins/{id}`, `POST .../approve`, `.../deactivate`,
+  `.../reactivate`, `PATCH .../department` — all SYSTEM_ADMIN only. Full
+  design in [`admin-management.md`](admin-management.md).
+* `UserAuthorization` extended with one column, `purpose`
+  (`AuthorizationPurpose`: `USER` | `ADMIN`), rather than a parallel
+  `AdminAuthorization` table — one migration, backfill-safe, tested with
+  an actual pre-existing row. `AuthService.signup` (Phase 3A, unchanged
+  endpoint) now derives the created User's role from this field, so a
+  USER-purpose authorization can never produce an ADMIN and vice versa —
+  by construction, not by a separate check. No second signup endpoint or
+  workflow was created.
+* Multiple Admins per department, deliberately unbounded — no unique
+  constraint added on `users.department_id`.
+* Admin department transfer, proven not to rewrite any historical
+  `Letter.department_id` — a direct, tested consequence of a Phase 2
+  design decision (letters store their own department, never re-derived
+  from the recording user), not new code written for this phase; see
+  [`admin-management.md`](admin-management.md) §9.
+* `app/services/admin_service.py`, extensions to the existing
+  `UserRepository`/`UserAuthorizationRepository` (no new repository
+  created, per the brief's explicit preference), `app/schemas/admin.py` —
+  same layered architecture, reusing `require_system_admin` (Phase 3B.1)
+  rather than adding a new dependency.
+* 47 new tests against a real PostgreSQL test database, covering every
+  item in the brief's Authorization/Workflow/Approval/Lifecycle/Multiple-
+  Admins/Department-Transfer/Self-Protection/System-Admin-Protection/
+  Race-Safety lists.
+
 ### Explicitly deferred (not this phase)
 
 * **Letter CRUD (Phase 4)** is still the first phase that will call
   `assert_department_access` / `require_department_access` against a real
   business resource rather than a verification-only endpoint — Phase
-  3B.2's protected resource is departments themselves (a management
-  resource), not yet a departmental *business* resource like a Letter.
-* Admin management (Phase 3B.3), user approval / `UserAuthorization`
-  issuance via API (Phase 3B.4) — the role checks these will use already
-  exist (`require_system_admin`, `require_admin_or_system_admin`), but no
-  endpoint calling them for these purposes exists yet.
+  3B.2/3B.3's protected resources are departments and Admin accounts
+  themselves (management resources), not yet a departmental *business*
+  resource like a Letter.
+* **User management / approval (Phase 3B.4)** — an Admin approving a
+  `PENDING_APPROVAL` User, deactivating/reactivating one, or issuing a
+  `USER`-purpose `UserAuthorization` via API. The role checks this will
+  use already exist (`require_admin_or_system_admin`,
+  `require_department_access`), and `UserAuthorization.purpose` already
+  supports it, but no endpoint calling either for this purpose exists yet.
 * System Admin handover.
 * Dashboards, notification generation, file upload handling, or automatic
-  audit-log generation — see [`authorization.md`](authorization.md) §12
-  and [`department-management.md`](department-management.md) §10 for
-  which future actions will need an audit event once they exist.
-* Full frontend authentication/authorization/department-management UI —
-  deliberately deferred, see [`authentication.md`](authentication.md) §15;
-  unchanged this phase.
+  audit-log generation — see [`authorization.md`](authorization.md) §12,
+  [`department-management.md`](department-management.md) §10, and
+  [`admin-management.md`](admin-management.md) §13 for which future
+  actions will need an audit event once they exist.
+* Full frontend authentication/authorization/department/Admin-management
+  UI — deliberately deferred, see
+  [`authentication.md`](authentication.md) §15; unchanged this phase.
 
 See `docs/PROJECT_STATUS.md` for the current phase-by-phase plan and what's
 pending S&IT confirmation before some of these can be designed.
@@ -238,10 +279,16 @@ rules, transaction boundaries), `app/repositories/user_repository.py` /
 the brief — "Dependencies / Authorization", sitting between API and
 Services — populated by `app/api/deps.py`'s role-check dependencies and
 `app/services/authorization.py`'s framework-agnostic department rule.
-Phase 3B.2 adds a second full vertical slice through every layer for a new
-resource (`app/api/v1/endpoints/departments.py` →
+Phase 3B.2 added a second full vertical slice through every layer for a
+new resource (`app/api/v1/endpoints/departments.py` →
 `app/services/department_service.py` →
 `app/repositories/department_repository.py`), reusing the Phase 3B.1
-authorization layer rather than duplicating its checks. All of it uses
-this same structure rather than inventing a second one, per the brief's
-explicit instruction in every phase so far.
+authorization layer rather than duplicating its checks. Phase 3B.3 adds a
+third slice (`app/api/v1/endpoints/admins.py` →
+`app/services/admin_service.py`) that deliberately does **not** add a
+fourth repository — it extends the existing `UserRepository`/
+`UserAuthorizationRepository` instead, since Admin accounts are `User`
+rows and Admin authorizations are `UserAuthorization` rows; a dedicated
+`AdminRepository` would have queried the same two tables a second way for
+no benefit. All of it uses this same structure rather than inventing a
+second one, per the brief's explicit instruction in every phase so far.

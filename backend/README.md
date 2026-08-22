@@ -1,15 +1,16 @@
 # LRS Backend
 
-FastAPI service for the Letter Registry System. **Phase 3B.2: department
-management**, built on Phase 3B.1's RBAC/department-isolation foundation
-and Phase 3A's authentication. Full design in
-`docs/architecture/authentication.md` (auth),
-`docs/architecture/authorization.md` (RBAC/department isolation), and
-`docs/architecture/department-management.md` (department CRUD). Admin
-management, user approval, letter CRUD, uploads, dashboards, and
-notifications are not implemented yet — see `docs/architecture/overview.md`
-§4 and `docs/architecture/department-management.md` §11 for exactly what
-is and isn't in place.
+FastAPI service for the Letter Registry System. **Phase 3B.3: Admin
+management**, built on Phase 3B.2's department management, Phase 3B.1's
+RBAC/department-isolation foundation, and Phase 3A's authentication. Full
+design in `docs/architecture/authentication.md` (auth),
+`docs/architecture/authorization.md` (RBAC/department isolation),
+`docs/architecture/department-management.md` (department CRUD), and
+`docs/architecture/admin-management.md` (Admin lifecycle). User
+management/approval, letter CRUD, uploads, dashboards, and notifications
+are not implemented yet — see `docs/architecture/overview.md` §4 and
+`docs/architecture/admin-management.md` §14 for exactly what is and isn't
+in place.
 
 ## Setup
 
@@ -25,7 +26,8 @@ python -m app.cli create-system-admin   # first run only — see below
 
 Available now: `GET /health`, `POST /api/v1/auth/signup`,
 `POST /api/v1/auth/login`, `GET /api/v1/auth/me`, the department
-management endpoints (`/api/v1/departments*`, SYSTEM_ADMIN only), five
+management endpoints (`/api/v1/departments*`, SYSTEM_ADMIN only), the
+Admin management endpoints (`/api/v1/admins*`, SYSTEM_ADMIN only), five
 verification-only authorization endpoints under `/api/v1/auth/test/*` (not
 business functionality — see `docs/architecture/authorization.md` §7),
 plus `/docs` and `/redoc`.
@@ -59,18 +61,21 @@ if an active System Admin already exists. See
 | `app/models/` | SQLAlchemy models — 9 core entities (see `docs/database/schema.md`) |
 | `app/schemas/auth.py` | Signup/login/token/current-user request-response contracts |
 | `app/schemas/department.py` | Department create/update/response/list-envelope contracts — no server-controlled field (`id`/`status`/timestamps) is ever accepted from a client |
+| `app/schemas/admin.py` | Admin-authorization/response/list-envelope/department-transfer contracts — same no-server-controlled-field guarantee |
 | `app/api/deps.py` | `get_current_user` (authentication) plus `require_system_admin`/`require_admin`/`require_admin_or_system_admin`/`require_user_or_admin`/`require_department_access` (authorization) |
 | `app/api/v1/router.py` | Aggregate v1 router |
 | `app/api/v1/endpoints/auth.py` | `/auth/signup`, `/auth/login`, `/auth/me` |
 | `app/api/v1/endpoints/departments.py` | `/departments*` — SYSTEM_ADMIN only |
+| `app/api/v1/endpoints/admins.py` | `/admins*` — SYSTEM_ADMIN only |
 | `app/api/v1/endpoints/dev_authz_test.py` | `/auth/test/*` — verification-only, not business functionality (see `docs/architecture/authorization.md` §7) |
-| `app/services/auth_service.py` | Signup and login business logic |
+| `app/services/auth_service.py` | Signup and login business logic — role now derived from `UserAuthorization.purpose` (Phase 3B.3) |
 | `app/services/bootstrap_service.py` | First-System-Admin creation logic (called by `app/cli.py`) |
 | `app/services/authorization.py` | `assert_department_access` — the one framework-agnostic department-isolation rule, reused by `app/api/deps.py` and (eventually) resource-level services. Extended in Phase 3B.2 to also require the caller's department to be `ACTIVE` |
 | `app/services/department_service.py` | Department CRUD business logic, including race-safe duplicate-name/code handling |
+| `app/services/admin_service.py` | Admin authorization/approval/lifecycle/department-transfer business logic |
 | `app/services/exceptions.py` | Service-layer domain errors, mapped to HTTP responses in the endpoint layer |
-| `app/repositories/user_repository.py` | The only code that queries `User` |
-| `app/repositories/user_authorization_repository.py` | The only code that queries `UserAuthorization`, including the race-safe `SELECT ... FOR UPDATE` signup consumes |
+| `app/repositories/user_repository.py` | The only code that queries `User` — extended in Phase 3B.3 with `find_admin_by_id`/`list_admins`/`update_status`/`update_department` rather than a new repository |
+| `app/repositories/user_authorization_repository.py` | The only code that queries `UserAuthorization`, including the race-safe `SELECT ... FOR UPDATE` signup consumes, and (Phase 3B.3) `create`/`find_unresolved` |
 | `app/repositories/department_repository.py` | The only code that queries `Department` |
 | `app/utils/email.py` | `normalize_email` — the one place "same email" is defined |
 | `app/middleware/` | Request correlation and audit middleware (empty) |
@@ -87,10 +92,16 @@ Populated end-to-end by the authentication module (Phase 3A:
 `app/repositories/user_repository.py`), a "Dependencies / Authorization"
 layer sitting between API and Services (Phase 3B.1: role checks directly
 in `app/api/deps.py`, the department-isolation rule in
-`app/services/authorization.py`), and now a second full vertical slice
-(Phase 3B.2: `app/api/v1/endpoints/departments.py` →
+`app/services/authorization.py`), a second full vertical slice (Phase
+3B.2: `app/api/v1/endpoints/departments.py` →
 `app/services/department_service.py` →
-`app/repositories/department_repository.py`) — all using this same
+`app/repositories/department_repository.py`), and a third (Phase 3B.3:
+`app/api/v1/endpoints/admins.py` → `app/services/admin_service.py`) that
+deliberately reuses the existing `UserRepository`/
+`UserAuthorizationRepository` rather than adding a fourth repository —
+Admin accounts are `User` rows and Admin authorizations are
+`UserAuthorization` rows, so a dedicated `AdminRepository` would have
+queried the same two tables a second way. All of it uses this same
 structure rather than a second, competing one.
 
 ## Database & migrations
@@ -99,33 +110,39 @@ structure rather than a second, competing one.
 injects `DATABASE_URL` from the environment at runtime, so no connection
 string ever appears in source control.
 
-Two migrations exist: `3da4b7ee8167_core_schema_...` (baseline — every
-table, enum type, foreign key, index, and constraint) and
+Three migrations exist: `3da4b7ee8167_core_schema_...` (baseline — every
+table, enum type, foreign key, index, and constraint),
 `e8a5cea2ccc6_database_hardening_...` (a corrective follow-up from a Phase 2
 self-review: two missed indexes and a database-level default for
 `notifications.is_read` — see `docs/database/schema.md` §1 "ORM deletion
-behavior" and §6 "Indexes"). Both are described in `docs/database/schema.md`.
+behavior" and §6 "Indexes"), and `a223396c9eac_admin_management_...`
+(Phase 3B.3: adds `user_authorizations.purpose`, backfilling any existing
+row to `USER` before tightening the column to `NOT NULL` — tested against
+an actual pre-existing row, not just an empty table). All three are
+described in `docs/database/schema.md`.
 **None of Phase 3A (authentication), 3B.1 (RBAC/department authorization),
 or 3B.2 (department management) required a schema change** — every column
-either needs (`users.password_hash`, `users.role`, `users.department_id`,
+either needed (`users.password_hash`, `users.role`, `users.department_id`,
 `user_authorizations.status`/`expires_at`, `departments.name`/`code`/
-`status`, etc.) already existed from Phase 2; `alembic check` confirms
-zero drift after all three. Phase 3B.2 did fix a constraint-*naming*
-inconsistency in `app/models/department.py` (see
+`status`, etc.) already existed from Phase 2. Phase 3B.2 did fix a
+constraint-*naming* inconsistency in `app/models/department.py` (see
 `docs/database/schema.md` §2.1) — a Python-model-only change, not a
-migration, since the real database already had the correct name.
+migration, since the real database already had the correct name. Phase
+3B.3 is the first phase since Phase 2's hardening pass to actually need
+one, for the new `purpose` column; `alembic check` confirms zero drift
+after all four.
 
 ```bash
-alembic upgrade head       # apply both, in order
+alembic upgrade head       # apply all three, in order
 alembic downgrade base     # fully reverse — drops all tables and enum types
 alembic current            # show the applied revision
-alembic history            # list both revisions
+alembic history            # list all revisions
 ```
 
 `alembic revision --autogenerate -m "description"` currently reports "no
 changes detected" against these models — confirmed locally against a real
-PostgreSQL 17 instance — so the migration and the models are in sync as of
-this phase. Run it again whenever a model changes in a later phase.
+PostgreSQL 17 instance — so the migrations and the models are in sync as
+of this phase. Run it again whenever a model changes in a later phase.
 
 **Never point `DATABASE_URL` at a real departmental database** — always a
 disposable local/dev instance. See `docs/database/README.md` for how to set
@@ -160,7 +177,7 @@ decoded, mirroring `DATABASE_URL`'s existing lazy-check pattern in
 pytest
 ```
 
-174 tests total. `SECRET_KEY` must be set (via `.env`) for the
+221 tests total. `SECRET_KEY` must be set (via `.env`) for the
 JWT-dependent tests to run — copy `.env.example` to `.env` first if you
 haven't.
 
@@ -207,6 +224,18 @@ exits cleanly in an environment without PostgreSQL.
   reactivate → restored cycle checked directly against the Phase 3B.1
   verification endpoint, and row-level assertions (not just status codes)
   proving deactivation never touches a User or Letter row.
+
+**Admin management (Phase 3B.3)**:
+
+* `tests/integration/test_admin_management.py` — real JWTs, real
+  database-backed Users, real HTTP requests through `/api/v1/admins*` and
+  `/api/v1/auth/signup`. Covers every item in the brief's Authorization/
+  Workflow/Approval/Lifecycle/Multiple-Admins/Department-Transfer/Self-
+  Protection/System-Admin-Protection/Race-Safety lists, including a
+  genuine two-thread/two-connection concurrency test for the ADMIN-purpose
+  signup path (mirroring Phase 3A's USER-purpose one) and row-level
+  assertions proving a department transfer never rewrites a historical
+  Letter's `department_id`.
 
 `tests/unit/test_imports.py` needs no database — it runs `from app.models
 import X` in fresh subprocesses to guard against the circular-import

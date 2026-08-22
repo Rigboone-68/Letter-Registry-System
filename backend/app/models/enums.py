@@ -42,6 +42,18 @@ class AuthorizationStatus(str, enum.Enum):
     REVOKED = "REVOKED"
 
 
+class AuthorizationPurpose(str, enum.Enum):
+    """What role a UserAuthorization's eventual signup produces (Phase
+    3B.3). Added to UserAuthorization rather than introducing a parallel
+    AdminAuthorization table — see that model's docstring for why extending
+    was the clean choice here. An explicit enum, not an inferred value: role
+    is never guessed from department, `authorized_by`, or any other field —
+    only from this one."""
+
+    USER = "USER"
+    ADMIN = "ADMIN"
+
+
 class LetterStatus(str, enum.Enum):
     """V1 letter lifecycle. Archive *behavior* is not implemented in this
     phase — only the status value a future archive feature will set."""
@@ -64,5 +76,6 @@ class ActiveStatus(str, enum.Enum):
 user_role_enum = SAEnum(UserRole, name="user_role")
 user_status_enum = SAEnum(UserStatus, name="user_status")
 authorization_status_enum = SAEnum(AuthorizationStatus, name="authorization_status")
+authorization_purpose_enum = SAEnum(AuthorizationPurpose, name="authorization_purpose")
 letter_status_enum = SAEnum(LetterStatus, name="letter_status")
 active_status_enum = SAEnum(ActiveStatus, name="active_status")

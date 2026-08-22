@@ -2,8 +2,8 @@
 
 | Directory | Contents |
 |---|---|
-| [`architecture/`](architecture/) | Role hierarchy, department isolation, layering rules, [authentication design](architecture/authentication.md) (Phase 3A), [authorization/RBAC design](architecture/authorization.md) (Phase 3B.1), and [department management](architecture/department-management.md) (Phase 3B.2) — all complete, deployment topology (planned), decision records (planned) |
-| `api/` | REST API reference for `/api/v1` — placeholder; endpoints are documented in `architecture/authentication.md` §11 (auth), `architecture/authorization.md` §7 (verification-only), and `architecture/department-management.md` §7 (departments) ahead of a dedicated API reference in a later phase |
+| [`architecture/`](architecture/) | Role hierarchy, department isolation, layering rules, [authentication design](architecture/authentication.md) (Phase 3A), [authorization/RBAC design](architecture/authorization.md) (Phase 3B.1), [department management](architecture/department-management.md) (Phase 3B.2), and [Admin management](architecture/admin-management.md) (Phase 3B.3) — all complete, deployment topology (planned), decision records (planned) |
+| `api/` | REST API reference for `/api/v1` — placeholder; endpoints are documented in `architecture/authentication.md` §11 (auth), `architecture/authorization.md` §7 (verification-only), `architecture/department-management.md` §7 (departments), and `architecture/admin-management.md` §10-11 (admins) ahead of a dedicated API reference in a later phase |
 | [`database/`](database/) | Schema design, entity relationships, migration guide (Phase 2 — complete) |
 | `user-guides/` | End-user and administrator guides per role — placeholder until roles have a UI |
 

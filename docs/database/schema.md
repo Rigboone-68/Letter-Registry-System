@@ -266,15 +266,23 @@ table.
 | `email` | varchar(320), NOT NULL | Not unique — see below |
 | `department_id` | UUID, FK → `departments.id` ON DELETE RESTRICT, NOT NULL | |
 | `authorized_by` | UUID, FK → `users.id` ON DELETE RESTRICT, NOT NULL | Must eventually be an ADMIN — service-layer rule, not a DB constraint (see below) |
+| `purpose` | `authorization_purpose` enum, NOT NULL, default `USER`, indexed | `USER` \| `ADMIN` — added in migration `a223396c9eac` (Phase 3B.3). Says what role the eventual signup produces; see `app/models/user_authorization.py` for why this extends the table rather than a parallel `AdminAuthorization` one |
 | `status` | `authorization_status` enum, NOT NULL, default `ACTIVE` | `ACTIVE` \| `USED` \| `REVOKED` |
 | `created_at` | timestamptz | |
 | `expires_at` | timestamptz, nullable | |
 
 `email` has no uniqueness constraint: the same address can legitimately be
 authorized, used, revoked, and re-authorized over its lifetime. Preventing
-more than one *ACTIVE* authorization for the same email at once is a
-service-layer rule (it depends on reading current state, not just a column
-value), not a schema constraint.
+more than one *ACTIVE* authorization for the same email/purpose at once is
+a service-layer rule (it depends on reading current state, not just a
+column value), not a schema constraint.
+
+**`purpose` migration safety.** Adding a `NOT NULL` column to a table that
+may already have rows required the standard safe pattern: add nullable,
+backfill every existing row to `USER` (the only purpose that existed
+before this migration), then tighten to `NOT NULL` — see migration
+`a223396c9eac`'s own docstring. Tested directly against a row inserted
+*before* the migration ran, not just against an empty table.
 
 The requirement that `authorized_by` must reference an ADMIN-role user is a
 rule about **who is allowed to call** "authorize this email" — a workflow
@@ -467,6 +475,7 @@ assigned to this user") is added later.
 | `user_role` | `SYSTEM_ADMIN`, `ADMIN`, `USER` | `users.role` |
 | `user_status` | `PENDING_APPROVAL`, `ACTIVE`, `DEACTIVATED` | `users.status` |
 | `authorization_status` | `ACTIVE`, `USED`, `REVOKED` | `user_authorizations.status` |
+| `authorization_purpose` | `USER`, `ADMIN` | `user_authorizations.purpose` (Phase 3B.3) |
 | `letter_status` | `ACTIVE`, `ARCHIVED` | `letters.status` |
 | `active_status` | `ACTIVE`, `INACTIVE` | `departments.status`, `categories.status`, `classifications.status` (shared) |
 
@@ -515,7 +524,7 @@ exercises.
 | `users` | `uq_users_email_lower` (unique, functional, `lower(email)`) | Case-insensitive login lookup and uniqueness — the single source of truth for "is this email taken" |
 | `users` | `department_id`, `role`, `status` | Filtering users by department (isolation), by role, by account status — all frequent lookups once an admin UI exists |
 | `user_authorizations` | `email` (functional, `lower(email)`) | Case-insensitive lookup during signup |
-| `user_authorizations` | `department_id`, `authorized_by`, `status` | Admin views: "authorizations for my department", "who did I authorize" |
+| `user_authorizations` | `department_id`, `authorized_by`, `status`, `purpose` | Admin views: "authorizations for my department", "who did I authorize"; `purpose` added Phase 3B.3 for "unresolved ADMIN authorizations for this email" lookups |
 | `letters` | `department_id` | Department isolation — the single most important filter in the whole system |
 | `letters` | `department_id, received_at` (composite) | The primary expected access pattern: "this department's letters, ordered by receipt date" |
 | `letters` | `received_at`, `recorded_by`, `category_id`, `classification_id`, `status`, `subject` | Each is an explicitly required filter/search dimension (brief §18) |

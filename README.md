@@ -2,18 +2,20 @@
 
 **A Production of AJ-Labs**
 
-> **Current status: Phase 3B.2 — department management.** Local
-> email/password login, JWT access tokens, role-based access control, and
-> now System-Admin-controlled department management (create, list,
-> retrieve, update, activate, deactivate — with deactivated departments
-> correctly blocking their own Admin/User accounts from departmental
-> operations while preserving all historical data) are implemented and
-> validated against a real local PostgreSQL instance — see
+> **Current status: Phase 3B.3 — Admin management.** Local email/password
+> login, JWT access tokens, role-based access control, System-Admin-
+> controlled department management, and now System-Admin-controlled Admin
+> management (authorize a candidate → candidate signs up through the same
+> workflow a regular User uses → System Admin approves → deactivate/
+> reactivate/move between departments — with historical letters proven to
+> keep their original department even after an Admin transfers) are
+> implemented and validated against a real local PostgreSQL instance — see
 > `docs/architecture/authentication.md`, `docs/architecture/authorization.md`,
-> and `docs/architecture/department-management.md`. **There is still no
-> Admin management, no user approval, no letter CRUD, no dashboard, and no
-> upload handling** — those are added module by module in later phases.
-> See `docs/PROJECT_STATUS.md` for the full picture.
+> `docs/architecture/department-management.md`, and
+> `docs/architecture/admin-management.md`. **There is still no User
+> management/approval, no letter CRUD, no dashboard, and no upload
+> handling** — those are added module by module in later phases. See
+> `docs/PROJECT_STATUS.md` for the full picture.
 
 ---
 
@@ -96,14 +98,14 @@ letter-registry-system/
 │   │   ├── core/                # config, security (hashing + JWT), logging
 │   │   ├── database/            # declarative base, engine, session
 │   │   ├── models/              # ORM models            (9 core entities — Phase 2)
-│   │   ├── schemas/             # Pydantic contracts    (auth — 3A; department — 3B.2)
-│   │   ├── api/deps.py          # auth + RBAC dependencies (Phase 3A/3B.1/3B.2)
-│   │   ├── api/v1/endpoints/    # versioned routers     (auth — 3A; dev authz test — 3B.1; departments — 3B.2)
-│   │   ├── services/            # business logic        (auth, bootstrap — 3A; authorization — 3B.1; department — 3B.2)
-│   │   ├── repositories/        # data access           (user, user_authorization — 3A; department — 3B.2)
+│   │   ├── schemas/             # Pydantic contracts    (auth — 3A; department — 3B.2; admin — 3B.3)
+│   │   ├── api/deps.py          # auth + RBAC dependencies (Phase 3A/3B.1)
+│   │   ├── api/v1/endpoints/    # versioned routers     (auth — 3A; dev authz test — 3B.1; departments — 3B.2; admins — 3B.3)
+│   │   ├── services/            # business logic        (auth, bootstrap — 3A; authorization — 3B.1; department — 3B.2; admin — 3B.3)
+│   │   ├── repositories/        # data access           (user, user_authorization — 3A/3B.3; department — 3B.2)
 │   │   ├── middleware/          # request ID, audit     (empty — later phases)
 │   │   └── utils/               # shared helpers        (email normalization — Phase 3A)
-│   ├── alembic/                 # migration environment (2 revisions: core schema + hardening)
+│   ├── alembic/                 # migration environment (3 revisions: core schema + hardening + admin authorizations)
 │   ├── tests/{unit,integration}
 │   ├── alembic.ini
 │   ├── requirements.txt
@@ -162,14 +164,16 @@ uvicorn app.main:app --reload
 The API starts on `http://localhost:8000`. `/health`, `/docs`, `/redoc`,
 the authentication endpoints (`POST /api/v1/auth/signup`,
 `POST /api/v1/auth/login`, `GET /api/v1/auth/me`), the department
-management endpoints (`/api/v1/departments`, SYSTEM_ADMIN only), and five
-verification-only authorization endpoints (`/api/v1/auth/test/*` — not
-business functionality, see `docs/architecture/authorization.md` §7)
+management endpoints (`/api/v1/departments*`, SYSTEM_ADMIN only), the
+Admin management endpoints (`/api/v1/admins*`, SYSTEM_ADMIN only), and
+five verification-only authorization endpoints (`/api/v1/auth/test/*` —
+not business functionality, see `docs/architecture/authorization.md` §7)
 respond — letter CRUD/dashboard endpoints don't exist until later phases.
 See `docs/architecture/authentication.md` for authentication,
 `docs/architecture/authorization.md` for RBAC and department isolation,
-`docs/architecture/department-management.md` for department CRUD, and
-`docs/database/schema.md` for the schema behind all three.
+`docs/architecture/department-management.md` for department CRUD,
+`docs/architecture/admin-management.md` for the Admin lifecycle, and
+`docs/database/schema.md` for the schema behind all four.
 
 ### Frontend
 
@@ -194,15 +198,15 @@ backend.
 | 2 | Database architecture & core models: SQLAlchemy models, Alembic migrations | **Complete** |
 | 3A | Authentication foundation & account lifecycle: local login, JWT, signup, bootstrap | **Complete** |
 | 3B.1 | RBAC & department authorization: role checks, department-isolation enforcement | **Complete** |
-| **3B.2** | Department management: System Admin CRUD for departments, inactive-department authorization | **Complete** |
-| 3B.3 | Admin management (System Admin managing Admin accounts) | Pending |
+| 3B.2 | Department management: System Admin CRUD for departments, inactive-department authorization | **Complete** |
+| **3B.3** | Admin management: System Admin authorizes/approves/deactivates/reactivates/transfers Admins | **Complete** |
 | 3B.4 | User management & approval (Admin approving/deactivating Users, issuing `UserAuthorization`) | Pending |
 | 4 | Letter registry CRUD and document upload/viewing | Not started |
 | 5 | Dashboards, search, notifications, reporting | Not started |
 | 6 | Administration, audit trail, deployment hardening | Not started |
 
-See `docs/PROJECT_STATUS.md` for what Phase 3B.2 delivered, what's pending
-S&IT confirmation, and known limitations. Phase 3B.3 begins only when
+See `docs/PROJECT_STATUS.md` for what Phase 3B.3 delivered, what's pending
+S&IT confirmation, and known limitations. Phase 3B.4 begins only when
 explicitly instructed.
 
 ---
