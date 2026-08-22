@@ -6,6 +6,13 @@ It does not cover department management, Admin management, user approval,
 or any real protected business resource (Letter CRUD, etc.) — those are
 later Phase 3B slices; see §11.
 
+> **Phase 3B.2 update**: `assert_department_access` (§3) gained one small,
+> additional condition — an ADMIN/USER's own department must also be
+> `ACTIVE` — when department deactivation was introduced. The rule
+> described below is otherwise unchanged; see
+> `docs/architecture/department-management.md` §5 for the addition and why
+> it belongs there rather than here.
+
 ## Authentication vs. authorization
 
 These are two different questions, answered by two different layers:

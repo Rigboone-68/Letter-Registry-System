@@ -1,13 +1,15 @@
 # Architecture Overview — Roles, Hierarchy, and Department Isolation
 
-**Status:** Phase 3B.1 complete. This document explains the roles and
+**Status:** Phase 3B.2 complete. This document explains the roles and
 hierarchy the database schema is built to support, how a caller's identity
-is established (Phase 3A), and how role/department authorization decisions
-are now enforced on top of that identity (Phase 3B.1). See §4, "What is
-implemented vs. deferred", [`authentication.md`](authentication.md) for
-authentication, and [`authorization.md`](authorization.md) for the full
-authorization design — including exactly what "authorization" still does
-*not* cover yet (no real protected resource exists in this phase).
+is established (Phase 3A), how role/department authorization decisions are
+enforced on top of that identity (Phase 3B.1), and — as of Phase 3B.2 — the
+first real resource that authorization protects: departments themselves.
+See §4, "What is implemented vs. deferred",
+[`authentication.md`](authentication.md) for authentication,
+[`authorization.md`](authorization.md) for the RBAC/department-isolation
+design, and [`department-management.md`](department-management.md) for
+department CRUD and the inactive-department authorization extension.
 
 ## 1. The hierarchy
 
@@ -30,11 +32,15 @@ Letters
 System-wide authority. Not bound to any department —
 `users.department_id` is `NULL` for this role (enforced by
 `ck_users_role_department_pairing`, see `docs/database/schema.md` §2.2).
-Will eventually be able to access and manage records across every
-department, and to manage Departments, Categories, and Classifications
-system-wide. As of Phase 3A, the first System Admin is created by a
-server-side CLI bootstrap command, never through public signup — see
-[`authentication.md`](authentication.md) §8.
+As of Phase 3A, the first System Admin is created by a server-side CLI
+bootstrap command, never through public signup — see
+[`authentication.md`](authentication.md) §8. As of Phase 3B.2, a System
+Admin can create, list, retrieve, update, activate, and deactivate
+departments (`POST`/`GET`/`PATCH /api/v1/departments...` —
+[`department-management.md`](department-management.md)) — the first real
+management capability this role has, and the first real resource the
+Phase 3B.1 authorization layer protects. Managing Departments' Admins,
+Categories, and Classifications remains future work (§4).
 
 ### Admin
 
@@ -46,10 +52,10 @@ authorize new signups via `UserAuthorization` (see
 service-layer rule, not a database constraint, since it depends on *who is
 calling*, not on the row's own column values. There is still no API for an
 Admin to actually create a `UserAuthorization` or manage Users — that is
-Phase 3B.3/3B.4 (see §4 below). As of Phase 3B.1, an Admin is enforced to
-be able to act only within their own department —
-[`authorization.md`](authorization.md) §3 — even though there is nothing
-yet for that enforcement to protect.
+Phase 3B.3/3B.4 (see §4 below). An Admin is enforced to be able to act
+only within their own department — [`authorization.md`](authorization.md)
+§3 — and, as of Phase 3B.2, only while that department is `ACTIVE`; see
+[`department-management.md`](department-management.md) §5.
 
 ### User
 
@@ -59,9 +65,12 @@ not another department's, and not another user's letters. A User account
 is created via signup against an Admin-issued `UserAuthorization`, starting
 `PENDING_APPROVAL` and requiring a (not yet implemented) Admin approval
 step to become usable — see [`authentication.md`](authentication.md) §5.
-As of Phase 3B.1, department-isolation enforcement for a User is in place
-at the dependency layer — [`authorization.md`](authorization.md) §3 — ready
-for Phase 4's Letter endpoints to use.
+Department-isolation enforcement for a User is in place at the dependency
+layer — [`authorization.md`](authorization.md) §3 — ready for Phase 4's
+Letter endpoints to use, and, as of Phase 3B.2, also blocks a User's
+department-scoped operations whenever their department is `INACTIVE` —
+[`department-management.md`](department-management.md) §5 — without
+touching the User row itself.
 
 ## 3. Department isolation
 
@@ -168,23 +177,47 @@ in the meantime.
   database), including explicit negative-security tests proving a
   client-supplied `department_id` cannot be used to escalate access.
 
+### Implemented (Phase 3B.2 — department management)
+
+* `POST`/`GET`/`PATCH /api/v1/departments`, `.../{id}`,
+  `.../{id}/activate`, `.../{id}/deactivate` — SYSTEM_ADMIN only, full
+  design in [`department-management.md`](department-management.md).
+* `app/services/department_service.py`, `app/repositories/department_repository.py`,
+  `app/schemas/department.py` — following the same layered architecture,
+  not a second one.
+* A small, documented extension to `assert_department_access` (Phase
+  3B.1): ADMIN/USER department-scoped operations are now also blocked
+  while their department is `INACTIVE`, without modifying any User row —
+  [`department-management.md`](department-management.md) §5.
+* A schema-level fix (not a migration — see
+  [`database/schema.md`](../database/schema.md)): `Department.name`/`code`
+  now use explicitly named unique constraints instead of the `unique=True`
+  shorthand, so `Base.metadata.create_all()` (test database) and the
+  Alembic migration (real database) produce identical constraint names —
+  found while building duplicate-detection error messages for this phase.
+* 36 new tests against a real PostgreSQL test database, covering every
+  item in the brief's Authorization/Creation/Retrieval/Update/Status/
+  Security test lists.
+
 ### Explicitly deferred (not this phase)
 
-* **No real protected resource exists yet** — Letter CRUD (Phase 4) is the
-  first phase that will actually call `assert_department_access` /
-  `require_department_access` against something real, per the pattern
-  documented in [`authorization.md`](authorization.md) §4.
-* Department management (Phase 3B.2), Admin management (Phase 3B.3), user
-  approval / `UserAuthorization` issuance via API (Phase 3B.4) — the role
-  checks these will use already exist (`require_system_admin`,
-  `require_admin_or_system_admin`), but no endpoint calling them for these
-  purposes exists yet.
+* **Letter CRUD (Phase 4)** is still the first phase that will call
+  `assert_department_access` / `require_department_access` against a real
+  business resource rather than a verification-only endpoint — Phase
+  3B.2's protected resource is departments themselves (a management
+  resource), not yet a departmental *business* resource like a Letter.
+* Admin management (Phase 3B.3), user approval / `UserAuthorization`
+  issuance via API (Phase 3B.4) — the role checks these will use already
+  exist (`require_system_admin`, `require_admin_or_system_admin`), but no
+  endpoint calling them for these purposes exists yet.
 * System Admin handover.
 * Dashboards, notification generation, file upload handling, or automatic
   audit-log generation — see [`authorization.md`](authorization.md) §12
-  for which future actions will need an audit event once they exist.
-* Full frontend authentication/authorization UI — deliberately deferred,
-  see [`authentication.md`](authentication.md) §15; unchanged this phase.
+  and [`department-management.md`](department-management.md) §10 for
+  which future actions will need an audit event once they exist.
+* Full frontend authentication/authorization/department-management UI —
+  deliberately deferred, see [`authentication.md`](authentication.md) §15;
+  unchanged this phase.
 
 See `docs/PROJECT_STATUS.md` for the current phase-by-phase plan and what's
 pending S&IT confirmation before some of these can be designed.
@@ -201,9 +234,14 @@ Dependencies point downward only. Phase 2 added the bottom of this stack
 HTTP), `app/services/auth_service.py` / `bootstrap_service.py` (business
 rules, transaction boundaries), `app/repositories/user_repository.py` /
 `user_authorization_repository.py` (the only code that queries `User`/
-`UserAuthorization`). Phase 3B.1 adds one more layer explicitly named in
+`UserAuthorization`). Phase 3B.1 added one more layer explicitly named in
 the brief — "Dependencies / Authorization", sitting between API and
 Services — populated by `app/api/deps.py`'s role-check dependencies and
-`app/services/authorization.py`'s framework-agnostic department rule. All
-of it uses this same structure rather than inventing a second one, per the
-brief's explicit instruction in both phases.
+`app/services/authorization.py`'s framework-agnostic department rule.
+Phase 3B.2 adds a second full vertical slice through every layer for a new
+resource (`app/api/v1/endpoints/departments.py` →
+`app/services/department_service.py` →
+`app/repositories/department_repository.py`), reusing the Phase 3B.1
+authorization layer rather than duplicating its checks. All of it uses
+this same structure rather than inventing a second one, per the brief's
+explicit instruction in every phase so far.

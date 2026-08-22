@@ -51,5 +51,27 @@ class DepartmentAccessDeniedError(ServiceError):
     """The caller is not permitted to act on the given department — see
     app/services/authorization.py:assert_department_access. Deliberately
     carries no detail about *why* (department doesn't exist vs. belongs to
-    someone else) or *what* the caller's own department is — see
+    someone else, vs. exists and matches but is INACTIVE — see Phase 3B.2)
+    or *what* the caller's own department is — see
     docs/architecture/authorization.md, "Error behavior"."""
+
+
+class DepartmentNotFoundError(ServiceError):
+    """No department exists with the given id — see
+    app/services/department_service.py."""
+
+
+class DuplicateDepartmentError(ServiceError):
+    """A department already exists that conflicts with the requested name
+    or code. Raised directly only as a fallback for a unique-constraint
+    violation that doesn't match either named constraint below (should not
+    happen given the current schema, but avoids a raw 500 if it ever does)
+    — see the two specific subclasses for the expected cases."""
+
+
+class DuplicateDepartmentNameError(DuplicateDepartmentError):
+    """A department with this name already exists (`uq_departments_name`)."""
+
+
+class DuplicateDepartmentCodeError(DuplicateDepartmentError):
+    """A department with this code already exists (`uq_departments_code`)."""

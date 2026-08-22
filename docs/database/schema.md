@@ -166,6 +166,27 @@ the architecture doc.
 unique column as distinct from one another, so any number of departments may
 go without a code at once.
 
+**Constraint naming (Phase 3B.2, no migration).** `name`/`code`'s unique
+constraints are now declared explicitly in `app/models/department.py`'s
+`__table_args__` (`uq_departments_name`, `uq_departments_code`) rather than
+via the `unique=True` column shorthand used until this phase. The
+constraint's actual DDL and behavior are unchanged — this was a pure
+naming fix. Reason: the `unique=True` shorthand lets SQLAlchemy's DDL
+backend auto-name the constraint however it prefers, and
+`Base.metadata.create_all()` (builds the `lrs_test` schema the test suite
+uses) picked a *different* auto-generated name than the Alembic migration
+that built the real schema — invisible until Phase 3B.2's department
+management started reading the constraint name from a caught
+`IntegrityError` to report which field conflicted, at which point
+duplicate-detection tests failed against `lrs_test` while passing against
+a migration-built database. Naming the constraint explicitly makes both
+DDL sources agree; `alembic check` continues to report zero drift, since
+the real schema already had this exact name from the original migration.
+The identical latent issue still exists on `categories.name` and
+`classifications.name` (§2.4, §2.5 — both still use the `unique=True`
+shorthand); not fixed here, since nothing depends on their constraint
+names yet.
+
 ### 2.2 `users`
 
 A person with an LRS account. See

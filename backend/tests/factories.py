@@ -7,13 +7,13 @@ phase; the two are similar by design, not accidentally duplicated.
 """
 
 from app.models.department import Department
-from app.models.enums import AuthorizationStatus, UserRole, UserStatus
+from app.models.enums import ActiveStatus, AuthorizationStatus, UserRole, UserStatus
 from app.models.user import User
 from app.models.user_authorization import UserAuthorization
 
 
-def make_department(db_session, name="Ministry of Testing", code=None):
-    department = Department(name=name, code=code)
+def make_department(db_session, name="Ministry of Testing", code=None, status=ActiveStatus.ACTIVE):
+    department = Department(name=name, code=code, status=status)
     db_session.add(department)
     db_session.flush()
     return department

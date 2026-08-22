@@ -23,11 +23,30 @@ confusing error and, if `users.department_id` were ever nullable without
 that constraint, could have silently orphaned rows instead of blocking the
 delete. See docs/database/schema.md, "ORM deletion behavior" for the full
 reasoning and `tests/integration/test_models.py` for the regression tests.
+
+`name`/`code` use explicit, named `UniqueConstraint`s in `__table_args__`
+rather than the `unique=True` column shorthand (found and fixed in Phase
+3B.2). The shorthand lets SQLAlchemy auto-name the constraint however the
+DDL backend prefers — `Base.metadata.create_all()` (used to build the
+`lrs_test` schema for the test suite) and the Alembic migration that built
+the real schema produced *different* auto-generated names for the same
+constraint before this fix, even though both point at the same column. That
+was harmless until `app/services/department_service.py` started reading
+`IntegrityError.orig.diag.constraint_name` to report *which* field
+conflicted — at which point it broke, but only against the test database,
+since `lrs_dev` already had the migration's explicitly-named constraint.
+Naming both here matches the migration's names (`uq_departments_name`,
+`uq_departments_code`) exactly, so `create_all()` and the migration now
+produce byte-identical DDL and `alembic check` still reports zero drift.
+The same latent inconsistency exists on `categories.name` and
+`classifications.name` (both still use the `unique=True` shorthand) — not
+fixed here because nothing in this phase depends on their constraint
+names; the same technique applies if a future phase ever needs it there.
 """
 
 from typing import List, Optional
 
-from sqlalchemy import String
+from sqlalchemy import String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -38,12 +57,17 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 class Department(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "departments"
 
-    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
     # Nullable + unique: PostgreSQL treats multiple NULLs as distinct, so any
     # number of departments may go without a code until one is confirmed.
-    code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, unique=True)
+    code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     status: Mapped[ActiveStatus] = mapped_column(
         active_status_enum, nullable=False, default=ActiveStatus.ACTIVE, index=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint("name", name="uq_departments_name"),
+        UniqueConstraint("code", name="uq_departments_code"),
     )
 
     users: Mapped[List["User"]] = relationship(

@@ -5,9 +5,10 @@ Mounted in app/main.py under `settings.API_V1_PREFIX`.
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, dev_authz_test
+from app.api.v1.endpoints import auth, departments, dev_authz_test
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
+api_router.include_router(departments.router)
 # Phase 3B.1 verification-only routes — see that module's docstring.
 api_router.include_router(dev_authz_test.router)
