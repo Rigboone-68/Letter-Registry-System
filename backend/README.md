@@ -1,18 +1,27 @@
 # LRS Backend
 
-FastAPI service for the Letter Registry System. **Phase 3B.4: User
-management** — the final slice of Phase 3B — built on Phase 3B.3's Admin
-management, Phase 3B.2's department management, Phase 3B.1's
-RBAC/department-isolation foundation, and Phase 3A's authentication. Full
-design in `docs/architecture/authentication.md` (auth),
+FastAPI service for the Letter Registry System. **Phase 4B: Letter
+Registry Core — implemented, and a pre-commit hardening pass applied on
+top.** Builds on Phase 4A's architecture review and the fully-delivered
+Phase 3B (Roles & Access Management: authentication, RBAC/department
+isolation, department management, Admin management, User management).
+Full design in `docs/architecture/authentication.md` (auth),
 `docs/architecture/authorization.md` (RBAC/department isolation),
 `docs/architecture/department-management.md` (department CRUD),
-`docs/architecture/admin-management.md` (Admin lifecycle), and
-`docs/architecture/user-management.md` (User lifecycle). Letter CRUD,
-uploads, dashboards, and notifications are not implemented yet — see
+`docs/architecture/admin-management.md` (Admin lifecycle),
+`docs/architecture/user-management.md` (User lifecycle), and
+`docs/architecture/letter-registry.md` (the six finalized business
+decisions and the resulting Letter/Category/Classification design — a
+department-scoped Letter registry with recipient/source department
+separation, required sender details, a required reference number (no
+uniqueness constraint — its scope was never confirmed and was removed
+after an initial global-uniqueness assumption; see §14 of that doc),
+exactly three seeded Categories, and a real, documented-as-provisional
+classified-access authorization boundary). File upload/download,
+dashboards, and notifications are still not implemented — see
 `docs/architecture/overview.md` §4 and
-`docs/architecture/user-management.md` §12 for exactly what is and isn't
-in place.
+`docs/architecture/letter-registry.md` §12-14 for exactly what is and
+isn't in place.
 
 ## Setup
 
@@ -21,7 +30,7 @@ python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env               # fill in local values; never commit .env
-alembic upgrade head                # creates the Phase 2 schema
+alembic upgrade head                # creates the full current schema
 uvicorn app.main:app --reload
 python -m app.cli create-system-admin   # first run only — see below
 ```
@@ -31,8 +40,12 @@ Available now: `GET /health`, `POST /api/v1/auth/signup`,
 management endpoints (`/api/v1/departments*`, SYSTEM_ADMIN only), the
 Admin management endpoints (`/api/v1/admins*`, SYSTEM_ADMIN only), the
 User management endpoints (`/api/v1/users*`, ADMIN only, scoped to the
-caller's own department), five verification-only authorization endpoints
-under `/api/v1/auth/test/*` (not business functionality — see
+caller's own department), the Letter registry endpoints (`/api/v1/letters*`,
+USER/ADMIN create; any authenticated role reads/updates/archives subject
+to `assert_letter_access`), Category/Classification management
+endpoints (`/api/v1/categories*`, `/api/v1/classifications*`,
+SYSTEM_ADMIN only), five verification-only authorization endpoints under
+`/api/v1/auth/test/*` (not business functionality — see
 `docs/architecture/authorization.md` §7), plus `/docs` and `/redoc`.
 
 ## Bootstrapping the first System Admin
@@ -61,28 +74,36 @@ if an active System Admin already exists. See
 | `app/core/logging.py` | Uniform log format and level |
 | `app/database/base.py` | Declarative `Base` only — deliberately does not import `app.models` (see its docstring, and `docs/database/schema.md` §1) |
 | `app/database/session.py` | Lazy engine, session factory, `get_db()` dependency |
-| `app/models/` | SQLAlchemy models — 9 core entities (see `docs/database/schema.md`) |
+| `app/models/` | SQLAlchemy models — 9 core entities (see `docs/database/schema.md`); `Letter`/`Classification` extended in Phase 4B |
 | `app/schemas/auth.py` | Signup/login/token/current-user request-response contracts |
 | `app/schemas/department.py` | Department create/update/response/list-envelope contracts — no server-controlled field (`id`/`status`/timestamps) is ever accepted from a client |
 | `app/schemas/admin.py` | Admin-authorization/response/list-envelope/department-transfer contracts — same no-server-controlled-field guarantee |
 | `app/schemas/user.py` | User-authorization/response/list-envelope contracts (Phase 3B.4) — `UserAuthorizationCreate` has no `department_id` field at all (always derived from the calling Admin), unlike `AdminAuthorizationCreate` |
+| `app/schemas/letter.py` | Letter create/update/response/list-envelope contracts (Phase 4B) — no `recipient_department_id`/`recorded_by`/`status` field on `LetterCreate` |
+| `app/schemas/category.py`, `app/schemas/classification.py` | Category/Classification create/update/response/list-envelope contracts (Phase 4B) — same no-server-controlled-field guarantee; `Classification` additionally carries `restricts_access` |
 | `app/api/deps.py` | `get_current_user` (authentication) plus `require_system_admin`/`require_admin`/`require_admin_or_system_admin`/`require_user_or_admin`/`require_department_access` (authorization) |
 | `app/api/v1/router.py` | Aggregate v1 router |
 | `app/api/v1/endpoints/auth.py` | `/auth/signup`, `/auth/login`, `/auth/me` |
 | `app/api/v1/endpoints/departments.py` | `/departments*` — SYSTEM_ADMIN only |
 | `app/api/v1/endpoints/admins.py` | `/admins*` — SYSTEM_ADMIN only |
 | `app/api/v1/endpoints/users.py` | `/users*` — ADMIN only, scoped to the caller's own department (Phase 3B.4); includes the project's first authorization-revocation endpoint |
+| `app/api/v1/endpoints/letters.py` | `/letters*` (Phase 4B) — `POST` is USER/ADMIN only; every other route accepts any authenticated role, with the actual department/classified-access decision made inside `LetterService`, not the route dependency |
+| `app/api/v1/endpoints/categories.py`, `app/api/v1/endpoints/classifications.py` | `/categories*`, `/classifications*` (Phase 4B) — SYSTEM_ADMIN only, mirroring `departments.py` exactly |
 | `app/api/v1/endpoints/dev_authz_test.py` | `/auth/test/*` — verification-only, not business functionality (see `docs/architecture/authorization.md` §7) |
 | `app/services/auth_service.py` | Signup and login business logic — role now derived from `UserAuthorization.purpose` (Phase 3B.3) |
 | `app/services/bootstrap_service.py` | First-System-Admin creation logic (called by `app/cli.py`) |
-| `app/services/authorization.py` | `assert_department_access` — the one framework-agnostic department-isolation rule, reused by `app/api/deps.py` and, as of Phase 3B.4, genuinely exercised as a resource-level check for the first time. Extended in Phase 3B.2 to also require the caller's department to be `ACTIVE` |
+| `app/services/authorization.py` | `assert_department_access` — the one framework-agnostic department-isolation rule, reused by `app/api/deps.py`, genuinely exercised as a resource-level check first in Phase 3B.4 (User) and again in Phase 4B (Letter). Extended in Phase 3B.2 to require the caller's department be `ACTIVE`; extended in Phase 4B with `assert_letter_access`/`can_view_letter` — the classified-access authorization boundary layered on top, not a competing mechanism |
 | `app/services/department_service.py` | Department CRUD business logic, including race-safe duplicate-name/code handling |
 | `app/services/admin_service.py` | Admin authorization/approval/lifecycle/department-transfer business logic |
 | `app/services/user_service.py` | User authorization/approval/lifecycle/revocation business logic, scoped to the calling Admin's own department (Phase 3B.4) |
+| `app/services/letter_service.py` | Letter create/read/update/archive business logic (Phase 4B) — `recorded_by`/`recipient_department_id` always derived from the caller; reference-number/source-department/category/classification validation |
+| `app/services/category_service.py`, `app/services/classification_service.py` | Category/Classification CRUD business logic (Phase 4B), mirroring `department_service.py` |
 | `app/services/exceptions.py` | Service-layer domain errors, mapped to HTTP responses in the endpoint layer |
 | `app/repositories/user_repository.py` | The only code that queries `User` — extended in Phase 3B.3 with `find_admin_by_id`/`list_admins`/`update_status`/`update_department`, and in Phase 3B.4 with `find_user_by_id`/`list_users`, rather than a new repository each time |
 | `app/repositories/user_authorization_repository.py` | The only code that queries `UserAuthorization`, including the race-safe `SELECT ... FOR UPDATE` signup consumes, (Phase 3B.3) `create`/`find_unresolved`, and (Phase 3B.4) `find_by_id`/`list_by_department`/`revoke` |
 | `app/repositories/department_repository.py` | The only code that queries `Department` |
+| `app/repositories/letter_repository.py` | The only code that queries `Letter` (Phase 4B) — every read eagerly loads `classification`, since `assert_letter_access` needs `restricts_access` without a second query at each call site |
+| `app/repositories/category_repository.py`, `app/repositories/classification_repository.py` | The only code that queries `Category`/`Classification` (Phase 4B) |
 | `app/utils/email.py` | `normalize_email` — the one place "same email" is defined |
 | `app/middleware/` | Request correlation and audit middleware (empty) |
 
@@ -119,16 +140,29 @@ competing one.
 injects `DATABASE_URL` from the environment at runtime, so no connection
 string ever appears in source control.
 
-Three migrations exist: `3da4b7ee8167_core_schema_...` (baseline — every
+Five migrations exist: `3da4b7ee8167_core_schema_...` (baseline — every
 table, enum type, foreign key, index, and constraint),
 `e8a5cea2ccc6_database_hardening_...` (a corrective follow-up from a Phase 2
 self-review: two missed indexes and a database-level default for
 `notifications.is_read` — see `docs/database/schema.md` §1 "ORM deletion
-behavior" and §6 "Indexes"), and `a223396c9eac_admin_management_...`
+behavior" and §6 "Indexes"), `a223396c9eac_admin_management_...`
 (Phase 3B.3: adds `user_authorizations.purpose`, backfilling any existing
 row to `USER` before tightening the column to `NOT NULL` — tested against
-an actual pre-existing row, not just an empty table). All three are
-described in `docs/database/schema.md`.
+an actual pre-existing row, not just an empty table),
+`48ec742d9e8f_letter_registry_core_...` (Phase 4B: renames
+`letters.department_id`/`received_from` to `recipient_department_id`/
+`source_name` — data-preserving renames, not recreated columns — adds
+sender-detail/reference-number/source-department/source-location columns
+with the same safe backfill pattern, adds
+`classifications.restricts_access`, and seeds exactly three `categories`
+rows), and `c887ab35e4a3_remove_premature_reference_number_...` (a
+same-phase hardening-pass correction: drops
+`uq_letters_reference_number` — the finalized decision confirmed
+reference numbers "must be unique" but never confirmed the scope, and
+global was an unconfirmed guess that a real multi-department registry
+could easily violate legitimately; see
+`docs/architecture/letter-registry.md` §2.3/§14). All five are described
+in `docs/database/schema.md`.
 **None of Phase 3A (authentication), 3B.1 (RBAC/department authorization),
 3B.2 (department management), or 3B.4 (User management) required a schema
 change** — every column either needed already existed from Phase 2, or
@@ -137,13 +171,12 @@ change** — every column either needed already existed from Phase 2, or
 setting it until now. Phase 3B.2 did fix a constraint-*naming*
 inconsistency in `app/models/department.py` (see `docs/database/schema.md`
 §2.1) — a Python-model-only change, not a migration, since the real
-database already had the correct name. Phase 3B.3 is the only phase since
-Phase 2's hardening pass to actually need a migration, for the new
-`purpose` column; `alembic check` confirms zero drift after all four
-phases since.
+database already had the correct name. Phase 3B.3 and Phase 4B (two
+migrations) are the only phases since Phase 2's hardening pass to need
+one; `alembic check` confirms zero drift after all five.
 
 ```bash
-alembic upgrade head       # apply all three, in order
+alembic upgrade head       # apply all five, in order
 alembic downgrade base     # fully reverse — drops all tables and enum types
 alembic current            # show the applied revision
 alembic history            # list all revisions
@@ -187,9 +220,9 @@ decoded, mirroring `DATABASE_URL`'s existing lazy-check pattern in
 pytest
 ```
 
-274 tests total. `SECRET_KEY` must be set (via `.env`) for the
-JWT-dependent tests to run — copy `.env.example` to `.env` first if you
-haven't.
+344 tests total (277 baseline + 67 new in Phase 4B). `SECRET_KEY` must be
+set (via `.env`) for the JWT-dependent tests to run — copy
+`.env.example` to `.env` first if you haven't.
 
 **Model layer (Phase 2)** — `tests/integration/test_models.py`: creation,
 relationships, constraints, FK `RESTRICT`/`CASCADE` behavior, and database
@@ -245,7 +278,7 @@ exits cleanly in an environment without PostgreSQL.
   genuine two-thread/two-connection concurrency test for the ADMIN-purpose
   signup path (mirroring Phase 3A's USER-purpose one) and row-level
   assertions proving a department transfer never rewrites a historical
-  Letter's `department_id`.
+  Letter's `recipient_department_id`.
 
 **User management (Phase 3B.4)**:
 
@@ -260,6 +293,33 @@ exits cleanly in an environment without PostgreSQL.
   first time (`test_admin_cannot_get_user_in_another_department` and
   siblings), alongside a genuine two-thread/two-connection concurrency
   test for the USER-purpose signup path issued by an Admin.
+
+**Letter registry / Category / Classification (Phase 4B)**:
+
+* `tests/integration/test_letter_registry.py` (50 tests) — real JWTs,
+  real database-backed Users/Departments/Categories/Classifications, real
+  HTTP requests through `/api/v1/letters*`. Covers every lettered item
+  (A-X) in the brief's test list: field mapping, recipient-department
+  derivation, optional source department, required sender details,
+  reference-number handling, category/classification validation,
+  `recorded_by` protection, department isolation (including that a
+  cross-department `GET` returns `404`, not `403`), the classified-access
+  boundary exercised across recorder/same-department-non-recorder/Admin/
+  SYSTEM_ADMIN, full CRUD, and a row-level proof that
+  `recipient_department_id` survives a recording Admin's later department
+  transfer (mirroring the Phase 3B.3/3B.4 historical-preservation tests).
+  A pre-commit hardening pass replaced the three reference-number
+  *uniqueness-rejection* tests with tests proving the opposite
+  (duplicates currently succeed, `201` not `409`) after the global
+  uniqueness constraint they exercised was found to be an unconfirmed
+  assumption and removed — see
+  `docs/architecture/letter-registry.md` §14.
+* `tests/integration/test_category_management.py` (8),
+  `test_classification_management.py` (9) — SYSTEM_ADMIN-only CRUD
+  authorization and essentials, mirroring
+  `test_department_management.py`'s shape; `restricts_access`
+  toggling is covered in the Classification file, its actual
+  *enforcement* against real Letters in `test_letter_registry.py`.
 
 `tests/unit/test_imports.py` needs no database — it runs `from app.models
 import X` in fresh subprocesses to guard against the circular-import

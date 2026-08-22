@@ -7,26 +7,186 @@ supervisor as-is.
 
 ## Current Phase
 
-**Phase 3B.4 — User Management & Approval.** Complete — the fourth and
-final slice of Phase 3B (Roles & Access Management), which is now fully
-delivered.
+**Phase 4B — Letter Registry Core Implementation, plus a pre-commit
+hardening pass.** Complete. Builds directly on Phase 4A's review: the
+product owner resolved all six pending business decisions, and this
+phase implemented them — a Letter registry with recipient/source
+department separation, required structured sender details, a required
+manually-entered reference number, exactly three seeded Categories,
+Classification management with a real (though intentionally provisional)
+classified-access authorization boundary, and full Letter CRUD (create/
+list/get/update/archive) scoped by department and, for classified
+letters, further narrowed for non-recording Users. A follow-up hardening
+pass, before anything was committed, then reviewed the whole
+implementation for correctness/security and found one real defect:
+reference-number uniqueness had been implemented as a *global* database
+constraint on an assumption the business never actually confirmed (only
+"must be unique" was said, never the scope) — the constraint was removed
+rather than kept on a guess or replaced with a different guessed scope.
+Everything else reviewed (DELETE/archival safety, sender-field
+placeholders, source/sender semantics, classified-access boundary,
+department isolation, historical identity, input security) was
+re-verified against actual code and found already correct. Full design
+in `docs/architecture/letter-registry.md`, hardening findings in its §14.
 
-Phase 3B.4 delivered Admin-only User lifecycle management, scoped to the
-Admin's own department: authorizing a candidate email, the candidate
-signing up through the *existing* signup workflow, the Admin's approval,
-deactivate/reactivate, and — the project's first — explicit authorization
-**revocation**. This is also the first phase where a department-scoped
-role (`ADMIN`, not the global `SYSTEM_ADMIN`) is the caller for every
-endpoint, so cross-department isolation (`assert_department_access`,
-Phase 3B.1) is exercised as a genuine resource-level check for the first
-time. Full design in `docs/architecture/user-management.md`.
-
-**Not in scope for this phase, and not added:** letter CRUD, file uploads,
-dashboards, notification generation, frontend functionality, System Admin
-handover, or a revoke endpoint for ADMIN-purpose authorizations — see
-"Pending" below and `docs/architecture/user-management.md` §12.
+**Not in scope for this phase, and not added:** file upload/download
+(the `LetterDocument` relationship remains schema-only), dashboards,
+automatic notification generation, automatic audit logging, full-text
+search, frontend, System Admin handover, or an ADMIN-purpose
+authorization-revocation endpoint (a pre-existing Phase 3B.4 gap,
+unrelated to this phase).
 
 ## Completed
+
+### Phase 4B hardening pass — pre-commit correctness/security review
+
+* **Reference-number uniqueness — the one real defect found.** Migration
+  `c887ab35e4a3` drops `uq_letters_reference_number`. The finalized
+  business decision said reference numbers "must be unique" but never
+  specified the scope (global? per receiving department? per source? per
+  year?); the initial implementation guessed "global", which a real
+  multi-department registry could easily violate legitimately (two
+  departments each issuing their own overlapping numbering). No
+  replacement scope was invented — duplicates are now accepted anywhere,
+  pending an actual business answer. `reference_number` remains required
+  (`NOT NULL`). Dead code removed alongside it:
+  `DuplicateReferenceNumberError`, the `try/except IntegrityError`
+  blocks in `LetterService.create_letter`/`update_letter`, and the
+  unused `LetterRepository.find_by_reference_number`.
+* **DELETE/archival safety — re-verified, no change needed.** Confirmed
+  via `grep` (not just re-reading prior documentation) that no code path
+  issues a SQL `DELETE` against a `Letter` row — `archive_letter` only
+  sets `status = ARCHIVED`. Already the safest available reading of
+  "Delete Letter, subject to authorization" against this project's
+  standing "letters are never physically deleted" principle.
+* **Sender-field migration placeholders — confirmed safe.** The literal
+  string `'MIGRATION-PLACEHOLDER'` (and `'MIGRATED-<row-id>'` for
+  reference numbers) cannot be mistaken for real business data, and no
+  real production data could exist regardless (this project has never
+  been deployed).
+* **Classification security, department isolation, historical identity,
+  input security — all re-verified directly against current code and
+  existing tests**, confirmed to match what was previously reported, no
+  changes needed. See `docs/architecture/letter-registry.md` §14 for the
+  full, itemized findings using its CONFIRMED/ARCHITECTURAL/PROVISIONAL/
+  PENDING taxonomy.
+* **344 tests total — unchanged.** Three tests were rewritten in place
+  (asserting the new, correct behavior — duplicates now succeed rather
+  than being rejected) rather than deleted and replaced, so the count
+  didn't move. Re-run 3 consecutive times, all green.
+* **No new migration needed beyond the one hardening fix** — `alembic
+  check` confirms zero drift; no historical migration file was modified.
+
+### Phase 4B — Letter Registry Core implementation
+
+* **Six finalized business decisions implemented exactly as specified** —
+  see `docs/architecture/letter-registry.md` §2 for each, and §0 for the
+  CONFIRMED/IMPLEMENTATION-DECISION/PENDING framework used throughout so
+  nothing implemented here is silently guessed.
+* **Migration `48ec742d9e8f`** — renamed `letters.department_id` ->
+  `recipient_department_id` and `letters.received_from` -> `source_name`
+  (data-preserving renames, not recreated columns); added
+  `source_department_id`/`source_location`/`sender_address` (nullable)
+  and `sender_name`/`sender_designation`/`sender_department`/
+  `reference_number` (required, safely backfilled for any pre-existing
+  row using the standard add-nullable -> backfill -> tighten pattern);
+  added `uq_letters_reference_number` (later removed — see below); added
+  `classifications.restricts_access`; seeded exactly three `categories`
+  rows (General Letter, Notification, Office Order). Verified against a
+  real pre-existing `Letter` row inserted before the migration ran (not
+  just an empty table), and a full `upgrade -> downgrade -> upgrade`
+  round-trip — see "Validation performed" below.
+* **Migration `c887ab35e4a3` (hardening pass)** — drops
+  `uq_letters_reference_number`, added by the migration above on an
+  unconfirmed global-uniqueness assumption; see the hardening-pass
+  section above and `docs/architecture/letter-registry.md` §2.3/§14.
+* **`app/services/authorization.py:assert_letter_access`** — the
+  classified-access authorization boundary, built on top of (not
+  duplicating) `assert_department_access`. Department isolation always
+  gates first; `SYSTEM_ADMIN` retains complete access; a `USER` who is
+  not a classified letter's own recorder is denied even within their own
+  department. Documented explicitly as a conservative, provisional
+  default — the exact visibility matrix remains open (see "Remaining
+  Known Issues").
+* **`app/services/letter_service.py`, `category_service.py`,
+  `classification_service.py`**, their repositories, Pydantic schemas,
+  and `/api/v1/letters*`, `/api/v1/categories*`, `/api/v1/classifications*`
+  endpoints — the same four-layer architecture every phase since 3A has
+  used. `recorded_by`/`recipient_department_id` always derived from the
+  authenticated caller, never client-supplied (no field for either
+  exists on `LetterCreate`).
+* **"Delete" is archival** (`status -> ARCHIVED`), never a physical SQL
+  `DELETE` — a continuation of Phase 2's original decision, not a change
+  to it.
+* **Reference-number uniqueness — implemented, then removed the same
+  phase.** Originally enforced at the database level
+  (`uq_letters_reference_number`), race-safe (attempt-then-catch
+  `IntegrityError`, the same pattern `DepartmentService` established in
+  Phase 3B.2). A follow-up hardening pass found the *scope* of "must be
+  unique" was never actually confirmed by the business and removed the
+  constraint (migration `c887ab35e4a3`) rather than keep a guess — see
+  the hardening-pass section above.
+* **67 new automated tests** across `test_letter_registry.py` (50,
+  covering every lettered item A-X in the brief's test list),
+  `test_category_management.py` (8), `test_classification_management.py`
+  (9) — against a real PostgreSQL test database — plus a full live-server
+  verification against `lrs_dev` with real JWTs (letter creation,
+  duplicate-reference rejection, cross-department 404s, the classified-
+  access boundary exercised across recorder/same-department-non-recorder/
+  Admin/SYSTEM_ADMIN, update, and archive).
+* **Documentation**: `docs/architecture/letter-registry.md` (finalized
+  decisions + implementation record), plus updates to the root README,
+  `backend/README.md`, `docs/README.md`, and
+  `docs/architecture/overview.md`.
+
+### Phase 4A — Letter Registry Core architecture review
+
+* **Full inspection of the existing Letter-adjacent schema** — `Letter`,
+  `LetterDocument`, `Category`, `Classification`, `Department`, `User`,
+  `AuditLog`, `Notification` models, both existing migrations, and
+  `docs/database/schema.md` — confirmed, not assumed: no repository,
+  Pydantic schema, service, or API endpoint exists yet for `Letter`/
+  `Category`/`Classification`; Phase 4A is the first phase to write any
+  code above the model layer for these three entities (and it wrote
+  documentation only).
+* **Confirmed a real architectural gap**: the existing
+  `Letter.department_id` is a single field, but the confirmed V1
+  requirements need two independent department-shaped facts — the
+  sending/source department and the recipient/owning department. A single
+  column cannot represent both. Recommended a `recipient_department_id`
+  field (the field department-isolation authorization should check,
+  functionally a clarification of what `department_id` already means
+  today) plus a separate source-side representation — not implemented
+  this phase. See `docs/architecture/letter-registry.md` §5.
+* **Confirmed two requirements are already fully satisfied by existing
+  Phase 2 design, with no gap**: the "date received vs. date recorded"
+  distinction (`received_at` vs. `created_at`, already two separate
+  columns) and "letter content, text or document or both"
+  (`text_content` + the existing `LetterDocument` 1:N relationship).
+  Neither needed a new column.
+* **Confirmed `recorded_by`'s historical-identity guarantee (`RESTRICT`,
+  not `CASCADE`/`SET NULL`) is already correct** — verified directly
+  against the model and existing passing tests, not re-implemented.
+* **Flagged, not resolved, six pending business clarifications**:
+  source-department representation (free text vs. FK to a real
+  `Department`), exact sender-detail sub-fields, reference-number
+  uniqueness/issuing-authority/format, whether "Budget" belongs to
+  Category or Classification (the same word appeared as a Category
+  example in Phase 2 and a Classification example in this phase's brief),
+  whether "Classified" needs to actually restrict visibility or is a
+  label only, and source-location/sender-details nullability. See
+  `docs/architecture/letter-registry.md` §21.
+* **Identified a Phase 4B prerequisite**: System-Admin Category and
+  Classification management (list/create/update/activate-deactivate)
+  does not exist yet — both tables are schema-only since Phase 2, with
+  zero rows and zero endpoints. `Letter.category_id`/`classification_id`
+  cannot reference anything real until that management surface exists.
+* **No schema, migration, repository, service, endpoint, or test change**
+  — this phase produced documentation only, per its explicit scope
+  boundary. `alembic check`: "No new upgrade operations detected."
+* **Documentation**: `docs/architecture/letter-registry.md` (new), plus
+  updates to the root README, `backend/README.md`, `docs/README.md`, and
+  `docs/architecture/overview.md`.
 
 ### Phase 3B.4 — User management
 
@@ -259,6 +419,61 @@ detail behind each:
 | 5 | `letter_documents.uploaded_by` had no index, unlike every other User-referencing FK in the schema | Added (`ix_letter_documents_uploaded_by`) |
 | 6 | The role/department `CHECK` constraint hardcoded role strings, duplicating `UserRole`'s values | Model-side constraint now built from `UserRole.*.value`; the migration's own copy is deliberately still a literal (migrations are frozen snapshots) — see `app/models/user.py` docstring |
 
+### Validation performed — Phase 4B
+
+All against the same real, local, disposable PostgreSQL 17 instance used
+for every prior phase (`lrs_dev` for manual checks, `lrs_test` for the
+suite — never a shared or departmental database):
+
+| Check | Result |
+|---|---|
+| `pytest` (full suite) against `lrs_test` | **344 passed**, 0 failed, 0 skipped (277 baseline + 67 new). Re-run 3 times consecutively with identical results — no flakiness introduced |
+| `alembic upgrade head` against `lrs_dev` | Applied cleanly (`a223396c9eac -> 48ec742d9e8f`) |
+| `alembic downgrade -1` -> `alembic upgrade head` | Full round-trip verified — the schema after re-upgrading was byte-identical to the first upgrade (indexes, constraints, columns all present, correctly named) |
+| Migration tested against a real pre-existing row (not just an empty table) | A `Letter` row inserted via raw SQL *before* the migration ran was correctly preserved: `recipient_department_id` retained the exact original `department_id` value, `source_name` retained the original `received_from` value, and the new required columns were backfilled to clearly-marked, uniquely-identifiable placeholder values (`MIGRATION-PLACEHOLDER` / `MIGRATED-<row-id>`) |
+| `alembic check` | "No new upgrade operations detected" — models match the applied migration exactly |
+| FastAPI app startup + `GET /health` + full OpenAPI schema generation | 200 OK; `/api/v1/letters*`, `/api/v1/categories*`, `/api/v1/classifications*` all present with expected methods |
+| Full Letter lifecycle, run for real against `lrs_dev` via real HTTP with real minted JWTs, two departments | Category list confirmed seeded with exactly the three finalized names; letter created with real category + a `restricts_access=True` classification; duplicate reference number -> `409` **(superseded — see hardening pass below; `uq_letters_reference_number` no longer exists, duplicates now succeed)**; cross-department `GET` -> `404`; a *second* User in the *same* department who did not record the letter -> `404`; the recording User, an Admin in the same department, and SYSTEM_ADMIN -> `200`; update by the recorder -> `200`; archive -> `200` with `status=ARCHIVED`; archived letter still retrievable (confirming soft-delete, not physical deletion) |
+| `git status` review | No secrets tracked; `.env` confirmed gitignored |
+
+All data created during manual verification was deleted from `lrs_dev`
+afterward, except the three seeded `categories` rows (General Letter,
+Notification, Office Order) — those are the intended, permanent V1
+configuration, not test artifacts, so they were deliberately left in
+place; `lrs_dev` otherwise empty again.
+
+### Validation performed — Phase 4B hardening pass
+
+| Check | Result |
+|---|---|
+| `pytest` (full suite) against `lrs_test` | **344 passed**, 0 failed, 0 skipped. Re-run 3 consecutive times, identical results |
+| `alembic upgrade head` / `downgrade -1` / `upgrade head` against `lrs_dev` (new migration `c887ab35e4a3`) | Full round-trip verified — `uq_letters_reference_number` correctly absent after upgrade, correctly restored after downgrade, correctly absent again after re-upgrade |
+| `alembic check` | "No new upgrade operations detected" |
+| `grep` for `session.delete` targeting `Letter` across `app/` | Zero matches — confirms `DELETE /api/v1/letters/{id}` never issues a physical `DELETE`, code-level, not just documentation |
+| `grep` for hardcoded category names in application logic | Zero matches outside docstrings/comments — Category validation is pure FK + `ACTIVE`-status, no string literals |
+| `git status` review | No secrets tracked; `.env` confirmed gitignored; no historical migration file modified |
+
+No live-server re-verification was performed for this specific pass —
+the fix (dropping a constraint) is fully covered by the automated
+migration round-trip above and the rewritten
+`test_letter_registry.py` assertions (duplicates now return `201`, not
+`409`), which is direct, repeatable evidence at least as strong as a
+one-off manual `curl` session.
+
+### Validation performed — Phase 4A
+
+An architecture review, not an implementation phase — validation here
+means confirming no code was written and no drift was introduced, not
+running new business-logic tests:
+
+| Check | Result |
+|---|---|
+| `git status` before and after the review | Identical except one new documentation file and five documentation updates — no model, migration, repository, schema, service, endpoint, or test file touched |
+| `alembic check` | "No new upgrade operations detected" — no migration was created, consistent with a read-only review |
+| `pytest` (full suite) against `lrs_test` | **277 passed**, 0 failed, 0 skipped — unchanged from the Phase 3B.4 hardening pass baseline, confirming the review itself introduced zero regressions (expected, since nothing executable changed) |
+| Directory listing of `app/repositories/`, `app/schemas/`, `app/api/v1/endpoints/` | Confirmed empirically (not from memory) that no `Letter`/`Category`/`Classification` repository, schema, or endpoint file exists yet |
+| `git log -p` / direct model reads for `Letter.recorded_by`, `Letter.department_id` | Confirmed `RESTRICT` (not `CASCADE`/`SET NULL`) on `recorded_by`, and that `department_id` is an independently-stored column, not derived — both by reading the actual current file content, not assumed from prior-phase memory |
+
 ### Validation performed — Phase 3B.4 hardening pass
 
 A follow-up pass after Phase 3B.4's own report, scoped to exactly three
@@ -395,21 +610,28 @@ afterward — `lrs_dev` is empty again.
 
 ## In Progress
 
-Nothing — Phase 3B.4 is complete, Phase 3B (Roles & Access Management) is
-now fully delivered end-to-end, and the project is paused pending explicit
-instruction to begin Phase 4, per the standing project rule that phases
-are reviewed before the next begins.
+Nothing — Phase 4B is complete and the project is paused pending explicit
+instruction to begin the next phase, per the standing project rule that
+phases are reviewed before the next begins.
 
-## Pending (Phase 4 and later)
+## Pending (Phase 4C/5 and later)
 
-* **Letter CRUD and any other real departmental business resource (Phase
-  4)** — the first phase that will call `assert_department_access`
-  against something other than a management resource (Departments,
-  Admins, Users). The isolation pattern itself is now proven end-to-end
-  against a real resource (Phase 3B.4); see
-  `docs/architecture/authorization.md` §4 and
-  `docs/architecture/user-management.md` §5-6 for the pattern Phase 4
-  should reuse.
+* **File upload/download for `LetterDocument`** — the relationship
+  remains schema-only (unchanged since Phase 2); Phase 4A confirmed it is
+  architecturally compatible with PDF/image/text and multiple
+  attachments, but no upload endpoint, storage service, or download
+  endpoint exists. See `docs/architecture/letter-registry.md` §13.
+* **The exact classification value list** — no `Classification` rows are
+  seeded; a System Admin can create them through the management API once
+  the organization confirms the final list (Important/Classified/Budget/
+  etc. were always examples, never a closed enumeration the way
+  Category's three now are). See `docs/architecture/letter-registry.md`
+  §2.5/§12.
+* **The exact classified-letter visibility matrix beyond "not every
+  department user by default"** — `app/services/authorization.py:assert_letter_access`
+  currently allows `ADMIN`/`SYSTEM_ADMIN`/the letter's own recorder; this
+  is an explicit, documented, provisional default, not a confirmed final
+  policy. See `docs/architecture/letter-registry.md` §8/§12.
 * **A revoke endpoint for ADMIN-purpose `UserAuthorization` rows** — Phase
   3B.4 added revocation only for the USER-purpose path
   (`DELETE /api/v1/users/authorizations/{id}`); a System Admin still
@@ -423,16 +645,23 @@ are reviewed before the next begins.
   `docs/architecture/authentication.md` §9.
 * **Automatic audit logging** of authorization-sensitive actions,
   including the four department events (Phase 3B.2), five Admin events
-  (Phase 3B.3), and five User events (Phase 3B.4,
+  (Phase 3B.3), five User events (Phase 3B.4,
   `USER_AUTHORIZATION_CREATED`/`REVOKED`/`APPROVED`/`DEACTIVATED`/
-  `REACTIVATED`) — see `docs/architecture/authorization.md` §12,
+  `REACTIVATED`), and Letter lifecycle events (Phase 4B — the service
+  remains `AuditLog`-compatible per Phase 4A §19, but no row is written
+  yet) — see `docs/architecture/authorization.md` §12,
   `docs/architecture/department-management.md` §10,
-  `docs/architecture/admin-management.md` §13, and
-  `docs/architecture/user-management.md` §12 for the full list.
-* **Department/Admin/User list pagination** — deliberately not
-  implemented in any phase so far, but every response envelope
-  (`{"items": [...], "total": N}`) was shaped so adding it later needs no
-  redesign; see `docs/architecture/department-management.md` §3.
+  `docs/architecture/admin-management.md` §13,
+  `docs/architecture/user-management.md` §12, and
+  `docs/architecture/letter-registry.md` §13 for the full list.
+* **Automatic notification generation** — "a letter was registered" is
+  the one confirmed V1 trigger; `Notification.letter_id` is already
+  architecturally ready (Phase 4A §20), but no row is written by Phase 4B.
+* **Department/Admin/User/Letter/Category/Classification list
+  pagination** — deliberately not implemented in any phase so far, but
+  every response envelope (`{"items": [...], "total": N}`) was shaped so
+  adding it later needs no redesign; see
+  `docs/architecture/department-management.md` §3.
 * **Clearing an already-set department `code` back to `null`** — not
   possible through `PATCH /api/v1/departments/{id}` today; see
   `docs/architecture/department-management.md` §3, "Known limitation".
@@ -456,25 +685,67 @@ are reviewed before the next begins.
 
 None of the following are implemented as final requirements — each is a
 documented, minimal, reversible assumption. See `docs/database/schema.md`
-§7 for the full reasoning behind each.
+§7 and `docs/architecture/letter-registry.md` §12 for the full reasoning
+behind each.
 
-* **Official letter/reference number** — existence and format unconfirmed.
-  No column exists for it.
-* **Sender types** (`letters.received_from`) — not assumed to always be a
-  government department; stored as free text.
-* **Final category list** — nothing seeded; "Budget/Procurement/HR/Legal/
-  Infrastructure" were requirements-gathering examples only.
-* **Final classification/priority terminology** — "Important/Classified/
-  Routine" were examples only; nothing seeded.
+* **Official letter/reference number's existence/format: RESOLVED (Phase
+  4B)** — required, manually entered, no format imposed. **Uniqueness
+  scope: STILL PENDING** — a global constraint was implemented, then
+  removed during a same-phase hardening pass once it became clear the
+  business only said "must be unique", never confirming global vs.
+  per-department vs. per-source vs. per-year. Duplicates are currently
+  accepted anywhere. See `docs/architecture/letter-registry.md` §2.3/§14.
+* **Sender identification: RESOLVED (Phase 4B)** — split into
+  `source_name`/`source_department_id` (source/origin) and
+  `sender_name`/`sender_designation`/`sender_department`/`sender_address`
+  (the specific person/office details), superseding the old free-text
+  `received_from`. See `docs/architecture/letter-registry.md` §2.1/§2.2.
+* **Final category list: RESOLVED (Phase 4B)** — exactly three, closed
+  for V1 (General Letter, Notification, Office Order); "Budget" confirmed
+  *not* to be one. See `docs/architecture/letter-registry.md` §2.4.
+* **Final classification/priority terminology — still open.**
+  "Important"/"Classified"/"Budget"/etc. remain examples only; no
+  `Classification` row is seeded. What *is* resolved: classification can
+  carry access-control significance (§2.5). See
+  `docs/architecture/letter-registry.md` §12.
 * **Departmental code format** (`departments.code`) — left nullable,
-  unformatted.
-* **`letters.subject` / `letters.reason` requirement-ness** — both left
-  nullable pending confirmation of intake requirements.
+  unformatted. Unrelated to Phase 4B, still open.
+* **`letters.subject` requirement-ness: RESOLVED (Phase 4B)** — now
+  required via `LetterCreate` (the underlying database column remains
+  nullable — see `docs/architecture/letter-registry.md` §3 for why that's
+  not a contradiction). `letters.reason` remains nullable and optional,
+  unrequested by the finalized decisions, not removed either.
+* **Source location / sender address nullability: RESOLVED (Phase 4B)**
+  — `source_location` nullable (not required), `sender_address`
+  explicitly, deliberately nullable ("do not make Sender Address
+  artificially mandatory").
 * **Document retention requirements** — not addressed; no retention/expiry
-  field exists on `letter_documents`.
+  field exists on `letter_documents`. Unrelated to Phase 4B, still open.
 
 ## Known Limitations
 
+* **`letters.reference_number` currently has no uniqueness enforcement
+  at all** (Phase 4B hardening pass finding) — a global constraint was
+  implemented then removed once it became clear the business never
+  actually confirmed the scope ("must be unique" alone doesn't say
+  global vs. per-department vs. per-source vs. per-year). Duplicates are
+  currently accepted anywhere in the system. See
+  `docs/architecture/letter-registry.md` §2.3/§14.
+* **RESOLVED (Phase 4B)** — `Letter` now has `recipient_department_id`
+  (the department-isolation boundary) and `source_department_id`/
+  `source_name` (the letter's origin) as distinct fields; the single-
+  field ambiguity Phase 4A flagged (one `department_id` trying to mean
+  both at once) no longer exists. See
+  `docs/architecture/letter-registry.md` §5 for the migration that
+  resolved it.
+* **The classified-access visibility policy is a documented, provisional
+  default, not a confirmed final one** (Phase 4B) — `ADMIN`/`SYSTEM_ADMIN`/
+  the letter's own recorder can view a restricted letter; a `USER` who is
+  none of those cannot, even within their own department. See
+  `docs/architecture/letter-registry.md` §8/§12.
+* **No file upload/download exists for `LetterDocument`** (unchanged
+  since Phase 2/4A) — the relationship is schema-only; see
+  `docs/architecture/letter-registry.md` §13.
 * **No PostgreSQL was available in the initial development environment.**
   One was installed and configured specifically to validate this phase (see
   "Validation performed" above) rather than leaving the migration and test
@@ -598,16 +869,20 @@ documented, minimal, reversible assumption. See `docs/database/schema.md`
 
 ## Next Recommended Phase
 
-**Phase 4 — Letter Registry Core.** Phase 3B (Roles & Access Management)
-is now fully delivered end-to-end: System Admin manages departments
-(3B.2) and Admins (3B.3); Admins manage Users within their own department
-(3B.4). A complete, tested population of `ACTIVE` Users, Admins, and
-departments can now be built entirely through the API, with no direct
-database access required for any account-lifecycle step. Phase 4 is
-recommended next because it is the first phase that adds a real
-departmental *business* resource (the Letter itself) for
-`assert_department_access` to protect — see
-`docs/architecture/authorization.md` §4 and
-`docs/architecture/user-management.md` §5-6 for the isolation pattern it
-should reuse, now proven end-to-end against a real resource rather than
-only verification-only endpoints or other management resources.
+**Phase 4C — Letter Attachments, or Phase 5 — Dashboards/Search/
+Notifications** (either is a reasonable next slice; not yet decided).
+Phase 4B delivered a complete, tested, department-isolated Letter
+registry with a real classified-access boundary — the core business
+entity this whole project exists to manage is now creatable, listable,
+retrievable, updatable, and archivable entirely through the API. The two
+largest remaining gaps are (1) `LetterDocument` file upload/download
+(schema-ready since Phase 2, never implemented — Phase 4A §16 confirmed
+compatibility, nothing about it changed in 4B) and (2) everything V1
+requirements describe as later-phase work: dashboards, structured search
+beyond basic filtering, real notification generation, and automatic audit
+logging. Recommended before either: resolve the exact classification
+value list and the exact classified-visibility matrix
+(`docs/architecture/letter-registry.md` §12) with the product owner, since
+both remaining implementation phases (attachments, dashboards) will
+surface classified letters in new UI/API surfaces where the provisional
+policy's limits become more visible.

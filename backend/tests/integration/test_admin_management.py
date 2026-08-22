@@ -461,8 +461,12 @@ def test_historical_records_remain_intact_after_deactivation(client, db_session)
     sys_admin = _make_system_admin(db_session, email="sys.admin.lc5@example.gov")
     admin = _make_department_admin(db_session, department, email="target.lc5@example.gov")
     letter_row = Letter(
-        department_id=department.id,
-        received_from="Sender",
+        reference_number=f"REF-{uuid.uuid4()}",
+        recipient_department_id=department.id,
+        source_name="Sender",
+        sender_name="Sender Name",
+        sender_designation="Sender Designation",
+        sender_department="Sender Department",
         received_at=datetime.now(timezone.utc),
         recorded_by=admin.id,
     )
@@ -568,8 +572,12 @@ def test_transfer_does_not_rewrite_historical_records(client, db_session):
     admin = _make_department_admin(db_session, department_a, email="transfer3.admin@example.gov")
 
     letter = Letter(
-        department_id=department_a.id,
-        received_from="Sender",
+        reference_number=f"REF-{uuid.uuid4()}",
+        recipient_department_id=department_a.id,
+        source_name="Sender",
+        sender_name="Sender Name",
+        sender_designation="Sender Designation",
+        sender_department="Sender Department",
         received_at=datetime.now(timezone.utc),
         recorded_by=admin.id,
     )
@@ -585,7 +593,7 @@ def test_transfer_does_not_rewrite_historical_records(client, db_session):
 
     db_session.expire_all()
     reloaded_letter = db_session.get(Letter, letter_id)
-    assert reloaded_letter.department_id == department_a.id  # unchanged
+    assert reloaded_letter.recipient_department_id == department_a.id  # unchanged
 
 
 def test_admins_current_department_becomes_destination(client, db_session):

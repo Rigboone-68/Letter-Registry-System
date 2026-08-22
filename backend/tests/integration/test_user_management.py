@@ -777,8 +777,12 @@ def test_historical_records_remain_intact_after_user_deactivation(client, db_ses
     admin = _make_department_admin(db_session, department, email="admin.historical1@example.gov")
     user = _make_regular_user(db_session, department, email="target.historical1@example.gov")
     letter_row = Letter(
-        department_id=department.id,
-        received_from="Sender",
+        reference_number=f"REF-{uuid.uuid4()}",
+        recipient_department_id=department.id,
+        source_name="Sender",
+        sender_name="Sender Name",
+        sender_designation="Sender Designation",
+        sender_department="Sender Department",
         received_at=datetime.now(timezone.utc),
         recorded_by=user.id,
     )

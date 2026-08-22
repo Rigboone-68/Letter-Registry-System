@@ -166,3 +166,95 @@ class AuthorizationNotRevocableError(ServiceError):
     authorization is treated as an idempotent no-op instead (unlike this
     case), matching the Department/Admin activate-deactivate convention
     for a "lock things down" action."""
+
+
+# --- Category / Classification management (Phase 4B) -----------------------
+
+
+class CategoryNotFoundError(ServiceError):
+    """No `Category` exists with this id — see
+    app/services/category_service.py."""
+
+
+class DuplicateCategoryError(ServiceError):
+    """A category with this name already exists
+    (`uq_categories_name`)."""
+
+
+class ClassificationNotFoundError(ServiceError):
+    """No `Classification` exists with this id — see
+    app/services/classification_service.py."""
+
+
+class DuplicateClassificationError(ServiceError):
+    """A classification with this name already exists
+    (`uq_classifications_name`)."""
+
+
+# --- Letter registry (Phase 4B) ---------------------------------------------
+
+
+class LetterNotFoundError(ServiceError):
+    """No `Letter` exists with this id, *or* it exists but the caller
+    cannot access it — see app/services/authorization.py:assert_letter_access.
+    Both a nonexistent id and a cross-department/classified-restricted one
+    collapse to this one identical 404, the same enumeration-prevention
+    reasoning `UserNotFoundError` established in Phase 3B.4: a 403 would
+    confirm the id belongs to *something*."""
+
+
+# DuplicateReferenceNumberError intentionally does not exist. `letters`
+# has no reference_number uniqueness constraint (removed by migration
+# c887ab35e4a3, a Phase 4B hardening finding — see
+# app/models/letter.py's docstring) — the business confirmed reference
+# numbers "must be unique" but never confirmed the scope, and this
+# codebase does not add error handling for a constraint that no longer
+# exists. See docs/architecture/letter-registry.md §2.3/§12.
+
+
+class RecipientDepartmentNotFoundError(ServiceError):
+    """No department exists with the given id — used only for a case that
+    should be structurally unreachable in normal operation (a caller's own
+    `department_id` always references a real row), kept as a defensive
+    translation rather than a raw 500 if it ever somehow isn't."""
+
+
+class SourceDepartmentNotFoundError(ServiceError):
+    """`source_department_id` was supplied but does not reference an
+    existing `Department` row."""
+
+
+class SourceDepartmentNotActiveError(ServiceError):
+    """`source_department_id` was supplied and exists, but that
+    department is `INACTIVE`. Unlike the recipient department (whose
+    ACTIVE-ness gates the calling User/Admin's own authority — see
+    app/services/authorization.py:assert_department_access), an INACTIVE
+    source department is rejected purely as a data-quality guard: citing
+    a retired department as a letter's origin is very likely a mistake,
+    not a legitimate historical fact to preserve the way a letter's own
+    recipient-department history is preserved."""
+
+
+class CategoryNotActiveError(ServiceError):
+    """`category_id` was supplied and exists, but that category is
+    `INACTIVE` — a retired category cannot be assigned to a *new* or
+    *updated* letter (existing letters already tagged with it keep their
+    reference; see app/models/category.py)."""
+
+
+class ClassificationNotActiveError(ServiceError):
+    """`classification_id` was supplied and exists, but that
+    classification is `INACTIVE` — same reasoning as
+    CategoryNotActiveError."""
+
+
+class ClassifiedAccessDeniedError(ServiceError):
+    """The target letter's classification restricts access
+    (`Classification.restricts_access`), and the calling `USER` is
+    neither the letter's recorder nor an `ADMIN`/`SYSTEM_ADMIN` — see
+    app/services/authorization.py:assert_letter_access and
+    docs/architecture/letter-registry.md §8 for why this specific rule is
+    a documented, provisional default, not a confirmed final policy.
+    Deliberately mapped to the same `404` as LetterNotFoundError by the
+    API layer (not a distinguishable `403`) — a classified letter's mere
+    existence should not be confirmable to a caller who can't see it."""

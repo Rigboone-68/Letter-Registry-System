@@ -1,20 +1,25 @@
 # Architecture Overview — Roles, Hierarchy, and Department Isolation
 
-**Status:** Phase 3B.4 complete — Phase 3B (Roles & Access Management) is
-now fully delivered. This document explains the roles and hierarchy the
-database schema is built to support, how a caller's identity is
-established (Phase 3A), how role/department authorization decisions are
-enforced on top of that identity (Phase 3B.1), how departments themselves
-are managed (Phase 3B.2), how Admin accounts are authorized, approved, and
-managed by System Admin (Phase 3B.3), and — as of Phase 3B.4 — how regular
-User accounts are authorized, approved, and managed by an Admin, scoped to
-that Admin's own department. See §4, "What is implemented vs. deferred",
-[`authentication.md`](authentication.md) for authentication,
-[`authorization.md`](authorization.md) for the RBAC/department-isolation
-design, [`department-management.md`](department-management.md) for
-department CRUD, [`admin-management.md`](admin-management.md) for the
-Admin lifecycle, and [`user-management.md`](user-management.md) for the
-User lifecycle.
+**Status:** Phase 3B (Roles & Access Management) is fully delivered, and
+Phase 4B has now built the Letter Registry Core on top of it — the first
+real departmental *business* resource, not just a management resource.
+This document explains the roles and hierarchy the database schema is
+built to support, how a caller's identity is established (Phase 3A), how
+role/department authorization decisions are enforced on top of that
+identity (Phase 3B.1), how departments themselves are managed (Phase
+3B.2), how Admin accounts are authorized, approved, and managed by System
+Admin (Phase 3B.3), how regular User accounts are authorized, approved,
+and managed by an Admin, scoped to that Admin's own department (Phase
+3B.4), and how a User/Admin now records, retrieves, updates, and archives
+Letters within that same department boundary, with an additional
+classified-access narrowing for certain letters (Phase 4B). See §4, "What
+is implemented vs. deferred", [`authentication.md`](authentication.md)
+for authentication, [`authorization.md`](authorization.md) for the RBAC/
+department-isolation design, [`department-management.md`](department-management.md)
+for department CRUD, [`admin-management.md`](admin-management.md) for the
+Admin lifecycle, [`user-management.md`](user-management.md) for the User
+lifecycle, and [`letter-registry.md`](letter-registry.md) for the Letter
+Registry Core (Phase 4A review + Phase 4B implementation).
 
 ## 1. The hierarchy
 
@@ -58,8 +63,10 @@ number of Admins (zero, one, or many; no uniqueness constraint enforces a
 single Admin per department). As of Phase 3B.4, an Admin authorizes User
 candidates, approves them, and deactivates/reactivates User accounts,
 scoped strictly to their own department (`/api/v1/users*` —
-[`user-management.md`](user-management.md)). Will eventually be able to
-edit that department's Letter records — not yet implemented (Phase 4). An
+[`user-management.md`](user-management.md)). As of Phase 4B, an Admin also
+has the same Letter CRUD access as a User in their department — create,
+read, update, archive — narrowed only by the classified-access boundary
+(`/api/v1/letters*` — [`letter-registry.md`](letter-registry.md) §9). An
 Admin **cannot** authorize or manage other Admins, approve or create
 Admin accounts, or change their own role or department — every
 Admin-management operation still requires `SYSTEM_ADMIN`; see
@@ -69,24 +76,29 @@ be able to act only within their own department —
 is `ACTIVE`; see [`department-management.md`](department-management.md)
 §5 and [`user-management.md`](user-management.md) §5 for how that rule
 splits into three different strengths depending on the User-management
-action.
+action (Letter access, by contrast, applies the plain, undifferentiated
+rule uniformly — see [`letter-registry.md`](letter-registry.md) §9).
 
 ### User
 
-Also bound to exactly one department. Will eventually be able to register
-letters for their own department and edit their own letter records — but
-not another department's, and not another user's letters (Phase 4). A
-User account is created via signup against an Admin-issued
-`UserAuthorization`, starting `PENDING_APPROVAL` — as of Phase 3B.4, an
-Admin (scoped to their own department) approves it, the same way a System
-Admin approves an Admin candidate — see [`authentication.md`](authentication.md)
-§5 and [`user-management.md`](user-management.md) §1. Department-isolation
+Also bound to exactly one department. As of Phase 4B, registers/reads/
+edits/archives Letters for their own department — but not another
+department's, and not another user's classified letters unless they
+recorded it themselves (`/api/v1/letters*` —
+[`letter-registry.md`](letter-registry.md) §8-9). A User account is
+created via signup against an Admin-issued `UserAuthorization`, starting
+`PENDING_APPROVAL` — as of Phase 3B.4, an Admin (scoped to their own
+department) approves it, the same way a System Admin approves an Admin
+candidate — see [`authentication.md`](authentication.md) §5 and
+[`user-management.md`](user-management.md) §1. Department-isolation
 enforcement for a User is in place at the dependency layer —
-[`authorization.md`](authorization.md) §3 — ready for Phase 4's Letter
-endpoints to use, and, as of Phase 3B.2, also blocks a User's
-department-scoped operations whenever their department is `INACTIVE` —
-[`department-management.md`](department-management.md) §5 — without
-touching the User row itself.
+[`authorization.md`](authorization.md) §3 — and, as of Phase 4B, is
+exercised against Letters via `recipient_department_id` specifically, not
+`source_department_id` (which carries no authorization meaning at all —
+see [`letter-registry.md`](letter-registry.md) §5). As of Phase 3B.2, a
+User's department-scoped operations are also blocked whenever their
+department is `INACTIVE` — [`department-management.md`](department-management.md)
+§5 — without touching the User row itself.
 
 ## 3. Department isolation
 
@@ -94,46 +106,59 @@ Department isolation is the core security requirement this schema exists to
 support:
 
 * Every departmental entity — `User`, `UserAuthorization`, `Letter` — carries
-  a `department_id`.
-* A `User`'s own `department_id` is meant to be the **only** source of truth
-  for which department's data they can touch, once a service layer exists.
-* **This is explicitly not enforced by the database schema itself**, and
-  cannot be: nothing stops a single `INSERT` from writing an arbitrary
-  `department_id` into `letters`. What the schema *does* guarantee is that
-  the column exists, is required (`NOT NULL`), and is indexed
-  (`ix_letters_department_id`, plus the composite
-  `ix_letters_department_received_at` for the expected "this department's
-  letters by date" query) — so that a future service layer has something
-  correct and fast to filter on.
-* The enforcement point, in a later phase, is: **`department_id` on a new
-  Letter (or User, via authorization) is always derived from the
-  authenticated caller's own `department_id`, never accepted as client
-  input.** A normal User must not be able to pass an arbitrary
-  `department_id` in a request body and have it accepted.
+  a department reference: `department_id` on `User`/`UserAuthorization`, and
+  (as of Phase 4B) `recipient_department_id` specifically on `Letter` —
+  `Letter` also carries `source_department_id`, which is a descriptive fact
+  about a letter's origin, never an authorization boundary (see
+  [`letter-registry.md`](letter-registry.md) §5).
+* A `User`'s own `department_id` is the **only** source of truth for which
+  department's data they can touch — enforced by the service layer on every
+  write and read, never derived from client input.
+* **This is not, and cannot be, enforced by the database schema alone** —
+  nothing at the schema level stops a single `INSERT` from writing an
+  arbitrary `recipient_department_id` into `letters`. What the schema
+  *does* guarantee is that the column exists, is required (`NOT NULL`), and
+  is indexed (`ix_letters_recipient_department_id`, plus the composite
+  `ix_letters_recipient_department_received_at` for "this department's
+  letters by date"). The actual guarantee — that a caller can never write or
+  read another department's letter — is enforced entirely at the service
+  layer, described below, not by a database constraint.
+* **The enforcement point, implemented as of Phase 4B**: `recipient_department_id`
+  on a new Letter (and `department_id` on a new User, via authorization) is
+  always derived from the authenticated caller's own `department_id`, never
+  accepted as client input — `LetterCreate`
+  (`app/schemas/letter.py`) has no field for it at all, so there is nothing
+  for a client-supplied value to bind to, not just a value that gets
+  ignored.
 
 This is why the brief for Phase 2 explicitly said "do not rely on frontend
-filtering to enforce department isolation" — the schema is designed so
-backend-level enforcement (a `WHERE department_id = :current_user_department`
-clause added by the service/repository layer, always, not optionally) is
-straightforward to add later.
+filtering to enforce department isolation" — the schema was designed so
+backend-level enforcement (a `WHERE recipient_department_id =
+:current_user_department` clause added by the service/repository layer,
+always, not optionally) would be straightforward to add later; Phase 4B is
+where that actually happened.
 
-**Phase 3A added the identity this depends on; Phase 3B.1 adds the actual
-enforcement mechanism — but still nothing for it to protect yet.**
+**Phase 3A added the identity this depends on; Phase 3B.1 added the
+enforcement mechanism; Phase 4B is the first phase where it protects a
+real departmental *business* resource, not only management resources.**
 `get_current_user` (`app/api/deps.py`) reliably answers "who is calling,
 and what is their `department_id`" for any authenticated request.
 `app/services/authorization.py:assert_department_access` (and its FastAPI
-wrapper, `require_department_access`) is now the one reusable place that
-turns that identity into an allow/deny decision — SYSTEM_ADMIN bypasses,
-ADMIN/USER must match their own `department_id` exactly. Signup already
-applies the same underlying principle in its own narrow scope (a new
-User's `department_id` comes from their `UserAuthorization`, never from
-the signup request body — see [`authentication.md`](authentication.md)
-§5), but no endpoint in this phase reads or writes `Letter` rows, so there
-is still nothing real for the department-isolation check to be *wired
-into* — see [`authorization.md`](authorization.md) §4 for the exact
-pattern a future Letter endpoint should call, and §7 for the
-verification-only endpoints this phase uses to prove the mechanism works
-in the meantime.
+wrapper, `require_department_access`) is the one reusable place that turns
+that identity into an allow/deny decision — SYSTEM_ADMIN bypasses,
+ADMIN/USER must match their own `department_id` exactly, and the target
+department must be `ACTIVE`. Signup already applied the same underlying
+principle in its own narrow scope since Phase 3A (a new User's
+`department_id` comes from their `UserAuthorization`, never from the
+signup request body). Phase 3B.4 first exercised the check as a genuine
+resource-level guard (User management); Phase 4B built
+`assert_letter_access` (`app/services/authorization.py`) directly on top
+of it for `Letter` — department isolation first, then a further
+classified-access narrowing for certain letters — see
+[`letter-registry.md`](letter-registry.md) §5/§8 for the full design and
+[`authorization.md`](authorization.md) §7 for the verification-only
+endpoints that first proved the underlying mechanism, before any real
+resource existed to protect.
 
 ## 4. What is implemented vs. deferred
 
@@ -277,21 +302,68 @@ in the meantime.
   Deactivation/Reactivation/Revocation/Cross-Department-Security/Self-
   Protection/Lifecycle/Race-Safety lists.
 
-### Explicitly deferred (not this phase)
+### Implemented (Phase 4A review + Phase 4B — Letter Registry Core)
 
-* **Letter CRUD (Phase 4)** is still the first phase that will call
-  `assert_department_access` against a real *business* resource — Phase
-  3B.2/3B.3/3B.4's protected resources are departments, Admin accounts,
-  and User accounts (all management resources), not yet a Letter.
+* **Phase 4A** confirmed the Letter Registry Core requirements against the
+  existing Phase 2 schema field by field, found two requirements already
+  fully satisfied with no gap (date received vs. recorded; letter content
+  as text and/or document), and identified one real architectural gap —
+  `Letter.department_id` could not represent both a source/sending
+  department and a recipient/owning department at once. No code was
+  written in 4A; `alembic check` confirmed zero drift.
+* **Phase 4B** implemented the product owner's six finalized decisions
+  resolving that gap and every other Phase 4A open question that had an
+  answer: migration `48ec742d9e8f` split `department_id` into
+  `recipient_department_id` (the isolation boundary — same field
+  `assert_department_access`/`assert_letter_access` now check) and added
+  `source_name`/`source_department_id` (the letter's origin, carrying no
+  authorization meaning), required structured sender details, a required
+  manually-entered `reference_number`, and seeded exactly three
+  `Category` rows. A same-phase pre-commit hardening pass then found
+  that `reference_number`'s uniqueness had been implemented as a
+  *global* database constraint on an unconfirmed assumption (the
+  business confirmed "must be unique", never the scope) and removed it
+  (migration `c887ab35e4a3`) rather than keep or replace it with another
+  guess. See [`letter-registry.md`](letter-registry.md) §2-4, §14.
+* **`assert_letter_access`** (`app/services/authorization.py`) is
+  `Letter`'s first-ever use of `assert_department_access` as a resource-
+  level check, plus a classified-access narrowing on top —
+  `Classification.restricts_access` (new column) makes a letter invisible
+  to a `USER` who didn't record it, even within their own department;
+  `SYSTEM_ADMIN` and `ADMIN` are never narrowed by it. Explicitly
+  documented as a provisional default — the exact visibility matrix
+  remains open. See [`letter-registry.md`](letter-registry.md) §8.
+* `app/services/letter_service.py`, `category_service.py`,
+  `classification_service.py` and their repositories/schemas/endpoints —
+  the same four-layer architecture every phase since 3A has used. Category
+  and Classification management (System-Admin-only CRUD) mirror
+  `department_service.py`'s established pattern exactly, closing the
+  "schema-only since Phase 2" gap Phase 4A identified.
+* `DELETE /api/v1/letters/{id}` archives (`status -> ARCHIVED`) — never a
+  physical SQL `DELETE`, continuing rather than reopening Phase 2's
+  original decision.
+* 67 new tests against a real PostgreSQL test database, plus a full
+  live-server verification against `lrs_dev` exercising the classified-
+  access boundary across every role.
+
+### Explicitly deferred (not yet implemented)
+
+* **File upload/download for `LetterDocument`** — schema-only since
+  Phase 2; Phase 4A confirmed architectural compatibility, Phase 4B did
+  not change or build on it. See [`letter-registry.md`](letter-registry.md) §13.
+* **The exact classification value list and the exact classified-
+  visibility matrix** — both deliberately left open by the product owner;
+  see [`letter-registry.md`](letter-registry.md) §12.
 * System Admin handover.
-* Dashboards, notification generation, file upload handling, or automatic
-  audit-log generation — see [`authorization.md`](authorization.md) §12,
+* Dashboards, notification generation, or automatic audit-log generation
+  — see [`authorization.md`](authorization.md) §12,
   [`department-management.md`](department-management.md) §10,
-  [`admin-management.md`](admin-management.md) §13, and
-  [`user-management.md`](user-management.md) §12 for which future actions
+  [`admin-management.md`](admin-management.md) §13,
+  [`user-management.md`](user-management.md) §12, and
+  [`letter-registry.md`](letter-registry.md) §13 for which future actions
   will need an audit event once they exist.
-* Full frontend authentication/authorization/department/Admin/User-
-  management UI — deliberately deferred, see
+* Full frontend authentication/authorization/department/Admin/User/
+  Letter-management UI — deliberately deferred, see
   [`authentication.md`](authentication.md) §15; unchanged this phase.
 * **A revoke endpoint for ADMIN-purpose `UserAuthorization` rows** — Phase
   3B.4 added revocation only for USER-purpose authorizations; see
@@ -332,5 +404,13 @@ no benefit. Phase 3B.4 adds a fourth slice
 same principle — regular User accounts and their authorizations are the
 same two tables again, so this phase extends `UserRepository`/
 `UserAuthorizationRepository` a second time rather than adding a fifth
-repository. All of it uses this same structure rather than inventing a
-second one, per the brief's explicit instruction in every phase so far.
+repository. Phase 4B adds three more full vertical slices for genuinely
+new resources — `app/api/v1/endpoints/letters.py` →
+`app/services/letter_service.py` → `app/repositories/letter_repository.py`,
+plus `categories.py`/`category_service.py`/`category_repository.py` and
+`classifications.py`/`classification_service.py`/`classification_repository.py`
+— the first new repositories since Phase 3B.2, because `Letter`/
+`Category`/`Classification` are genuinely distinct tables, not another
+view onto `User`/`UserAuthorization` the way Admin/User management were.
+All of it uses this same structure rather than inventing a second one,
+per the brief's explicit instruction in every phase so far.

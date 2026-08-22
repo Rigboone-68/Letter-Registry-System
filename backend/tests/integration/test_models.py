@@ -172,8 +172,12 @@ def test_category_letter_relationship(db_session):
     db_session.flush()
 
     letter = Letter(
-        department_id=department.id,
-        received_from="Office of the Attorney General",
+        reference_number=f"REF-{uuid.uuid4()}",
+        recipient_department_id=department.id,
+        source_name="Office of the Attorney General",
+        sender_name="A. General",
+        sender_designation="Attorney General",
+        sender_department="Office of the Attorney General",
         received_at=datetime.now(timezone.utc),
         recorded_by=recorder.id,
         category_id=category.id,
@@ -196,8 +200,12 @@ def test_classification_letter_relationship(db_session):
     db_session.flush()
 
     letter = Letter(
-        department_id=department.id,
-        received_from="Vendor XYZ Ltd.",
+        reference_number=f"REF-{uuid.uuid4()}",
+        recipient_department_id=department.id,
+        source_name="Vendor XYZ Ltd.",
+        sender_name="J. Vendor",
+        sender_designation="Account Manager",
+        sender_department="Vendor XYZ Ltd.",
         received_at=datetime.now(timezone.utc),
         recorded_by=recorder.id,
         classification_id=classification.id,
@@ -217,8 +225,12 @@ def test_letter_department_relationship(db_session):
     recorder = make_user(db_session, department, email="agriculture.clerk@example.gov")
 
     letter = Letter(
-        department_id=department.id,
-        received_from="Regional Farmers Union",
+        reference_number=f"REF-{uuid.uuid4()}",
+        recipient_department_id=department.id,
+        source_name="Regional Farmers Union",
+        sender_name="F. Union",
+        sender_designation="Secretary",
+        sender_department="Regional Farmers Union",
         received_at=datetime.now(timezone.utc),
         recorded_by=recorder.id,
     )
@@ -226,7 +238,7 @@ def test_letter_department_relationship(db_session):
     db_session.flush()
     db_session.refresh(department)
 
-    assert letter.department.id == department.id
+    assert letter.recipient_department.id == department.id
     assert letter in department.letters
 
 
@@ -237,8 +249,12 @@ def test_letter_recorded_by_relationship(db_session):
     recorder = make_user(db_session, department, email="housing.clerk@example.gov")
 
     letter = Letter(
-        department_id=department.id,
-        received_from="National Housing Authority",
+        reference_number=f"REF-{uuid.uuid4()}",
+        recipient_department_id=department.id,
+        source_name="National Housing Authority",
+        sender_name="H. Authority",
+        sender_designation="Director",
+        sender_department="National Housing Authority",
         received_at=datetime.now(timezone.utc),
         recorded_by=recorder.id,
     )
@@ -257,8 +273,12 @@ def test_letter_multiple_documents(db_session):
     recorder = make_user(db_session, department, email="energy.clerk@example.gov")
 
     letter = Letter(
-        department_id=department.id,
-        received_from="Regional Power Authority",
+        reference_number=f"REF-{uuid.uuid4()}",
+        recipient_department_id=department.id,
+        source_name="Regional Power Authority",
+        sender_name="P. Authority",
+        sender_designation="Engineer",
+        sender_department="Regional Power Authority",
         received_at=datetime.now(timezone.utc),
         recorded_by=recorder.id,
     )
@@ -302,8 +322,12 @@ def test_notification_user_and_letter(db_session):
     )
 
     letter = Letter(
-        department_id=department.id,
-        received_from="Press Office",
+        reference_number=f"REF-{uuid.uuid4()}",
+        recipient_department_id=department.id,
+        source_name="Press Office",
+        sender_name="P. Officer",
+        sender_designation="Press Secretary",
+        sender_department="Press Office",
         received_at=datetime.now(timezone.utc),
         recorded_by=recorder.id,
     )
@@ -448,8 +472,12 @@ def test_user_deletion_restricted_by_recorded_letter(db_session):
     department = make_department(db_session, name="Restrict User Department")
     recorder = make_user(db_session, department, email="restrict.recorder@example.gov")
     letter = Letter(
-        department_id=department.id,
-        received_from="Sender",
+        reference_number=f"REF-{uuid.uuid4()}",
+        recipient_department_id=department.id,
+        source_name="Sender",
+        sender_name="Sender Name",
+        sender_designation="Sender Designation",
+        sender_department="Sender Department",
         received_at=datetime.now(timezone.utc),
         recorded_by=recorder.id,
     )
@@ -475,8 +503,12 @@ def test_letter_deletion_cascades_documents_and_notifications(db_session):
         full_name="Cascade Admin",
     )
     letter = Letter(
-        department_id=department.id,
-        received_from="Sender",
+        reference_number=f"REF-{uuid.uuid4()}",
+        recipient_department_id=department.id,
+        source_name="Sender",
+        sender_name="Sender Name",
+        sender_designation="Sender Designation",
+        sender_department="Sender Department",
         received_at=datetime.now(timezone.utc),
         recorded_by=recorder.id,
     )
@@ -534,8 +566,12 @@ def test_notification_is_read_defaults_false_at_database_level(db_session):
         full_name="DB Default Admin",
     )
     letter = Letter(
-        department_id=department.id,
-        received_from="Sender",
+        reference_number=f"REF-{uuid.uuid4()}",
+        recipient_department_id=department.id,
+        source_name="Sender",
+        sender_name="Sender Name",
+        sender_designation="Sender Designation",
+        sender_department="Sender Department",
         received_at=datetime.now(timezone.utc),
         recorded_by=recorder.id,
     )

@@ -1,8 +1,14 @@
-"""Category — a subject-matter grouping for letters (e.g. Budget, HR, Legal).
+"""Category — a subject-matter grouping for letters.
 
-Managed by System Admin. The final category list is not confirmed — nothing
-in the application is allowed to hard-code category names, and no example
-categories are seeded by this migration (Section 6).
+Managed by System Admin. Phase 4B finalized the V1 category list as
+exactly three — General Letter, Notification, Office Order — seeded by
+migration 48ec742d9e8f as ordinary rows through this same table (no
+schema change was needed; this table was already structurally suitable —
+see docs/architecture/letter-registry.md §2.4/§7). "Budget", floated as a
+Category example during Phase 2 requirements-gathering, was explicitly
+confirmed *not* to be one. Nothing about the three seeded rows is
+special-cased or hard-coded in application code — a System Admin manages
+them through the same CRUD as any category, current or future.
 
 Never physically deleted: `status` moves to INACTIVE so that Letters already
 tagged with a retired category keep a valid, readable reference instead of a

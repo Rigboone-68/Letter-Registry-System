@@ -1,12 +1,20 @@
-# Database Schema — Phase 2 Core Models
+# Database Schema — Core Models
 
-**Status:** Phase 2 complete, including a corrective hardening pass from a
-self-review. This document describes the schema as implemented by
-SQLAlchemy models in `backend/app/models/` and two Alembic migrations
-(`backend/alembic/versions/`): `3da4b7ee8167` (baseline) and `e8a5cea2ccc6`
-(hardening — two missed indexes and a database-level default; see §1,
-"ORM deletion behavior" and §6, "Indexes"). No API, service, or repository
-layer exists yet — this is the data layer only.
+**Status:** Phase 2's original 9-entity schema, now through five Alembic
+migrations (`backend/alembic/versions/`): `3da4b7ee8167` (baseline),
+`e8a5cea2ccc6` (hardening — two missed indexes and a database-level
+default; see §1, "ORM deletion behavior" and §6, "Indexes"),
+`a223396c9eac` (Phase 3B.3 — `user_authorizations.purpose`),
+`48ec742d9e8f` (Phase 4B — Letter Registry Core: recipient/source
+department split, sender details, reference number,
+`classifications.restricts_access`, three seeded categories), and
+`c887ab35e4a3` (a same-phase hardening-pass correction — removes
+`reference_number`'s global uniqueness constraint, which turned out to be
+an unconfirmed assumption; see `docs/architecture/letter-registry.md`
+§2.3). This document describes the schema as implemented by SQLAlchemy
+models in `backend/app/models/` and all five migrations together — for
+the API/service/repository layers built on top since Phase 3A, see
+`backend/README.md`'s package-layout table.
 
 For the roles/hierarchy this schema supports, see
 [`docs/architecture/overview.md`](../architecture/overview.md).
@@ -293,8 +301,8 @@ rules only at the database layer").
 
 ### 2.4 `categories`
 
-A subject-matter grouping for letters (e.g. Budget, HR, Legal), managed by
-System Admin.
+A subject-matter grouping for letters, managed by System Admin
+(`/api/v1/categories*`, Phase 4B).
 
 | Column | Type | Notes |
 |---|---|---|
@@ -304,16 +312,19 @@ System Admin.
 | `status` | `active_status` enum, NOT NULL, default `ACTIVE` | |
 | `created_at` / `updated_at` | timestamptz | |
 
-No category values are seeded. The final list is not confirmed by S&IT — see
-§7 and `docs/PROJECT_STATUS.md`.
+**Exactly three rows are seeded** by migration `48ec742d9e8f` (Phase 4B):
+General Letter, Notification, Office Order — the finalized, closed V1
+category list (superseding the Phase 2 "Budget/HR/Legal" examples, none
+of which were ever seeded). Nothing about these three rows is
+special-cased in application code; a System Admin manages them through
+the same CRUD as any category.
 
 ### 2.5 `classifications`
 
 A priority/sensitivity marker for letters (e.g. Important, Classified,
 Routine) — deliberately a **separate table from Category**, not a shared
-list, because the two vary independently: a "Budget" letter can be Routine
-or Classified, and merging them would force every category to be
-re-declared per priority level.
+list, because the two vary independently. Managed by System Admin
+(`/api/v1/classifications*`, Phase 4B).
 
 | Column | Type | Notes |
 |---|---|---|
@@ -321,43 +332,55 @@ re-declared per priority level.
 | `name` | varchar(255), NOT NULL, UNIQUE | |
 | `description` | text, nullable | |
 | `status` | `active_status` enum, NOT NULL, default `ACTIVE` | |
+| `restricts_access` | boolean, NOT NULL, default `false` | Added in `48ec742d9e8f` (Phase 4B) — the data-model half of the classified-access authorization boundary; see `docs/architecture/letter-registry.md` §8. Not derived from `name` — no code string-matches "Classified" |
 | `created_at` / `updated_at` | timestamptz | |
 
-Terminology is not confirmed by S&IT — see §7.
+No classification values are seeded — terminology and the final value
+list are still not confirmed; see §7 and
+`docs/architecture/letter-registry.md` §12.
 
 ### 2.6 `letters`
 
-The central business entity — see
-[Department isolation](../architecture/overview.md#department-isolation) for
-how `department_id` is meant to be used once a service layer exists.
+The central business entity. As of Phase 4B, `recipient_department_id`
+(not `department_id`, renamed by `48ec742d9e8f`) is the department-
+isolation boundary — see
+[Department isolation](../architecture/overview.md#department-isolation).
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | UUID, PK | |
-| `department_id` | UUID, FK → `departments.id` ON DELETE RESTRICT, NOT NULL | Every letter belongs to exactly one department |
-| `received_from` | varchar(500), NOT NULL | Sender — free text, not assumed to always be a government department (unconfirmed by S&IT, §7) |
-| `subject` | varchar(500), nullable | Useful for search; exact requirement-ness unconfirmed by S&IT (§7) |
-| `reason` | text, nullable | Purpose for which the letter was received; nullable for the same reason as `subject` |
-| `category_id` | UUID, FK → `categories.id` ON DELETE RESTRICT, nullable | Categorization workflow (who assigns it, when) is still being defined |
-| `classification_id` | UUID, FK → `classifications.id` ON DELETE RESTRICT, nullable | Same as above |
+| `reference_number` | varchar(255), NOT NULL | Manually entered by the user, never auto-generated; no format imposed (letters/numbers/special characters all permitted). **No uniqueness constraint** — `uq_letters_reference_number` was added by `48ec742d9e8f` then removed by `c887ab35e4a3` (Phase 4B hardening pass): the business confirmed "must be unique" but never confirmed the scope (global/per-department/per-source/per-year), and global was an unconfirmed guess. Duplicates are currently accepted; see `docs/architecture/letter-registry.md` §2.3/§12, PENDING BUSINESS CLARIFICATION |
+| `recipient_department_id` | UUID, FK → `departments.id` ON DELETE RESTRICT, NOT NULL | The department that owns/receives this letter — the authorization boundary. Renamed from `department_id` in `48ec742d9e8f` (Phase 4B) — a data-preserving rename, not a recreated column |
+| `source_name` | varchar(500), NOT NULL | The letter's origin, free text (renamed from `received_from`) — not assumed to always be a registered `Department` |
+| `source_department_id` | UUID, FK → `departments.id` ON DELETE RESTRICT, nullable | Optional structured cross-reference, populated only when the source happens to be an LRS-registered department. Carries **no authorization meaning** — never checked by `assert_department_access`/`assert_letter_access` |
+| `source_location` | varchar(255), nullable | Free text (e.g. a city) — no controlled-entity/location-management system exists |
+| `sender_name` | varchar(255), NOT NULL | |
+| `sender_designation` | varchar(255), NOT NULL | |
+| `sender_department` | varchar(255), NOT NULL | Free text, describing the sender's own department — deliberately a separate field from `source_department_id`/`source_name`, even though the two often describe the same real-world department; see `docs/architecture/letter-registry.md` §2.2 |
+| `sender_address` | text, nullable | Deliberately optional — "the physical letter may not provide one" |
+| `subject` | varchar(500), nullable | Required via the API (`LetterCreate`, Phase 4B) even though the column itself remains nullable — see `docs/architecture/letter-registry.md` §3 |
+| `reason` | text, nullable | Purpose for which the letter was received; kept from Phase 2, not requested by the Phase 4B field list, not conflicting with it either |
+| `category_id` | UUID, FK → `categories.id` ON DELETE RESTRICT, nullable | Must reference an `ACTIVE` category if supplied; not required at creation |
+| `classification_id` | UUID, FK → `classifications.id` ON DELETE RESTRICT, nullable | Must reference an `ACTIVE` classification if supplied; not required at creation |
 | `received_at` | timestamptz, NOT NULL | When the *physical* letter was received — distinct from `created_at` (when the row was entered into LRS) |
-| `recorded_by` | UUID, FK → `users.id` ON DELETE RESTRICT, NOT NULL | Who entered the letter into LRS |
+| `recorded_by` | UUID, FK → `users.id` ON DELETE RESTRICT, NOT NULL | Who entered the letter into LRS — always the authenticated caller, never client-supplied |
 | `text_content` | text, nullable | A letter may be represented by text instead of (or alongside) a scanned document |
-| `status` | `letter_status` enum, NOT NULL, default `ACTIVE` | `ACTIVE` \| `ARCHIVED`. Archive *behavior* is not implemented — only the status value a future feature will set |
+| `status` | `letter_status` enum, NOT NULL, default `ACTIVE` | `ACTIVE` \| `ARCHIVED`. `DELETE /api/v1/letters/{id}` (Phase 4B) sets this to `ARCHIVED` — never a physical `DELETE` |
 | `created_at` / `updated_at` | timestamptz | |
 
-**No reference/letter number column exists.** Its existence and exact format
-are unconfirmed by S&IT (see §7) — adding one now would mean guessing a
-government numbering convention. This is a deliberate omission, not an
-oversight.
+**Reference number: existence resolved, uniqueness scope still open
+(Phase 4B)** — see `reference_number` above; superseded the Phase 2 "no
+reference number column exists" decision as to existence/format, but its
+uniqueness scope was walked back during the same phase's hardening pass.
 
-**Department isolation is not enforced here.** This model does not (and, as
-a single table, cannot) stop a caller from writing an arbitrary
-`department_id`. Enforcing "a User can only create/see letters for their own
-department" is explicitly a service-layer concern for Phase 3+, where
-`department_id` will be derived from the authenticated user's session, never
-accepted as client input. See
-[Department isolation](../architecture/overview.md#department-isolation).
+**Department isolation is enforced at the service layer** —
+`app/services/authorization.py:assert_letter_access` (Phase 4B), built on
+`assert_department_access`. `recipient_department_id` is always derived
+from the recording User/Admin's own `department_id`; `LetterCreate`
+(`app/schemas/letter.py`) has no field for it, so there is nothing for a
+client-supplied value to bind to — not merely a value that gets ignored.
+See [Department isolation](../architecture/overview.md#department-isolation)
+and `docs/architecture/letter-registry.md` §5/§8.
 
 ### 2.7 `letter_documents`
 
@@ -433,7 +456,9 @@ only plain JSON retains.
 Department
   ├── users                  (User.department_id)
   ├── user_authorizations    (UserAuthorization.department_id)
-  └── letters                (Letter.department_id)
+  └── letters                (Letter.recipient_department_id — the isolation boundary)
+      (Letter.source_department_id also references Department, one-directionally,
+       with no reverse collection here — see Letter.source_department below)
 
 User
   ├── department                    (User.department_id → Department)
@@ -450,7 +475,8 @@ Classification
   └── letters                (Letter.classification_id)
 
 Letter
-  ├── department              (Letter.department_id → Department)
+  ├── recipient_department    (Letter.recipient_department_id → Department — isolation boundary)
+  ├── source_department        (Letter.source_department_id → Department, nullable, one-directional — no authorization meaning)
   ├── category                (Letter.category_id → Category, nullable)
   ├── classification          (Letter.classification_id → Classification, nullable)
   ├── recorded_by_user        (Letter.recorded_by → User)
@@ -489,7 +515,8 @@ not plain strings.
 | From → To | `ON DELETE` | Why |
 |---|---|---|
 | `users.department_id` → `departments.id` | `RESTRICT` | Departments are never physically deleted; RESTRICT is defense in depth |
-| `letters.department_id` → `departments.id` | `RESTRICT` | Deactivating a department must not orphan or delete its letters |
+| `letters.recipient_department_id` → `departments.id` | `RESTRICT` | Deactivating a department must not orphan or delete its letters (renamed from `department_id`, `48ec742d9e8f`, Phase 4B) |
+| `letters.source_department_id` → `departments.id` | `RESTRICT` | Same reasoning, for a letter's optional source-side department reference (Phase 4B) |
 | `letters.category_id` → `categories.id` | `RESTRICT` | Retiring a category must not delete letters tagged with it |
 | `letters.classification_id` → `classifications.id` | `RESTRICT` | Same reasoning |
 | `letters.recorded_by` → `users.id` | `RESTRICT` | Deactivating a user must not delete or orphan the letters they recorded |
@@ -525,9 +552,9 @@ exercises.
 | `users` | `department_id`, `role`, `status` | Filtering users by department (isolation), by role, by account status — all frequent lookups once an admin UI exists |
 | `user_authorizations` | `email` (functional, `lower(email)`) | Case-insensitive lookup during signup |
 | `user_authorizations` | `department_id`, `authorized_by`, `status`, `purpose` | Admin views: "authorizations for my department", "who did I authorize"; `purpose` added Phase 3B.3 for "unresolved ADMIN authorizations for this email" lookups |
-| `letters` | `department_id` | Department isolation — the single most important filter in the whole system |
-| `letters` | `department_id, received_at` (composite) | The primary expected access pattern: "this department's letters, ordered by receipt date" |
-| `letters` | `received_at`, `recorded_by`, `category_id`, `classification_id`, `status`, `subject` | Each is an explicitly required filter/search dimension (brief §18) |
+| `letters` | `recipient_department_id` | Department isolation — the single most important filter in the whole system (renamed from `department_id`, Phase 4B) |
+| `letters` | `recipient_department_id, received_at` (composite) | The primary expected access pattern: "this department's letters, ordered by receipt date" |
+| `letters` | `received_at`, `recorded_by`, `category_id`, `classification_id`, `status`, `subject`, `source_department_id` | Each is an explicitly required filter/search dimension. `reference_number` has **no index** — it lost the implicit one its `UNIQUE` constraint backed when that constraint was removed (`c887ab35e4a3`); not re-added speculatively |
 | `letter_documents` | `letter_id`, `uploaded_by` | `uploaded_by` added in `e8a5cea2ccc6` — every other User-referencing FK in this schema was already indexed; this one had been missed |
 | `notifications` | `recipient_user_id, is_read` (composite) | The primary expected query: "this user's unread notifications" |
 | `notifications` | `letter_id` | FK lookup |
@@ -547,20 +574,34 @@ lookup pattern is indexed explicitly above.
 These are documented assumptions, not final requirements. See
 `docs/PROJECT_STATUS.md` for the authoritative, living list.
 
-* **Official letter/reference number** — format and even existence
-  unconfirmed. No column exists for it yet.
-* **Sender types** (`letters.received_from`) — not assumed to always be a
-  government department; kept as free text rather than a foreign key to
-  another entity.
-* **Final category list** — no categories are seeded; the examples discussed
-  during requirements gathering (Budget, Procurement, HR, Legal,
-  Infrastructure) are not hard-coded anywhere.
-* **Final classification/priority terminology** — "Important" / "Classified"
-  / "Routine" are examples only, not seeded or hard-coded.
+**Resolved in Phase 4B** (kept here, crossed off, for history — see
+`docs/architecture/letter-registry.md` §2 for the full decisions):
+official reference number's existence/format (now `letters.reference_number`
+— required, manually entered, no format imposed); sender identification
+(now split into `source_name`/`source_department_id` and
+`sender_name`/`sender_designation`/`sender_department`/`sender_address`,
+superseding the old free-text `received_from`); final category list (now
+exactly three, seeded); `letters.subject` requirement-ness (now required
+via the API, though the column itself stays nullable — see
+`docs/architecture/letter-registry.md` §3).
+
+Still open:
+
+* **`reference_number`'s uniqueness scope** — global, per receiving
+  department, per source, or per year were all left open by the
+  finalized decision ("must be unique", no scope given). A global
+  constraint was tried and removed during a same-phase hardening pass
+  (`c887ab35e4a3`) rather than kept on a guess; see
+  `docs/architecture/letter-registry.md` §2.3/§12.
+* **Final classification/priority terminology** — "Important" /
+  "Classified" / "Budget" remain examples only, not seeded or hard-coded.
+  What *is* resolved (Phase 4B): classification can carry access-control
+  significance (`classifications.restricts_access`) — see
+  `docs/architecture/letter-registry.md` §2.5/§12.
 * **Departmental code format** (`departments.code`) — left nullable and
   unformatted until S&IT confirms a convention.
-* **`letters.subject` and `letters.reason` requirement-ness** — both left
-  nullable; it's unconfirmed whether either should be mandatory at intake.
+* **`letters.reason` requirement-ness** — left nullable; not requested by
+  the Phase 4B finalized decisions, not removed either.
 * **Document retention requirements** — not addressed by this schema at all;
   `letter_documents` has no expiry/retention field because no requirement
   has been given yet.

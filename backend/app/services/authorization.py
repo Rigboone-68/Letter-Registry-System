@@ -47,8 +47,9 @@ import uuid
 from typing import Optional
 
 from app.models.enums import ActiveStatus, UserRole
+from app.models.letter import Letter
 from app.models.user import User
-from app.services.exceptions import DepartmentAccessDeniedError
+from app.services.exceptions import ClassifiedAccessDeniedError, DepartmentAccessDeniedError
 
 
 def assert_department_access(user: User, department_id: Optional[uuid.UUID]) -> None:
@@ -60,3 +61,58 @@ def assert_department_access(user: User, department_id: Optional[uuid.UUID]) -> 
         raise DepartmentAccessDeniedError()
     if user.department is not None and user.department.status != ActiveStatus.ACTIVE:
         raise DepartmentAccessDeniedError()
+
+
+def assert_letter_access(user: User, letter: Letter) -> None:
+    """Raise `DepartmentAccessDeniedError` or `ClassifiedAccessDeniedError`
+    unless `user` may access `letter`. Returns normally when allowed. This
+    is `Letter`'s first-ever use of `assert_department_access` as a
+    resource-level check (Phase 4B) — see
+    docs/architecture/letter-registry.md §5, the same pattern Phase 3B.4
+    established for User management.
+
+    Order matters (docs/architecture/letter-registry.md §8):
+
+    1. Department isolation always runs first, against
+       `letter.recipient_department_id` — never `source_department_id`,
+       which carries no authorization meaning at all (an external sender
+       has no LRS account). An out-of-department caller learns nothing
+       more by also being told a letter is classified.
+    2. SYSTEM_ADMIN retains complete access beyond this point (explicit
+       product requirement — "System Administrator must retain complete
+       administrative control").
+    3. A classification that restricts access (`Classification.
+       restricts_access`) narrows further for a plain USER who did not
+       record the letter — ADMIN is never narrowed by this clause.
+
+    This is the single seam every future refinement of the classified-
+    visibility policy needs to change — no Letter CRUD code duplicates or
+    bypasses this check. The exact policy below is a documented,
+    conservative default, not a confirmed final one — see
+    docs/architecture/letter-registry.md §8/§12.
+    """
+    assert_department_access(user, letter.recipient_department_id)
+
+    if user.role == UserRole.SYSTEM_ADMIN:
+        return
+
+    if (
+        letter.classification is not None
+        and letter.classification.restricts_access
+        and user.role == UserRole.USER
+        and letter.recorded_by != user.id
+    ):
+        raise ClassifiedAccessDeniedError()
+
+
+def can_view_letter(user: User, letter: Letter) -> bool:
+    """Boolean convenience wrapper around `assert_letter_access`, for
+    filtering a list of letters (app/services/letter_service.py:list_letters)
+    rather than gating a single-resource endpoint. Shares the exact same
+    policy — never reimplemented as a second, potentially-drifting
+    check."""
+    try:
+        assert_letter_access(user, letter)
+        return True
+    except (DepartmentAccessDeniedError, ClassifiedAccessDeniedError):
+        return False

@@ -15,7 +15,10 @@ at the service layer, not a schema change.
 load these collections (or act on them if already loaded) when a Department
 is deleted — it defers entirely to the database's `ON DELETE RESTRICT` on
 `users.department_id` / `user_authorizations.department_id` /
-`letters.department_id`. Without it, the ORM's default behavior is to try to
+`letters.recipient_department_id` (Phase 4B rename of the old
+`department_id`; `letters.source_department_id` is RESTRICT-protected too
+but has no collection here — see `Letter.letters`' own comment). Without
+it, the ORM's default behavior is to try to
 set each child's foreign key to NULL before the delete, which — for `users`
 specifically — trips the unrelated `ck_users_role_department_pairing` CHECK
 constraint instead of ever reaching the FK restriction, producing a
@@ -76,8 +79,15 @@ class Department(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     user_authorizations: Mapped[List["UserAuthorization"]] = relationship(
         back_populates="department", passive_deletes="all"
     )
+    # Recipient side only — `Letter.source_department` (Phase 4B) is a
+    # separate, one-directional relationship with no corresponding
+    # collection here; a department's role as a letter's *source* carries
+    # no isolation/ownership meaning, unlike being its recipient. See
+    # docs/architecture/letter-registry.md §2.1.
     letters: Mapped[List["Letter"]] = relationship(
-        back_populates="department", passive_deletes="all"
+        back_populates="recipient_department",
+        foreign_keys="Letter.recipient_department_id",
+        passive_deletes="all",
     )
 
     def __repr__(self) -> str:  # pragma: no cover - debug convenience only

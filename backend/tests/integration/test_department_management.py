@@ -311,8 +311,12 @@ def test_deactivation_does_not_delete_letters(client, db_session):
     department = make_department(db_session, name="Preserve Letters Dept")
     recorder = _make_regular_user(db_session, department, email="letter.recorder@example.gov")
     letter = Letter(
-        department_id=department.id,
-        received_from="Sender",
+        reference_number=f"REF-{uuid.uuid4()}",
+        recipient_department_id=department.id,
+        source_name="Sender",
+        sender_name="Sender Name",
+        sender_designation="Sender Designation",
+        sender_department="Sender Department",
         received_at=datetime.now(timezone.utc),
         recorded_by=recorder.id,
     )
