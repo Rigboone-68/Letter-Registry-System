@@ -7,24 +7,87 @@ supervisor as-is.
 
 ## Current Phase
 
-**Phase 3B.3 — Admin Management.** Complete (third slice of Phase 3B).
+**Phase 3B.4 — User Management & Approval.** Complete — the fourth and
+final slice of Phase 3B (Roles & Access Management), which is now fully
+delivered.
 
-Phase 3B.3 delivered System-Admin-only Admin lifecycle management:
-authorizing a candidate email, the candidate signing up through the
-*existing* signup workflow, System Admin approval, and
-deactivate/reactivate/department-transfer. `UserAuthorization` gained one
-new column (`purpose`) rather than a parallel table, and no new
-authentication workflow was introduced. Full design in
-`docs/architecture/admin-management.md`.
+Phase 3B.4 delivered Admin-only User lifecycle management, scoped to the
+Admin's own department: authorizing a candidate email, the candidate
+signing up through the *existing* signup workflow, the Admin's approval,
+deactivate/reactivate, and — the project's first — explicit authorization
+**revocation**. This is also the first phase where a department-scoped
+role (`ADMIN`, not the global `SYSTEM_ADMIN`) is the caller for every
+endpoint, so cross-department isolation (`assert_department_access`,
+Phase 3B.1) is exercised as a genuine resource-level check for the first
+time. Full design in `docs/architecture/user-management.md`.
 
-**Not in scope for this phase, and not added:** User management/approval
-APIs, letter CRUD, file uploads, dashboards, notification generation,
-frontend functionality, or System Admin handover — see "Pending" below and
-`docs/architecture/admin-management.md` §14.
+**Not in scope for this phase, and not added:** letter CRUD, file uploads,
+dashboards, notification generation, frontend functionality, System Admin
+handover, or a revoke endpoint for ADMIN-purpose authorizations — see
+"Pending" below and `docs/architecture/user-management.md` §12.
 
 ## Completed
 
-### Phase 3B.3 — Admin management
+### Phase 3B.4 — User management
+
+* **User authorization, ADMIN only** — `POST /api/v1/users/authorizations`.
+  Unlike Admin authorization, the request has no `department_id` field at
+  all — it is always derived from the calling Admin's own department.
+  Validates the Admin's own department is `ACTIVE`, the email doesn't
+  already belong to an active User, and no unresolved USER authorization
+  already exists for it.
+* **User signup reuses the existing `/auth/signup` endpoint** — no third
+  authentication workflow. Race-safety (`SELECT ... FOR UPDATE`) is
+  unchanged from Phase 3A/3B.3 and re-verified for an Admin-issued
+  USER-purpose authorization specifically with a genuine two-thread
+  concurrency test.
+* **User approval** — `POST /api/v1/users/{id}/approve`. Not idempotent,
+  same one-time-event reasoning as Admin approval (Phase 3B.3).
+* **Deactivate/reactivate, both idempotent** — reactivation additionally
+  requires the Admin's *own* department to be `ACTIVE`, re-checked on
+  every call. Deactivation is unconditional — allowed even if the Admin's
+  department has itself been deactivated, a deliberate design decision
+  (see "Three isolation strengths" below) since lock-down actions must
+  stay possible precisely when a department is in a bad state.
+* **Three different isolation strengths, not interchangeable** — read and
+  lock-down actions (list/get/deactivate/revoke) require only that the
+  target belong to the Admin's own department; state-elevating actions
+  (authorize/approve/reactivate) additionally require the Admin's own
+  department to be `ACTIVE`. Documented and tested explicitly, not just an
+  incidental side effect — see `docs/architecture/user-management.md` §5.
+* **The project's first authorization revocation endpoint** —
+  `DELETE /api/v1/users/authorizations/{id}`. `AuthorizationStatus.REVOKED`
+  has existed since Phase 2 but had no endpoint setting it until now.
+  Creator-scoped (only the Admin who created an authorization may revoke
+  it — stricter than the department-wide visibility of the listing
+  endpoint), idempotent for an already-revoked row, rejected (`409`) for
+  an already-used one, and never deletes the row.
+* **Cross-department isolation exercised against a real resource for the
+  first time** — every prior phase's caller (`SYSTEM_ADMIN`) was global,
+  so `assert_department_access` had only ever run against
+  verification-only endpoints or short-circuited via the SYSTEM_ADMIN
+  bypass. An Admin in Department A gets an identical `404` (not `403`)
+  attempting to view, approve, deactivate, or reactivate a User in
+  Department B — indistinguishable from that id not existing at all,
+  hiding cross-department existence, not merely blocking action on it.
+* **User self-protection requires no special-case code** — the same
+  structural pattern Phase 3B.3 used for System Admin protection:
+  `find_user_by_id` filters by role `USER`, so an Admin's own id (role
+  `ADMIN`) 404s on every lifecycle endpoint without a dedicated
+  "is this the caller's own id" check.
+* **53 new automated tests** against a real PostgreSQL test database,
+  covering every item in the brief's Authorization/Workflow/Listing/
+  Details/Approval/Deactivation/Reactivation/Revocation/Cross-Department-
+  Security/Self-Protection/Lifecycle/Race-Safety lists, plus a full
+  live-server verification against `lrs_dev` (authorize → signup →
+  pending login rejected → approve → login → access → deactivate → stale
+  JWT rejected → reactivate → same stale JWT works again; cross-department
+  rejection; revoked authorization cannot sign up).
+* **Documentation**: `docs/architecture/user-management.md` (new), plus
+  updates to the root README, `backend/README.md`, `docs/README.md`, and
+  `docs/architecture/overview.md`.
+
+### Phase 3B.3 — Admin management (see previous entries below for detail)
 
 * **Admin authorization, SYSTEM_ADMIN only** —
   `POST /api/v1/admins/authorizations`. Validates the destination
@@ -196,6 +259,51 @@ detail behind each:
 | 5 | `letter_documents.uploaded_by` had no index, unlike every other User-referencing FK in the schema | Added (`ix_letter_documents_uploaded_by`) |
 | 6 | The role/department `CHECK` constraint hardcoded role strings, duplicating `UserRole`'s values | Model-side constraint now built from `UserRole.*.value`; the migration's own copy is deliberately still a literal (migrations are frozen snapshots) — see `app/models/user.py` docstring |
 
+### Validation performed — Phase 3B.4 hardening pass
+
+A follow-up pass after Phase 3B.4's own report, scoped to exactly three
+things: (1) fix the one flaky test noted in that report, (2) assess
+whether the documented "no ADMIN-purpose authorization revocation" gap is
+an actual vulnerability, (3) verify the "`AuthorizationStatus.REVOKED`
+existed since Phase 2" claim against real git/migration history. No
+Letter functionality, frontend, System Admin handover, or new business
+functionality was touched.
+
+| Check | Result |
+|---|---|
+| `pytest` (full suite) against `lrs_test` | **277 passed**, 0 failed, 0 skipped (274 baseline + 3 new regression tests proving the revocation-scope questions below) |
+| Full suite re-run 5 times consecutively | 277/277 passed every time — no flakiness |
+| `test_me_with_tampered_token_is_rejected` alone, 20 consecutive isolated runs | 20/20 passed — deterministic (was previously observed to fail ~6% of the time) |
+| `alembic check` | "No new upgrade operations detected" — this pass touched only test code and documentation, no models or schema |
+| `git log` / `git log -p` on `app/models/enums.py` and `backend/alembic/versions/*.py` | Confirmed `AuthorizationStatus.REVOKED` was present in the very first Phase 2 baseline migration (`3da4b7ee8167`, `down_revision=None`) — both the Python enum and the actual PostgreSQL native enum type. Never modified by the hardening migration (`e8a5cea2ccc6`) or the Phase 3B.3 migration (`a223396c9eac`). The Phase 3B.4 report's claim was **accurate**; no documentation correction needed |
+| ADMIN-purpose authorization revocation security assessment (7 questions, see `docs/architecture/user-management.md` §13) | **No vulnerability found.** Absence of an ADMIN-purpose revoke endpoint is a documented capability gap, not an exploitable hole — see that section for the full reasoning. Left unimplemented, as instructed |
+| `git status` review | No secrets tracked; `.env` confirmed gitignored |
+
+All data created during manual verification was deleted from `lrs_dev`
+afterward — `lrs_dev` was already empty from the prior pass (no new manual
+`lrs_dev` verification was needed for this hardening pass, since nothing
+it touched is only reachable via a running server).
+
+### Validation performed — Phase 3B.4
+
+All against the same real, local, disposable PostgreSQL 17 instance used
+for every prior phase (`lrs_dev` for manual checks, `lrs_test` for the
+suite — never a shared or departmental database):
+
+| Check | Result |
+|---|---|
+| `pytest` (full suite) against `lrs_test` | **274 passed**, 0 failed, 0 skipped at the time of the original 3B.4 report. A subsequent hardening pass found and fixed one pre-existing flaky test (`test_me_with_tampered_token_is_rejected`, Phase 3A) — see "Validation performed — Phase 3B.4 hardening pass" below for the corrected, deterministic result (277 passed, 5/5 consecutive full-suite runs) |
+| `alembic check` | "No new upgrade operations detected" — Phase 3B.4 required no schema change; `AuthorizationStatus.REVOKED` already existed on the enum since Phase 2, this phase is simply the first to set it |
+| FastAPI app startup + `GET /health` | 200 OK |
+| Phase 3A/3B.1/3B.2/3B.3 tests re-run as part of the full suite | All still pass — no regression |
+| Full User lifecycle, run for real against `lrs_dev` via real HTTP with real minted JWTs, two departments and two Admins | Authorize (department correctly derived from the Admin, not client-supplied) → `201`; candidate signup → role `USER`, status `PENDING_APPROVAL`; login while pending → `403`; Admin approves → `200`, status `ACTIVE`; login → valid JWT; protected access → `200`; Admin deactivates → `200`; same stale JWT → `401`; Admin reactivates → `200`; same stale JWT → `200` again (status re-checked live, no re-login needed) |
+| Cross-department rejection, run for real | Admin A: `GET`/`approve`/`deactivate` on a Department B User all → `404` (not `403` — existence hidden); Admin A's user listing excludes Department B entirely |
+| Revocation, run for real | Admin A creates an authorization → Admin B (different department) attempts revoke → `404`; Admin A revokes own authorization → `200`, `REVOKED`; signup attempt against the revoked authorization → `403` |
+| `git status` review | No secrets tracked; `.env` confirmed gitignored |
+
+All data created during manual verification was deleted from `lrs_dev`
+afterward — `lrs_dev` is empty again.
+
 ### Validation performed — Phase 3B.3
 
 All against the same real, local, disposable PostgreSQL 17 instance used
@@ -287,44 +395,44 @@ afterward — `lrs_dev` is empty again.
 
 ## In Progress
 
-Nothing — Phase 3B.3 is complete and the project is paused pending
-explicit instruction to begin the next slice, per the standing project
-rule that phases are reviewed before the next begins.
+Nothing — Phase 3B.4 is complete, Phase 3B (Roles & Access Management) is
+now fully delivered end-to-end, and the project is paused pending explicit
+instruction to begin Phase 4, per the standing project rule that phases
+are reviewed before the next begins.
 
-## Pending (Phase 3B.4+ and later)
+## Pending (Phase 4 and later)
 
-* **User management & approval (Phase 3B.4)** — an Admin approving a
-  `PENDING_APPROVAL` User into `ACTIVE`, deactivating/reactivating Users,
-  and issuing `USER`-purpose `UserAuthorization` records themselves (all
-  currently require direct database access, or System-Admin-only
-  equivalents for Admins). `require_admin_or_system_admin` +
-  `require_department_access`/`assert_department_access` already exist
-  for these to use, so an Admin can only be allowed to act on their own
-  department's Users; `UserAuthorization.purpose` (Phase 3B.3) already
-  distinguishes the two authorization kinds.
-* **A revoke endpoint for `UserAuthorization`** — no endpoint in this
-  project can explicitly set an authorization's `status` to `REVOKED`;
-  see `docs/architecture/admin-management.md` §14, "Known limitations".
-  Natural Phase 3B.4-adjacent work.
 * **Letter CRUD and any other real departmental business resource (Phase
   4)** — the first phase that will call `assert_department_access`
-  against something other than a management/verification resource; see
-  `docs/architecture/authorization.md` §4 for the pattern it should
-  follow.
+  against something other than a management resource (Departments,
+  Admins, Users). The isolation pattern itself is now proven end-to-end
+  against a real resource (Phase 3B.4); see
+  `docs/architecture/authorization.md` §4 and
+  `docs/architecture/user-management.md` §5-6 for the pattern Phase 4
+  should reuse.
+* **A revoke endpoint for ADMIN-purpose `UserAuthorization` rows** — Phase
+  3B.4 added revocation only for the USER-purpose path
+  (`DELETE /api/v1/users/authorizations/{id}`); a System Admin still
+  cannot revoke a still-`ACTIVE`, non-expired ADMIN-purpose authorization.
+  The repository layer is already purpose-agnostic
+  (`find_by_id`/`list_by_department`/`revoke`), so this needs only a new
+  endpoint plus a creator/department check mirroring
+  `docs/architecture/user-management.md` §9 — see that section's "Known
+  limitations".
 * **System Admin handover workflow** — see
   `docs/architecture/authentication.md` §9.
 * **Automatic audit logging** of authorization-sensitive actions,
-  including the four department events (Phase 3B.2) and five Admin events
-  (Phase 3B.3, `ADMIN_AUTHORIZATION_CREATED`/`APPROVED`/`DEACTIVATED`/
-  `REACTIVATED`/`DEPARTMENT_CHANGED`) — see
-  `docs/architecture/authorization.md` §12,
-  `docs/architecture/department-management.md` §10, and
-  `docs/architecture/admin-management.md` §13 for the full list.
-* **Department list pagination** — deliberately not implemented in Phase
-  3B.2, but the response envelope (`{"items": [...], "total": N}`) was
-  shaped so adding it later needs no redesign; see
-  `docs/architecture/department-management.md` §3. The same is true of
-  Admin list pagination (Phase 3B.3).
+  including the four department events (Phase 3B.2), five Admin events
+  (Phase 3B.3), and five User events (Phase 3B.4,
+  `USER_AUTHORIZATION_CREATED`/`REVOKED`/`APPROVED`/`DEACTIVATED`/
+  `REACTIVATED`) — see `docs/architecture/authorization.md` §12,
+  `docs/architecture/department-management.md` §10,
+  `docs/architecture/admin-management.md` §13, and
+  `docs/architecture/user-management.md` §12 for the full list.
+* **Department/Admin/User list pagination** — deliberately not
+  implemented in any phase so far, but every response envelope
+  (`{"items": [...], "total": N}`) was shaped so adding it later needs no
+  redesign; see `docs/architecture/department-management.md` §3.
 * **Clearing an already-set department `code` back to `null`** — not
   possible through `PATCH /api/v1/departments/{id}` today; see
   `docs/architecture/department-management.md` §3, "Known limitation".
@@ -333,15 +441,16 @@ rule that phases are reviewed before the next begins.
   `classifications.name`. Not fixed, since nothing currently depends on
   either constraint's name — the same technique applies if a future
   Category/Classification management phase ever needs it.
-* **An email can be authorized as an Admin candidate while it already
-  belongs to an active User** — a narrow, accepted edge case, not a
-  security issue (the existing duplicate-email check at signup already
-  prevents any real inconsistency); see
-  `docs/architecture/admin-management.md` §3.
-* **Frontend authentication/authorization/department/Admin-management
-  UI** — login/signup pages, protected routing, token storage, role-based
-  show/hide. See `docs/architecture/authentication.md` §15 for why this
-  remains deliberately deferred.
+* **An email can be authorized as an Admin (or User) candidate while it
+  already belongs to an active User (or Admin)** — a narrow, accepted edge
+  case in both directions, not a security issue (the existing
+  duplicate-email check at signup already prevents any real
+  inconsistency); see `docs/architecture/admin-management.md` §3 and
+  `docs/architecture/user-management.md` §4.
+* **Frontend authentication/authorization/department/Admin/User-
+  management UI** — login/signup pages, protected routing, token storage,
+  role-based show/hide. See `docs/architecture/authentication.md` §15 for
+  why this remains deliberately deferred.
 
 ## Pending Confirmation (from S&IT)
 
@@ -403,10 +512,12 @@ documented, minimal, reversible assumption. See `docs/database/schema.md`
   until it expires; deactivating the account it belongs to stops it being
   *useful* immediately (re-checked on every request) but doesn't revoke the
   token itself. See `docs/architecture/authentication.md` §16.
-* **`UserAuthorization` records currently require direct database access
-  to create** (Phase 3A) — there is no Admin-facing API for this yet; it's
-  Phase 3B "Admin management" work. Manual verification of the signup flow
-  in this phase created one directly via the ORM for exactly this reason.
+* **`UserAuthorization` records no longer require direct database access
+  to create** (resolved: ADMIN-purpose via Phase 3B.3, USER-purpose via
+  Phase 3B.4) — both now go through `/api/v1/admins/authorizations` and
+  `/api/v1/users/authorizations` respectively. Kept here for history: this
+  entry described a real gap during Phase 3A, when manual verification of
+  the signup flow had to create an authorization directly via the ORM.
 * **Bootstrap has no race-condition hardening beyond a single transaction**
   (Phase 3A) — an accepted, documented simplification since it's a rare,
   CLI-only, operator-run action, unlike signup which is fully race-safe.
@@ -419,12 +530,14 @@ documented, minimal, reversible assumption. See `docs/database/schema.md`
   the interactive CLI wrapper for this reason.
 * **No real departmental *business* resource exists yet** — Phase 3B.2
   gave `require_system_admin` its first real resource (departments
-  themselves), but `require_department_access`/`assert_department_access`
-  (the department-isolation check ADMIN/USER will use) is still only
-  proven against the Phase 3B.1 verification-only endpoints
-  (`app/api/v1/endpoints/dev_authz_test.py`) — no Letter or other
-  departmental business resource exists yet. Not a defect — see
-  `docs/architecture/authorization.md` §7, and Phase 4 in "Pending" above.
+  themselves), and Phase 3B.4 finally exercised
+  `assert_department_access` as a genuine cross-department, resource-level
+  check (User accounts) rather than only the Phase 3B.1 verification-only
+  endpoints. Departments/Admins/Users are all still *management*
+  resources, though — no Letter or other departmental *business* resource
+  exists yet. Not a defect — see `docs/architecture/authorization.md` §7,
+  `docs/architecture/user-management.md` §5-6, and Phase 4 in "Pending"
+  above.
 * **No automatic audit logging** of authorization-sensitive actions —
   deliberately out of scope for both Phase 3B.1 and 3B.2 (brief §15/§21);
   see `docs/architecture/authorization.md` §12 and
@@ -445,42 +558,56 @@ documented, minimal, reversible assumption. See `docs/database/schema.md`
   at current data volumes; the response envelope was shaped so adding it
   later needs no redesign. See `docs/architecture/department-management.md`
   §3.
-* **No real departmental *business* resource exists for
-  `require_department_access` yet, even after Phase 3B.3** — Admin
-  accounts (this phase) and Departments (Phase 3B.2) are both management
-  resources; `assert_department_access` is still only proven against the
-  Phase 3B.1 verification-only endpoints for the "acting on a Letter or
-  similar" case. Not a defect — Phase 4 is still the first phase with a
-  real departmental business resource. See
-  `docs/architecture/authorization.md` §7.
-* **No way to revoke a still-`ACTIVE`, non-expired `UserAuthorization`**
-  (Phase 3B.3) — no endpoint sets one to `REVOKED`. See
-  `docs/architecture/admin-management.md` §14.
+* **No way to revoke a still-`ACTIVE`, non-expired ADMIN-purpose
+  `UserAuthorization`** (Phase 3B.3 gap, still open after Phase 3B.4) — no
+  endpoint sets one to `REVOKED`. The equivalent USER-purpose gap was
+  closed in Phase 3B.4 (`DELETE /api/v1/users/authorizations/{id}`); the
+  repository layer behind it is already purpose-agnostic, so an
+  Admin-management equivalent needs only a new endpoint. See
+  `docs/architecture/user-management.md` §12, "Known limitations".
 * **An email can be authorized as an Admin candidate while already
-  belonging to an active User** (Phase 3B.3) — narrow, accepted edge case;
-  see `docs/architecture/admin-management.md` §3.
+  belonging to an active User, and vice versa** (Phase 3B.3/3B.4) —
+  narrow, accepted edge case in both directions; see
+  `docs/architecture/admin-management.md` §3 and
+  `docs/architecture/user-management.md` §4.
 * **No automatic audit logging** of authorization-sensitive actions —
-  deliberately out of scope for Phase 3B.1/3B.2/3B.3 (brief §15/§21/§25);
-  see `docs/architecture/authorization.md` §12,
-  `docs/architecture/department-management.md` §10, and
-  `docs/architecture/admin-management.md` §13 for the full list scoped for
+  deliberately out of scope for Phase 3B.1/3B.2/3B.3/3B.4 (brief
+  §15/§21/§25, and this phase's own scope boundary); see
+  `docs/architecture/authorization.md` §12,
+  `docs/architecture/department-management.md` §10,
+  `docs/architecture/admin-management.md` §13, and
+  `docs/architecture/user-management.md` §12 for the full list scoped for
   when the relevant actions exist.
+* **RESOLVED (Phase 3B.4 hardening pass) — `test_me_with_tampered_token_is_rejected`
+  (Phase 3A) was occasionally flaky on a full-suite run.** Root cause
+  confirmed empirically (5,000-trial script): the old technique flipped
+  the *last base64 character* of a 32-byte HMAC-SHA256 signature to a
+  fixed value ('A', or 'B' if already 'A'). That character's low 2 bits
+  are base64 padding, discarded on decode; 'A' (`000000`) and 'B'
+  (`000001`) differ only in that discarded bit. Whenever the signature's
+  real trailing 4 bits already happened to be `0000` (the last char
+  already 'A', ~1/16 of random signatures — measured 6.10% empirically),
+  the "fall back to B" branch silently produced a byte-identical
+  signature, so the server correctly accepted it and the test's `401`
+  assertion failed. This was a **test-construction bug, not a JWT
+  verification weakness** — `app/core/security.py:decode_access_token`
+  was never modified. The test now decodes the signature to raw bytes,
+  XORs one real byte, and re-encodes (`_tamper_signature`,
+  `tests/integration/test_auth_current_user.py`) — verified deterministic
+  across 5,000 trials and 20 consecutive isolated test runs.
 
 ## Next Recommended Phase
 
-**Phase 3B.4 — User Management & Approval**, the final slice of Phase 3B:
-Admin endpoints to approve `PENDING_APPROVAL` Users, deactivate/reactivate
-them, and issue `USER`-purpose `UserAuthorization` records — using
-`require_admin_or_system_admin` and `require_department_access`/
-`assert_department_access` (both already built) so an Admin can only act
-on their own department's Users, and `UserAuthorization.purpose` (already
-built, Phase 3B.3) to distinguish USER from ADMIN authorizations without
-any further schema change. Recommended next because it completes the
-account-lifecycle story Phase 3A started (someone other than System Admin
-can finally approve the common case — a regular User signup — the way the
-brief's original workflow diagram always intended), and because Phase 4
-(Letter CRUD) will assume a population of `ACTIVE` Users exists to record
-letters, which currently requires System Admin to do by hand via the
-Admin-only tools built so far. See
-`docs/architecture/admin-management.md` §14 for the full remaining
-Phase 3B/4 sequence.
+**Phase 4 — Letter Registry Core.** Phase 3B (Roles & Access Management)
+is now fully delivered end-to-end: System Admin manages departments
+(3B.2) and Admins (3B.3); Admins manage Users within their own department
+(3B.4). A complete, tested population of `ACTIVE` Users, Admins, and
+departments can now be built entirely through the API, with no direct
+database access required for any account-lifecycle step. Phase 4 is
+recommended next because it is the first phase that adds a real
+departmental *business* resource (the Letter itself) for
+`assert_department_access` to protect — see
+`docs/architecture/authorization.md` §4 and
+`docs/architecture/user-management.md` §5-6 for the isolation pattern it
+should reuse, now proven end-to-end against a real resource rather than
+only verification-only endpoints or other management resources.

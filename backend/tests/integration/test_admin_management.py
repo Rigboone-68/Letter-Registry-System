@@ -184,6 +184,27 @@ def test_invalid_department_rejected(client, db_session):
     assert response.status_code == 404
 
 
+def test_client_cannot_inject_purpose_on_admin_authorization(client, db_session):
+    """Hardening-pass regression (Phase 3B.4 review, answers "can a
+    malicious client alter authorization purpose?" for the Admin side —
+    see docs/architecture/user-management.md §13): `AdminAuthorizationCreate`
+    has no `purpose` field and sets `extra="forbid"`; purpose is always
+    hardcoded server-side to `ADMIN` in
+    app/services/admin_service.py:authorize_admin."""
+    department = make_department(db_session, name="Workflow Dept 2B")
+    sys_admin = _make_system_admin(db_session, email="sys.admin.wf2b@example.gov")
+    response = client.post(
+        AUTHORIZATIONS_URL,
+        json={
+            "email": "wf2b.candidate@example.gov",
+            "department_id": str(department.id),
+            "purpose": "USER",
+        },
+        headers=_auth_headers(sys_admin),
+    )
+    assert response.status_code == 422  # extra="forbid" — no purpose field exists
+
+
 def test_inactive_department_rejected(client, db_session):
     department = make_department(db_session, name="Workflow Dept 3", status=ActiveStatus.INACTIVE)
     sys_admin = _make_system_admin(db_session, email="sys.admin.wf3@example.gov")

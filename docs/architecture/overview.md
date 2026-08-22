@@ -1,16 +1,20 @@
 # Architecture Overview — Roles, Hierarchy, and Department Isolation
 
-**Status:** Phase 3B.3 complete. This document explains the roles and
-hierarchy the database schema is built to support, how a caller's identity
-is established (Phase 3A), how role/department authorization decisions are
+**Status:** Phase 3B.4 complete — Phase 3B (Roles & Access Management) is
+now fully delivered. This document explains the roles and hierarchy the
+database schema is built to support, how a caller's identity is
+established (Phase 3A), how role/department authorization decisions are
 enforced on top of that identity (Phase 3B.1), how departments themselves
-are managed (Phase 3B.2), and — as of Phase 3B.3 — how Admin accounts are
-authorized, approved, and managed by System Admin. See §4, "What is
-implemented vs. deferred", [`authentication.md`](authentication.md) for
-authentication, [`authorization.md`](authorization.md) for the RBAC/
-department-isolation design, [`department-management.md`](department-management.md)
-for department CRUD, and [`admin-management.md`](admin-management.md) for
-the Admin lifecycle.
+are managed (Phase 3B.2), how Admin accounts are authorized, approved, and
+managed by System Admin (Phase 3B.3), and — as of Phase 3B.4 — how regular
+User accounts are authorized, approved, and managed by an Admin, scoped to
+that Admin's own department. See §4, "What is implemented vs. deferred",
+[`authentication.md`](authentication.md) for authentication,
+[`authorization.md`](authorization.md) for the RBAC/department-isolation
+design, [`department-management.md`](department-management.md) for
+department CRUD, [`admin-management.md`](admin-management.md) for the
+Admin lifecycle, and [`user-management.md`](user-management.md) for the
+User lifecycle.
 
 ## 1. The hierarchy
 
@@ -51,29 +55,35 @@ Categories and Classifications remains future work (§4).
 Bound to exactly one department (`users.department_id` is required for this
 role, same constraint), and — as of Phase 3B.3 — a department may have any
 number of Admins (zero, one, or many; no uniqueness constraint enforces a
-single Admin per department). Will eventually manage that department's
-Users and be able to edit that department's Letter records — not yet
-implemented (Phase 3B.4/4). An Admin **cannot** authorize or manage other
-Admins, approve or create accounts, or change their own role or
-department — every Admin-management operation requires `SYSTEM_ADMIN`;
-see [`admin-management.md`](admin-management.md) §11. An Admin is enforced
-to be able to act only within their own department —
+single Admin per department). As of Phase 3B.4, an Admin authorizes User
+candidates, approves them, and deactivates/reactivates User accounts,
+scoped strictly to their own department (`/api/v1/users*` —
+[`user-management.md`](user-management.md)). Will eventually be able to
+edit that department's Letter records — not yet implemented (Phase 4). An
+Admin **cannot** authorize or manage other Admins, approve or create
+Admin accounts, or change their own role or department — every
+Admin-management operation still requires `SYSTEM_ADMIN`; see
+[`admin-management.md`](admin-management.md) §11. An Admin is enforced to
+be able to act only within their own department —
 [`authorization.md`](authorization.md) §3 — and only while that department
 is `ACTIVE`; see [`department-management.md`](department-management.md)
-§5. There is still no API for an Admin to manage Users or issue
-`UserAuthorization` records themselves — that remains Phase 3B.4.
+§5 and [`user-management.md`](user-management.md) §5 for how that rule
+splits into three different strengths depending on the User-management
+action.
 
 ### User
 
 Also bound to exactly one department. Will eventually be able to register
 letters for their own department and edit their own letter records — but
-not another department's, and not another user's letters. A User account
-is created via signup against an Admin-issued `UserAuthorization`, starting
-`PENDING_APPROVAL` and requiring a (not yet implemented) Admin approval
-step to become usable — see [`authentication.md`](authentication.md) §5.
-Department-isolation enforcement for a User is in place at the dependency
-layer — [`authorization.md`](authorization.md) §3 — ready for Phase 4's
-Letter endpoints to use, and, as of Phase 3B.2, also blocks a User's
+not another department's, and not another user's letters (Phase 4). A
+User account is created via signup against an Admin-issued
+`UserAuthorization`, starting `PENDING_APPROVAL` — as of Phase 3B.4, an
+Admin (scoped to their own department) approves it, the same way a System
+Admin approves an Admin candidate — see [`authentication.md`](authentication.md)
+§5 and [`user-management.md`](user-management.md) §1. Department-isolation
+enforcement for a User is in place at the dependency layer —
+[`authorization.md`](authorization.md) §3 — ready for Phase 4's Letter
+endpoints to use, and, as of Phase 3B.2, also blocks a User's
 department-scoped operations whenever their department is `INACTIVE` —
 [`department-management.md`](department-management.md) §5 — without
 touching the User row itself.
@@ -236,29 +246,56 @@ in the meantime.
   Admins/Department-Transfer/Self-Protection/System-Admin-Protection/
   Race-Safety lists.
 
+### Implemented (Phase 3B.4 — User management)
+
+* `POST /api/v1/users/authorizations`, `GET /api/v1/users/authorizations`,
+  `DELETE /api/v1/users/authorizations/{id}`, `GET /api/v1/users`,
+  `GET /api/v1/users/{id}`, `POST .../approve`, `.../deactivate`,
+  `.../reactivate` — all `ADMIN` only, scoped to the caller's own
+  department. Full design in [`user-management.md`](user-management.md).
+* **The first phase where `assert_department_access` (Phase 3B.1) is
+  exercised as a genuine resource-level, cross-department check** — every
+  prior caller (`SYSTEM_ADMIN`) was global, so this machinery had only
+  ever run against verification-only endpoints or short-circuited via the
+  `SYSTEM_ADMIN` bypass. `app/services/user_service.py` uses three
+  different isolation strengths depending on the action (read/lock-down
+  vs. state-elevating) — see [`user-management.md`](user-management.md)
+  §5.
+* **The project's first authorization revocation endpoint** —
+  `AuthorizationStatus.REVOKED` has existed on the enum since Phase 2 but
+  was never settable until now. Creator-scoped (only the Admin who created
+  an authorization may revoke it), idempotent for an already-revoked row,
+  rejected for an already-used one — see
+  [`user-management.md`](user-management.md) §9.
+* `app/services/user_service.py`, extensions to the existing
+  `UserRepository`/`UserAuthorizationRepository` (no new repository
+  created, same convention Phase 3B.3 established), `app/schemas/user.py`
+  — same layered architecture, reusing `require_admin` (Phase 3B.1) rather
+  than adding a new dependency.
+* 53 new tests against a real PostgreSQL test database, covering every
+  item in the brief's Authorization/Workflow/Listing/Details/Approval/
+  Deactivation/Reactivation/Revocation/Cross-Department-Security/Self-
+  Protection/Lifecycle/Race-Safety lists.
+
 ### Explicitly deferred (not this phase)
 
 * **Letter CRUD (Phase 4)** is still the first phase that will call
-  `assert_department_access` / `require_department_access` against a real
-  business resource rather than a verification-only endpoint — Phase
-  3B.2/3B.3's protected resources are departments and Admin accounts
-  themselves (management resources), not yet a departmental *business*
-  resource like a Letter.
-* **User management / approval (Phase 3B.4)** — an Admin approving a
-  `PENDING_APPROVAL` User, deactivating/reactivating one, or issuing a
-  `USER`-purpose `UserAuthorization` via API. The role checks this will
-  use already exist (`require_admin_or_system_admin`,
-  `require_department_access`), and `UserAuthorization.purpose` already
-  supports it, but no endpoint calling either for this purpose exists yet.
+  `assert_department_access` against a real *business* resource — Phase
+  3B.2/3B.3/3B.4's protected resources are departments, Admin accounts,
+  and User accounts (all management resources), not yet a Letter.
 * System Admin handover.
 * Dashboards, notification generation, file upload handling, or automatic
   audit-log generation — see [`authorization.md`](authorization.md) §12,
-  [`department-management.md`](department-management.md) §10, and
-  [`admin-management.md`](admin-management.md) §13 for which future
-  actions will need an audit event once they exist.
-* Full frontend authentication/authorization/department/Admin-management
-  UI — deliberately deferred, see
+  [`department-management.md`](department-management.md) §10,
+  [`admin-management.md`](admin-management.md) §13, and
+  [`user-management.md`](user-management.md) §12 for which future actions
+  will need an audit event once they exist.
+* Full frontend authentication/authorization/department/Admin/User-
+  management UI — deliberately deferred, see
   [`authentication.md`](authentication.md) §15; unchanged this phase.
+* **A revoke endpoint for ADMIN-purpose `UserAuthorization` rows** — Phase
+  3B.4 added revocation only for USER-purpose authorizations; see
+  [`user-management.md`](user-management.md) §12, "Known limitations".
 
 See `docs/PROJECT_STATUS.md` for the current phase-by-phase plan and what's
 pending S&IT confirmation before some of these can be designed.
@@ -290,5 +327,10 @@ fourth repository — it extends the existing `UserRepository`/
 `UserAuthorizationRepository` instead, since Admin accounts are `User`
 rows and Admin authorizations are `UserAuthorization` rows; a dedicated
 `AdminRepository` would have queried the same two tables a second way for
-no benefit. All of it uses this same structure rather than inventing a
+no benefit. Phase 3B.4 adds a fourth slice
+(`app/api/v1/endpoints/users.py` → `app/services/user_service.py`) on the
+same principle — regular User accounts and their authorizations are the
+same two tables again, so this phase extends `UserRepository`/
+`UserAuthorizationRepository` a second time rather than adding a fifth
+repository. All of it uses this same structure rather than inventing a
 second one, per the brief's explicit instruction in every phase so far.

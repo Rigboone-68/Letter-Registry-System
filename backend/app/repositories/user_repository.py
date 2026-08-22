@@ -91,3 +91,35 @@ class UserRepository:
 
     def update_department(self, user: User, department_id: uuid.UUID) -> None:
         user.department_id = department_id
+
+    def find_user_by_id(self, user_id: uuid.UUID) -> Optional[User]:
+        """`None` when no such `User` row exists, when one exists but isn't
+        role `USER` — same indistinguishable-404 reasoning as
+        `find_admin_by_id`. Deliberately does *not* filter by department
+        here (that's the caller's job, in app/services/user_service.py) so
+        this method stays a plain role-scoped lookup, reusable regardless
+        of which department is doing the asking."""
+        user = self.session.get(User, user_id)
+        if user is None or user.role != UserRole.USER:
+            return None
+        return user
+
+    def list_users(
+        self,
+        *,
+        department_id: uuid.UUID,
+        status_filter: Optional[UserStatus] = None,
+    ) -> List[User]:
+        """Unlike `list_admins`, `department_id` is required, not optional:
+        an Admin can only ever list Users in their own department (brief),
+        so there is no "list across all departments" case here for a
+        keyword-default to represent — the scoping is enforced at this
+        call site, not just at the API layer, as defense in depth."""
+        stmt = (
+            select(User)
+            .where(User.role == UserRole.USER, User.department_id == department_id)
+            .order_by(User.created_at.asc())
+        )
+        if status_filter is not None:
+            stmt = stmt.where(User.status == status_filter)
+        return list(self.session.execute(stmt).scalars().all())

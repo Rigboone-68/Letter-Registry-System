@@ -112,3 +112,57 @@ class EmailAlreadyActiveAdminError(ServiceError):
 class UnresolvedAdminAuthorizationExistsError(ServiceError):
     """This email already has an ACTIVE, unexpired ADMIN-purpose
     authorization — see app/services/admin_service.py:authorize_admin."""
+
+
+class UserNotFoundError(ServiceError):
+    """No `User` exists with this id, role `USER`, *and* department_id
+    matching the calling Admin's own department. All three failure modes
+    (no such user, exists but isn't role USER, exists as a USER but in a
+    different department) collapse to this one identical 404 from every
+    endpoint in app/api/v1/endpoints/users.py — the same enumeration-
+    prevention reasoning as AdminNotFoundError, extended one step further
+    to also hide cross-department existence (brief: Admin A must never
+    learn that a given id belongs to *any* account in Department B, not
+    just be blocked from acting on it). This also makes an Admin's own id
+    (role ADMIN, not USER) 404 on every lifecycle endpoint, so "a User/
+    Admin cannot approve/deactivate/reactivate themselves" holds by
+    construction — no separate self-check exists — see
+    app/services/user_service.py."""
+
+
+class UserNotPendingApprovalError(ServiceError):
+    """The target User exists but isn't `PENDING_APPROVAL`, so it cannot
+    be approved (again) — mirrors AdminNotPendingApprovalError; approval
+    is a one-time transition, not an idempotent toggle."""
+
+
+class EmailAlreadyActiveUserError(ServiceError):
+    """This email already belongs to an ACTIVE User — see
+    app/services/user_service.py:authorize_user."""
+
+
+class UnresolvedUserAuthorizationExistsError(ServiceError):
+    """This email already has an ACTIVE, unexpired USER-purpose
+    authorization — see app/services/user_service.py:authorize_user."""
+
+
+class AuthorizationNotFoundError(ServiceError):
+    """No USER-purpose UserAuthorization exists with this id, created by
+    the calling Admin, in the calling Admin's own department. All three
+    failure modes (no such row, exists but is ADMIN-purpose, exists but
+    was created by a different Admin or belongs to a different department)
+    collapse to this one identical 404 — see
+    app/services/user_service.py:revoke_authorization. Only the Admin who
+    created an authorization may revoke it (brief); this is deliberately
+    stricter than department-wide visibility (see
+    app/services/user_service.py:list_authorizations, which has no such
+    restriction)."""
+
+
+class AuthorizationNotRevocableError(ServiceError):
+    """The target authorization has already been consumed (`status ==
+    USED`) — a completed signup cannot be un-done by revoking the
+    authorization that produced it. Revoking an already-`REVOKED`
+    authorization is treated as an idempotent no-op instead (unlike this
+    case), matching the Department/Admin activate-deactivate convention
+    for a "lock things down" action."""

@@ -2,20 +2,22 @@
 
 **A Production of AJ-Labs**
 
-> **Current status: Phase 3B.3 — Admin management.** Local email/password
-> login, JWT access tokens, role-based access control, System-Admin-
-> controlled department management, and now System-Admin-controlled Admin
-> management (authorize a candidate → candidate signs up through the same
-> workflow a regular User uses → System Admin approves → deactivate/
-> reactivate/move between departments — with historical letters proven to
-> keep their original department even after an Admin transfers) are
-> implemented and validated against a real local PostgreSQL instance — see
-> `docs/architecture/authentication.md`, `docs/architecture/authorization.md`,
-> `docs/architecture/department-management.md`, and
-> `docs/architecture/admin-management.md`. **There is still no User
-> management/approval, no letter CRUD, no dashboard, and no upload
-> handling** — those are added module by module in later phases. See
-> `docs/PROJECT_STATUS.md` for the full picture.
+> **Current status: Phase 3B.4 — User management (Phase 3B complete).**
+> Local email/password login, JWT access tokens, role-based access
+> control, System-Admin-controlled department management, System-Admin-
+> controlled Admin management, and now Admin-controlled User management
+> (an Admin authorizes a candidate in their own department → candidate
+> signs up through the same workflow every role uses → the Admin approves
+> → deactivate/reactivate — plus the project's first authorization
+> revocation endpoint) are implemented and validated against a real local
+> PostgreSQL instance — see `docs/architecture/authentication.md`,
+> `docs/architecture/authorization.md`,
+> `docs/architecture/department-management.md`,
+> `docs/architecture/admin-management.md`, and
+> `docs/architecture/user-management.md`. **There is still no letter CRUD,
+> no dashboard, and no upload handling** — those are added module by
+> module in later phases. See `docs/PROJECT_STATUS.md` for the full
+> picture.
 
 ---
 
@@ -98,11 +100,11 @@ letter-registry-system/
 │   │   ├── core/                # config, security (hashing + JWT), logging
 │   │   ├── database/            # declarative base, engine, session
 │   │   ├── models/              # ORM models            (9 core entities — Phase 2)
-│   │   ├── schemas/             # Pydantic contracts    (auth — 3A; department — 3B.2; admin — 3B.3)
+│   │   ├── schemas/             # Pydantic contracts    (auth — 3A; department — 3B.2; admin — 3B.3; user — 3B.4)
 │   │   ├── api/deps.py          # auth + RBAC dependencies (Phase 3A/3B.1)
-│   │   ├── api/v1/endpoints/    # versioned routers     (auth — 3A; dev authz test — 3B.1; departments — 3B.2; admins — 3B.3)
-│   │   ├── services/            # business logic        (auth, bootstrap — 3A; authorization — 3B.1; department — 3B.2; admin — 3B.3)
-│   │   ├── repositories/        # data access           (user, user_authorization — 3A/3B.3; department — 3B.2)
+│   │   ├── api/v1/endpoints/    # versioned routers     (auth — 3A; dev authz test — 3B.1; departments — 3B.2; admins — 3B.3; users — 3B.4)
+│   │   ├── services/            # business logic        (auth, bootstrap — 3A; authorization — 3B.1; department — 3B.2; admin — 3B.3; user — 3B.4)
+│   │   ├── repositories/        # data access           (user, user_authorization — 3A/3B.3/3B.4; department — 3B.2)
 │   │   ├── middleware/          # request ID, audit     (empty — later phases)
 │   │   └── utils/               # shared helpers        (email normalization — Phase 3A)
 │   ├── alembic/                 # migration environment (3 revisions: core schema + hardening + admin authorizations)
@@ -165,15 +167,18 @@ The API starts on `http://localhost:8000`. `/health`, `/docs`, `/redoc`,
 the authentication endpoints (`POST /api/v1/auth/signup`,
 `POST /api/v1/auth/login`, `GET /api/v1/auth/me`), the department
 management endpoints (`/api/v1/departments*`, SYSTEM_ADMIN only), the
-Admin management endpoints (`/api/v1/admins*`, SYSTEM_ADMIN only), and
-five verification-only authorization endpoints (`/api/v1/auth/test/*` —
-not business functionality, see `docs/architecture/authorization.md` §7)
-respond — letter CRUD/dashboard endpoints don't exist until later phases.
-See `docs/architecture/authentication.md` for authentication,
+Admin management endpoints (`/api/v1/admins*`, SYSTEM_ADMIN only), the
+User management endpoints (`/api/v1/users*`, ADMIN only, scoped to the
+caller's own department), and five verification-only authorization
+endpoints (`/api/v1/auth/test/*` — not business functionality, see
+`docs/architecture/authorization.md` §7) respond — letter CRUD/dashboard
+endpoints don't exist until later phases. See
+`docs/architecture/authentication.md` for authentication,
 `docs/architecture/authorization.md` for RBAC and department isolation,
 `docs/architecture/department-management.md` for department CRUD,
-`docs/architecture/admin-management.md` for the Admin lifecycle, and
-`docs/database/schema.md` for the schema behind all four.
+`docs/architecture/admin-management.md` for the Admin lifecycle,
+`docs/architecture/user-management.md` for the User lifecycle, and
+`docs/database/schema.md` for the schema behind all five.
 
 ### Frontend
 
@@ -199,14 +204,14 @@ backend.
 | 3A | Authentication foundation & account lifecycle: local login, JWT, signup, bootstrap | **Complete** |
 | 3B.1 | RBAC & department authorization: role checks, department-isolation enforcement | **Complete** |
 | 3B.2 | Department management: System Admin CRUD for departments, inactive-department authorization | **Complete** |
-| **3B.3** | Admin management: System Admin authorizes/approves/deactivates/reactivates/transfers Admins | **Complete** |
-| 3B.4 | User management & approval (Admin approving/deactivating Users, issuing `UserAuthorization`) | Pending |
+| 3B.3 | Admin management: System Admin authorizes/approves/deactivates/reactivates/transfers Admins | **Complete** |
+| **3B.4** | User management & approval: Admin authorizes/approves/deactivates/reactivates Users, issues/revokes `UserAuthorization` — scoped to their own department | **Complete** |
 | 4 | Letter registry CRUD and document upload/viewing | Not started |
 | 5 | Dashboards, search, notifications, reporting | Not started |
 | 6 | Administration, audit trail, deployment hardening | Not started |
 
-See `docs/PROJECT_STATUS.md` for what Phase 3B.3 delivered, what's pending
-S&IT confirmation, and known limitations. Phase 3B.4 begins only when
+See `docs/PROJECT_STATUS.md` for what Phase 3B.4 delivered, what's pending
+S&IT confirmation, and known limitations. Phase 4 begins only when
 explicitly instructed.
 
 ---

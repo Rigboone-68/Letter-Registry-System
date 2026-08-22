@@ -28,7 +28,7 @@ ACTIVE authorization rows for one email, which `find_and_lock_active`
 already resolves safely (picks one, locks it, the other remains unused).
 """
 
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
@@ -102,3 +102,32 @@ class UserAuthorizationRepository:
 
     def mark_used(self, authorization: UserAuthorization) -> None:
         authorization.status = AuthorizationStatus.USED
+
+    def find_by_id(self, authorization_id: UUID) -> Optional[UserAuthorization]:
+        return self.session.get(UserAuthorization, authorization_id)
+
+    def list_by_department(
+        self,
+        *,
+        department_id: UUID,
+        purpose: AuthorizationPurpose,
+        status_filter: Optional[AuthorizationStatus] = None,
+    ) -> List[UserAuthorization]:
+        """Department-wide visibility, not creator-scoped (unlike
+        `revoke`, see app/services/user_service.py): an Admin should see
+        every USER-purpose authorization issued in their department, even
+        ones a predecessor Admin created, for departmental oversight."""
+        stmt = (
+            select(UserAuthorization)
+            .where(
+                UserAuthorization.department_id == department_id,
+                UserAuthorization.purpose == purpose,
+            )
+            .order_by(UserAuthorization.created_at.asc())
+        )
+        if status_filter is not None:
+            stmt = stmt.where(UserAuthorization.status == status_filter)
+        return list(self.session.execute(stmt).scalars().all())
+
+    def revoke(self, authorization: UserAuthorization) -> None:
+        authorization.status = AuthorizationStatus.REVOKED
