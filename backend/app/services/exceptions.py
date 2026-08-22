@@ -45,3 +45,11 @@ class AccountDeactivatedError(ServiceError):
 class SystemAdminAlreadyExistsError(ServiceError):
     """Bootstrap: an active SYSTEM_ADMIN already exists; refuse to create
     a second one."""
+
+
+class DepartmentAccessDeniedError(ServiceError):
+    """The caller is not permitted to act on the given department — see
+    app/services/authorization.py:assert_department_access. Deliberately
+    carries no detail about *why* (department doesn't exist vs. belongs to
+    someone else) or *what* the caller's own department is — see
+    docs/architecture/authorization.md, "Error behavior"."""

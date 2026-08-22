@@ -7,23 +7,55 @@ supervisor as-is.
 
 ## Current Phase
 
-**Phase 3A — Authentication Foundation & Account Lifecycle.** Complete.
+**Phase 3B.1 — RBAC & Department Authorization.** Complete (first slice of
+Phase 3B).
 
-Phase 3A delivered local email/password authentication, JWT access tokens,
-the account lifecycle (`PENDING_APPROVAL`/`ACTIVE`/`DEACTIVATED`), the
-authorized-signup workflow against `UserAuthorization`, and a CLI bootstrap
-for the first System Admin. Full design in
-`docs/architecture/authentication.md`.
+Phase 3B.1 delivered role-check dependencies
+(`require_system_admin`/`require_admin`/`require_admin_or_system_admin`/
+`require_user_or_admin`) and department-isolation enforcement
+(`assert_department_access`/`require_department_access`), built on top of
+Phase 3A's `get_current_user`. Full design in
+`docs/architecture/authorization.md`.
 
-**Not in scope for this phase, and not added:** role/department
-authorization decorators, department management, Admin user-management
-APIs, letter CRUD, dashboards, document uploads, notification generation,
-the System Admin handover workflow, or a full frontend authentication UI —
-see "Pending" below and `docs/architecture/authentication.md` §14.
+**Not in scope for this phase, and not added:** department CRUD, Admin
+management, User management/approval APIs, letter CRUD, file uploads,
+dashboards, notification generation, frontend functionality, or System
+Admin handover — see "Pending" below and
+`docs/architecture/authorization.md` §10-11.
 
 ## Completed
 
-### Phase 3A — Authentication foundation
+### Phase 3B.1 — RBAC & department authorization
+
+* **Role-check dependencies** (`app/api/deps.py`) —
+  `require_system_admin`, `require_admin`, `require_admin_or_system_admin`,
+  `require_user_or_admin`, each composed on top of `get_current_user` via
+  FastAPI's own `Depends()` mechanism, never re-deciding authentication.
+* **Department-isolation enforcement** — `assert_department_access`
+  (`app/services/authorization.py`, framework-agnostic — no FastAPI
+  import) and its FastAPI wrapper `require_department_access`
+  (`app/api/deps.py`). SYSTEM_ADMIN bypasses; ADMIN/USER must match their
+  own `department_id` exactly — not an existence check, a made-up UUID is
+  rejected identically to a real foreign one.
+* **Generic, non-leaking 403s** — one fixed message for every role/
+  department authorization failure; never names the role required, the
+  department requested, or the caller's own department.
+* **Five verification-only endpoints**
+  (`app/api/v1/endpoints/dev_authz_test.py`, tagged
+  `dev-authorization-test` in OpenAPI, no frontend) — exist solely because
+  no real protected resource exists yet in this phase for the
+  authorization dependencies to attach to; documented for removal once
+  Phase 4 adds one.
+* **42 new automated tests**: 16 in `backend/tests/unit/test_authorization.py`
+  (pure function/dependency logic, no database) and 26 in
+  `backend/tests/integration/test_authorization.py` (real JWTs, real
+  database-backed Users, real HTTP requests — including every scenario in
+  the brief's Role/Department/Deactivation/Negative-security test lists).
+* **Documentation**: `docs/architecture/authorization.md` (new), plus
+  updates to the root README, `backend/README.md`, and
+  `docs/architecture/overview.md`.
+
+### Phase 3A — Authentication foundation (see previous entries below for detail)
 
 * **Local email/password authentication** — no external OAuth provider;
   see `docs/architecture/authentication.md` §1.
@@ -75,20 +107,23 @@ detail behind each:
 | 5 | `letter_documents.uploaded_by` had no index, unlike every other User-referencing FK in the schema | Added (`ix_letter_documents_uploaded_by`) |
 | 6 | The role/department `CHECK` constraint hardcoded role strings, duplicating `UserRole`'s values | Model-side constraint now built from `UserRole.*.value`; the migration's own copy is deliberately still a literal (migrations are frozen snapshots) — see `app/models/user.py` docstring |
 
-### Corrections applied (self-review hardening pass)
+### Validation performed — Phase 3B.1
 
-A self-review of the initial Phase 2 implementation found six issues,
-addressed as follows — see `docs/database/schema.md` for the technical
-detail behind each:
+All against the same real, local, disposable PostgreSQL 17 instance used
+for Phase 2/3A (`lrs_dev` for manual checks, `lrs_test` for the suite —
+never a shared or departmental database):
 
-| # | Issue | Fix |
-|---|---|---|
-| 1 | Order-dependent circular import: `from app.models import X` (or `from app.models.user import X`) could fail in a fresh interpreter depending on what had already been imported | `app/database/base.py` no longer imports `app.models`; consumers that need full metadata (`alembic/env.py`, `tests/conftest.py`) import it themselves. Guarded by `tests/unit/test_imports.py` |
-| 2 | ORM-level `session.delete(department)` didn't cleanly hit the database's `RESTRICT` — SQLAlchemy tried to null out dependent users' `department_id` first, which instead tripped an unrelated CHECK constraint | `passive_deletes="all"` added to every `RESTRICT`/`SET NULL`-backed one-to-many relationship (Department, Category, Classification, User, and `Letter.notifications`), so the ORM defers entirely to the database's own FK action |
-| 3 | `departments.status` had no index, unlike the equivalent column on Category/Classification | Added (`ix_departments_status`) |
-| 4 | `notifications.is_read` had no database-level default — a row written outside the ORM would fail `NOT NULL` | Added `server_default=false()`, alongside the existing ORM-side default |
-| 5 | `letter_documents.uploaded_by` had no index, unlike every other User-referencing FK in the schema | Added (`ix_letter_documents_uploaded_by`) |
-| 6 | The role/department `CHECK` constraint hardcoded role strings, duplicating `UserRole`'s values | Model-side constraint now built from `UserRole.*.value`; the migration's own copy is deliberately still a literal (migrations are frozen snapshots) — see `app/models/user.py` docstring |
+| Check | Result |
+|---|---|
+| `pytest` (full suite) against `lrs_test` | **138 passed**, 0 failed, 0 skipped (1 pre-existing harmless deprecation warning — unchanged from Phase 3A) |
+| `alembic check` | "No new upgrade operations detected" — Phase 3B.1 required no schema change |
+| FastAPI app startup + `GET /health` | 200 OK |
+| Phase 3A authentication tests re-run as part of the full suite | All still pass — no regression |
+| Full role/department authorization matrix, run for real against `lrs_dev` (SYSTEM_ADMIN/ADMIN/USER × own/other department, via `curl` with real minted JWTs) | Every case matched the documented rule exactly — including the two explicit attack attempts (ADMIN and USER each tried another department's real UUID) |
+| `git status` review | No secrets tracked; `.env` confirmed gitignored |
+
+All data created during manual verification was deleted from `lrs_dev`
+afterward — `lrs_dev` is empty again.
 
 ### Validation performed — Phase 3A
 
@@ -125,26 +160,37 @@ afterward — `lrs_dev` is empty again.
 
 ## In Progress
 
-Nothing — Phase 3A is complete and the project is paused pending explicit
-instruction to begin Phase 3B, per the standing project rule that phases
-are reviewed before the next begins.
+Nothing — Phase 3B.1 is complete and the project is paused pending
+explicit instruction to begin the next slice, per the standing project
+rule that phases are reviewed before the next begins.
 
-## Pending (Phase 3B and later)
+## Pending (Phase 3B.2+ and later)
 
-* **Full RBAC enforcement** — role/department authorization decorators or
-  dependencies deciding what an authenticated caller may do, not just who
-  they are.
-* **Department management** — API/UI for System Admin to create, rename,
-  or deactivate departments.
-* **Admin management** — API/UI for System Admin to manage Admin accounts.
-* **User approval APIs/UI** — an Admin approving a `PENDING_APPROVAL`
-  account into `ACTIVE`, and issuing `UserAuthorization` records in the
-  first place (both currently require direct database access).
+* **Department management (Phase 3B.2)** — API/UI for System Admin to
+  create, rename, or deactivate departments. `require_system_admin`
+  already exists for this to use.
+* **Admin management (Phase 3B.3)** — API/UI for System Admin to manage
+  Admin accounts.
+* **User approval APIs/UI (Phase 3B.4)** — an Admin approving a
+  `PENDING_APPROVAL` account into `ACTIVE`, deactivating/reactivating
+  Users, and issuing `UserAuthorization` records in the first place (all
+  currently require direct database access).
+  `require_admin_or_system_admin` + `require_department_access`/
+  `assert_department_access` already exist for these to use, so an Admin
+  can only be allowed to act on their own department's Users.
+* **Letter CRUD and any other real protected resource (Phase 4)** — the
+  first phase that will actually call `assert_department_access` against
+  something real; see `docs/architecture/authorization.md` §4 for the
+  pattern it should follow.
 * **System Admin handover workflow** — see
   `docs/architecture/authentication.md` §9.
-* **Frontend authentication UI** — login/signup pages, protected routing,
-  token storage. See `docs/architecture/authentication.md` §15 for why
-  this was deliberately not started in Phase 3A.
+* **Automatic audit logging** of authorization-sensitive actions — see
+  `docs/architecture/authorization.md` §12 for the list of actions that
+  will need one, once they exist.
+* **Frontend authentication/authorization UI** — login/signup pages,
+  protected routing, token storage, role-based show/hide. See
+  `docs/architecture/authentication.md` §15 for why this remains
+  deliberately deferred.
 
 ## Pending Confirmation (from S&IT)
 
@@ -215,20 +261,30 @@ documented, minimal, reversible assumption. See `docs/database/schema.md`
   CLI-only, operator-run action, unlike signup which is fully race-safe.
   See `docs/architecture/authentication.md` §8.
 * **`getpass.getpass()` does not accept piped/redirected stdin on Windows**
-  — confirmed during this phase's manual verification (it reads directly
+  — confirmed during Phase 3A's manual verification (it reads directly
   from the console). Not a bug: arguably a desirable property, since it
   stops a password from being accidentally scripted into a piped command.
   The automated test suite calls `create_system_admin` directly rather than
   the interactive CLI wrapper for this reason.
+* **No real protected resource exists for the Phase 3B.1 authorization
+  layer to protect** — `require_department_access`/
+  `assert_department_access` are proven correct against five
+  verification-only endpoints (`app/api/v1/endpoints/dev_authz_test.py`),
+  not a real business resource, because none exists yet. Not a defect —
+  see `docs/architecture/authorization.md` §7, and Phase 4 in "Pending"
+  above.
+* **No automatic audit logging** of authorization-sensitive actions —
+  deliberately out of scope for this phase (brief §15); see
+  `docs/architecture/authorization.md` §12 for the list scoped for when
+  the relevant actions exist.
 
 ## Next Recommended Phase
 
-**Phase 3B — RBAC & Administrative Authorization**, per the brief that
-scoped this phase: role/department authorization decorators or
-dependencies built on top of `get_current_user`; Admin endpoints to approve
-`PENDING_APPROVAL` accounts and issue `UserAuthorization` records; and the
-System Admin handover workflow. Recommended before Letter CRUD (Phase 4),
-since department-isolation enforcement — the core security requirement the
-Phase 2 schema was built around — has an authenticated identity to derive
-`department_id` from as of Phase 3A, but nothing yet that *checks* it
-against an action, which is exactly what Phase 3B adds.
+**Phase 3B.2 — Department Management**, the next slice of Phase 3B: System
+Admin endpoints to create, rename, and deactivate departments, using
+`require_system_admin` (already built in this phase). Recommended next
+because Phase 3B.3 (Admin management) and 3B.4 (User approval) both assume
+departments can be managed first, and because it gives the Phase 3B.1
+authorization layer its first real, non-test-only resource to protect —
+see `docs/architecture/authorization.md` §11 for the full remaining
+Phase 3B/4 sequence.

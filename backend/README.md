@@ -1,12 +1,13 @@
 # LRS Backend
 
-FastAPI service for the Letter Registry System. **Phase 3A: authentication
-foundation & account lifecycle.** Full design in
-`docs/architecture/authentication.md`. Role/department authorization,
-department/Admin management, letter CRUD, uploads, dashboards, and
-notifications are not implemented yet — see `docs/architecture/overview.md`
-§4 and `docs/architecture/authentication.md` §14 for exactly what is and
-isn't in place.
+FastAPI service for the Letter Registry System. **Phase 3B.1: RBAC &
+department authorization**, built on Phase 3A's authentication foundation.
+Full design in `docs/architecture/authentication.md` (auth) and
+`docs/architecture/authorization.md` (RBAC/department isolation).
+Department/Admin management, user approval, letter CRUD, uploads,
+dashboards, and notifications are not implemented yet — see
+`docs/architecture/overview.md` §4 and `docs/architecture/authorization.md`
+§10-11 for exactly what is and isn't in place.
 
 ## Setup
 
@@ -21,8 +22,10 @@ python -m app.cli create-system-admin   # first run only — see below
 ```
 
 Available now: `GET /health`, `POST /api/v1/auth/signup`,
-`POST /api/v1/auth/login`, `GET /api/v1/auth/me`, plus `/docs` and
-`/redoc`.
+`POST /api/v1/auth/login`, `GET /api/v1/auth/me`, five verification-only
+authorization endpoints under `/api/v1/auth/test/*` (not business
+functionality — see `docs/architecture/authorization.md` §7), plus `/docs`
+and `/redoc`.
 
 ## Bootstrapping the first System Admin
 
@@ -52,11 +55,13 @@ if an active System Admin already exists. See
 | `app/database/session.py` | Lazy engine, session factory, `get_db()` dependency |
 | `app/models/` | SQLAlchemy models — 9 core entities (see `docs/database/schema.md`) |
 | `app/schemas/auth.py` | Signup/login/token/current-user request-response contracts |
-| `app/api/deps.py` | `get_current_user` — the authenticated-identity dependency |
+| `app/api/deps.py` | `get_current_user` (authentication) plus `require_system_admin`/`require_admin`/`require_admin_or_system_admin`/`require_user_or_admin`/`require_department_access` (authorization) |
 | `app/api/v1/router.py` | Aggregate v1 router |
 | `app/api/v1/endpoints/auth.py` | `/auth/signup`, `/auth/login`, `/auth/me` |
+| `app/api/v1/endpoints/dev_authz_test.py` | `/auth/test/*` — verification-only, not business functionality (see `docs/architecture/authorization.md` §7) |
 | `app/services/auth_service.py` | Signup and login business logic |
 | `app/services/bootstrap_service.py` | First-System-Admin creation logic (called by `app/cli.py`) |
+| `app/services/authorization.py` | `assert_department_access` — the one framework-agnostic department-isolation rule, reused by `app/api/deps.py` and (eventually) resource-level services |
 | `app/services/exceptions.py` | Service-layer domain errors, mapped to HTTP responses in the endpoint layer |
 | `app/repositories/user_repository.py` | The only code that queries `User` |
 | `app/repositories/user_authorization_repository.py` | The only code that queries `UserAuthorization`, including the race-safe `SELECT ... FOR UPDATE` signup consumes |
@@ -70,10 +75,13 @@ if an active System Admin already exists. See
 * Repositories own the SQLAlchemy session and are the only ORM consumers.
 * `utils` imports nothing from `api`, `services`, or `repositories`.
 
-This is now populated end-to-end for the first time by the authentication
-module (`app/api/v1/endpoints/auth.py` → `app/services/auth_service.py` →
-`app/repositories/user_repository.py`), using this structure rather than a
-second, competing one.
+Populated end-to-end by the authentication module (Phase 3A:
+`app/api/v1/endpoints/auth.py` → `app/services/auth_service.py` →
+`app/repositories/user_repository.py`) and, as of Phase 3B.1, by a
+"Dependencies / Authorization" layer sitting between API and Services —
+role checks directly in `app/api/deps.py`, the department-isolation rule
+in `app/services/authorization.py` — using this same structure rather
+than a second, competing one.
 
 ## Database & migrations
 
@@ -87,10 +95,11 @@ table, enum type, foreign key, index, and constraint) and
 self-review: two missed indexes and a database-level default for
 `notifications.is_read` — see `docs/database/schema.md` §1 "ORM deletion
 behavior" and §6 "Indexes"). Both are described in `docs/database/schema.md`.
-**Phase 3A (authentication) required no schema change** — every column
-authentication needs (`users.password_hash`, `user_authorizations.status`/
-`expires_at`, etc.) already existed from Phase 2; `alembic check` confirms
-zero drift.
+**Neither Phase 3A (authentication) nor Phase 3B.1 (RBAC/department
+authorization) required a schema change** — every column either needs
+(`users.password_hash`, `users.role`, `users.department_id`,
+`user_authorizations.status`/`expires_at`, etc.) already existed from
+Phase 2; `alembic check` confirms zero drift after both.
 
 ```bash
 alembic upgrade head       # apply both, in order
@@ -137,8 +146,9 @@ decoded, mirroring `DATABASE_URL`'s existing lazy-check pattern in
 pytest
 ```
 
-96 tests total. `SECRET_KEY` must be set (via `.env`) for the JWT-dependent
-tests to run — copy `.env.example` to `.env` first if you haven't.
+138 tests total. `SECRET_KEY` must be set (via `.env`) for the
+JWT-dependent tests to run — copy `.env.example` to `.env` first if you
+haven't.
 
 **Model layer (Phase 2)** — `tests/integration/test_models.py`: creation,
 relationships, constraints, FK `RESTRICT`/`CASCADE` behavior, and database
@@ -160,6 +170,19 @@ exits cleanly in an environment without PostgreSQL.
   `test_auth_signup.py::test_concurrent_signup_attempts_consume_authorization_exactly_once`
   is the one test that opens its own independent database connections (a
   real race needs two) and cleans up its own committed rows explicitly.
+
+**Authorization (Phase 3B.1)**:
+
+* `tests/unit/test_authorization.py` — `assert_department_access` and the
+  four role-check dependencies, called directly with in-memory `User`
+  objects (never persisted). No database; always runs.
+* `tests/integration/test_authorization.py` — the same rules again, this
+  time end-to-end: real JWTs, real database-backed Users across every
+  role/department/status combination, real HTTP requests through the
+  `/api/v1/auth/test/*` endpoints via the `client` fixture. Covers every
+  scenario in the brief's Role/Department/Deactivation/Negative-security
+  test lists, including the two explicit "attacker changes the department
+  UUID in the request" cases.
 
 `tests/unit/test_imports.py` needs no database — it runs `from app.models
 import X` in fresh subprocesses to guard against the circular-import

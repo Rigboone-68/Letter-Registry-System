@@ -2,15 +2,15 @@
 
 **A Production of AJ-Labs**
 
-> **Current status: Phase 3A — authentication foundation & account
-> lifecycle.** Local email/password login, JWT access tokens, the
-> pending-approval account lifecycle, authorized signup, and a CLI
-> bootstrap for the first System Admin are implemented and validated
-> against a real local PostgreSQL instance — see
-> `docs/architecture/authentication.md`. **There is still no role/department
-> authorization, no department or Admin management, no letter CRUD, no
-> dashboard, and no upload handling** — those are added module by module in
-> later phases. See `docs/PROJECT_STATUS.md` for the full picture.
+> **Current status: Phase 3B.1 — RBAC & department authorization.** Local
+> email/password login, JWT access tokens, and now role-based access
+> control (`SYSTEM_ADMIN`/`ADMIN`/`USER`) with server-enforced department
+> isolation are implemented and validated against a real local PostgreSQL
+> instance — see `docs/architecture/authentication.md` and
+> `docs/architecture/authorization.md`. **There is still no department or
+> Admin management, no user approval, no letter CRUD, no dashboard, and no
+> upload handling** — those are added module by module in later phases.
+> See `docs/PROJECT_STATUS.md` for the full picture.
 
 ---
 
@@ -94,10 +94,11 @@ letter-registry-system/
 │   │   ├── database/            # declarative base, engine, session
 │   │   ├── models/              # ORM models            (9 core entities — Phase 2)
 │   │   ├── schemas/             # Pydantic contracts    (auth — Phase 3A)
-│   │   ├── api/v1/endpoints/    # versioned routers     (auth — Phase 3A)
-│   │   ├── services/            # business logic        (auth, bootstrap — Phase 3A)
+│   │   ├── api/deps.py          # auth + RBAC dependencies (Phase 3A/3B.1)
+│   │   ├── api/v1/endpoints/    # versioned routers     (auth — 3A; dev authz test — 3B.1)
+│   │   ├── services/            # business logic        (auth, bootstrap — 3A; authorization — 3B.1)
 │   │   ├── repositories/        # data access           (user, user_authorization — Phase 3A)
-│   │   ├── middleware/          # request ID, audit     (empty — Phase 3B+)
+│   │   ├── middleware/          # request ID, audit     (empty — later phases)
 │   │   └── utils/               # shared helpers        (email normalization — Phase 3A)
 │   ├── alembic/                 # migration environment (2 revisions: core schema + hardening)
 │   ├── tests/{unit,integration}
@@ -156,11 +157,14 @@ uvicorn app.main:app --reload
 ```
 
 The API starts on `http://localhost:8000`. `/health`, `/docs`, `/redoc`,
-and the authentication endpoints (`POST /api/v1/auth/signup`,
-`POST /api/v1/auth/login`, `GET /api/v1/auth/me`) respond — letter/
-department/dashboard endpoints don't exist until later phases. See
-`docs/architecture/authentication.md` for the authentication design and
-`docs/database/schema.md` for the schema behind it.
+the authentication endpoints (`POST /api/v1/auth/signup`,
+`POST /api/v1/auth/login`, `GET /api/v1/auth/me`), and five
+verification-only authorization endpoints (`/api/v1/auth/test/*` — not
+business functionality, see `docs/architecture/authorization.md` §7)
+respond — letter/department/dashboard endpoints don't exist until later
+phases. See `docs/architecture/authentication.md` for the authentication
+design, `docs/architecture/authorization.md` for RBAC and department
+isolation, and `docs/database/schema.md` for the schema behind both.
 
 ### Frontend
 
@@ -183,14 +187,17 @@ backend.
 |---|---|---|
 | 1 | Project foundation: structure, configuration, documentation | **Complete** |
 | 2 | Database architecture & core models: SQLAlchemy models, Alembic migrations | **Complete** |
-| **3A** | Authentication foundation & account lifecycle: local login, JWT, signup, bootstrap | **Complete** |
-| 3B | RBAC & administrative authorization: role/department checks, department & Admin management, user approval | Pending |
+| 3A | Authentication foundation & account lifecycle: local login, JWT, signup, bootstrap | **Complete** |
+| **3B.1** | RBAC & department authorization: role checks, department-isolation enforcement | **Complete** |
+| 3B.2 | Department management (System Admin CRUD for departments) | Pending |
+| 3B.3 | Admin management (System Admin managing Admin accounts) | Pending |
+| 3B.4 | User management & approval (Admin approving/deactivating Users, issuing `UserAuthorization`) | Pending |
 | 4 | Letter registry CRUD and document upload/viewing | Not started |
 | 5 | Dashboards, search, notifications, reporting | Not started |
 | 6 | Administration, audit trail, deployment hardening | Not started |
 
-See `docs/PROJECT_STATUS.md` for what Phase 3A delivered, what's pending
-S&IT confirmation, and known limitations. Phase 3B begins only when
+See `docs/PROJECT_STATUS.md` for what Phase 3B.1 delivered, what's pending
+S&IT confirmation, and known limitations. Phase 3B.2 begins only when
 explicitly instructed.
 
 ---
