@@ -258,3 +258,8 @@ class ClassifiedAccessDeniedError(ServiceError):
     Deliberately mapped to the same `404` as LetterNotFoundError by the
     API layer (not a distinguishable `403`) — a classified letter's mere
     existence should not be confirmable to a caller who can't see it."""
+
+
+class InvalidDateRangeError(ServiceError):
+    """`received_from` is after `received_to` on a Letter search/list
+    request — see app/services/letter_service.py:list_letters."""

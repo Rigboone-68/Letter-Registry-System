@@ -1,15 +1,16 @@
 # LRS Backend
 
 FastAPI service for the Letter Registry System. **Phase 4B: Letter
-Registry Core — implemented, and a pre-commit hardening pass applied on
-top.** Builds on Phase 4A's architecture review and the fully-delivered
-Phase 3B (Roles & Access Management: authentication, RBAC/department
-isolation, department management, Admin management, User management).
-Full design in `docs/architecture/authentication.md` (auth),
+Registry Core — implemented, with a pre-commit hardening pass applied on
+top. Phase 4C: Registry Operations & Search — implemented.** Builds on
+Phase 4A's architecture review and the fully-delivered Phase 3B (Roles &
+Access Management: authentication, RBAC/department isolation, department
+management, Admin management, User management). Full design in
+`docs/architecture/authentication.md` (auth),
 `docs/architecture/authorization.md` (RBAC/department isolation),
 `docs/architecture/department-management.md` (department CRUD),
 `docs/architecture/admin-management.md` (Admin lifecycle),
-`docs/architecture/user-management.md` (User lifecycle), and
+`docs/architecture/user-management.md` (User lifecycle),
 `docs/architecture/letter-registry.md` (the six finalized business
 decisions and the resulting Letter/Category/Classification design — a
 department-scoped Letter registry with recipient/source department
@@ -17,11 +18,19 @@ separation, required sender details, a required reference number (no
 uniqueness constraint — its scope was never confirmed and was removed
 after an initial global-uniqueness assumption; see §14 of that doc),
 exactly three seeded Categories, and a real, documented-as-provisional
-classified-access authorization boundary). File upload/download,
-dashboards, and notifications are still not implemented — see
+classified-access authorization boundary), and
+`docs/architecture/registry-search.md` (Phase 4C: pagination, explicit
+whitelisted sorting, and seven case-insensitive text-search filters on
+`GET /api/v1/letters`, implemented only after fixing a real architectural
+risk that phase's own review found first — the letter list used to
+filter classified records out in Python *after* fetching them, which
+would have let a paginated `total` leak how many inaccessible records
+existed; the fix moved that check into the SQL query itself before any
+pagination code was written). File upload/download, dashboards, and
+notifications are still not implemented — see
 `docs/architecture/overview.md` §4 and
-`docs/architecture/letter-registry.md` §12-14 for exactly what is and
-isn't in place.
+`docs/architecture/registry-search.md` §12 for exactly what is and isn't
+in place.
 
 ## Setup
 
@@ -92,17 +101,17 @@ if an active System Admin already exists. See
 | `app/api/v1/endpoints/dev_authz_test.py` | `/auth/test/*` — verification-only, not business functionality (see `docs/architecture/authorization.md` §7) |
 | `app/services/auth_service.py` | Signup and login business logic — role now derived from `UserAuthorization.purpose` (Phase 3B.3) |
 | `app/services/bootstrap_service.py` | First-System-Admin creation logic (called by `app/cli.py`) |
-| `app/services/authorization.py` | `assert_department_access` — the one framework-agnostic department-isolation rule, reused by `app/api/deps.py`, genuinely exercised as a resource-level check first in Phase 3B.4 (User) and again in Phase 4B (Letter). Extended in Phase 3B.2 to require the caller's department be `ACTIVE`; extended in Phase 4B with `assert_letter_access`/`can_view_letter` — the classified-access authorization boundary layered on top, not a competing mechanism |
+| `app/services/authorization.py` | `assert_department_access` — the one framework-agnostic department-isolation rule, reused by `app/api/deps.py`, genuinely exercised as a resource-level check first in Phase 3B.4 (User) and again in Phase 4B (Letter). Extended in Phase 3B.2 to require the caller's department be `ACTIVE`; extended in Phase 4B with `assert_letter_access`/`can_view_letter` (single-resource classified-access check) and in Phase 4C with `letter_visibility_filter` (the same rule, re-expressed as a SQL predicate for `list_letters` — see `app/repositories/letter_repository.py`) |
 | `app/services/department_service.py` | Department CRUD business logic, including race-safe duplicate-name/code handling |
 | `app/services/admin_service.py` | Admin authorization/approval/lifecycle/department-transfer business logic |
 | `app/services/user_service.py` | User authorization/approval/lifecycle/revocation business logic, scoped to the calling Admin's own department (Phase 3B.4) |
-| `app/services/letter_service.py` | Letter create/read/update/archive business logic (Phase 4B) — `recorded_by`/`recipient_department_id` always derived from the caller; reference-number/source-department/category/classification validation |
+| `app/services/letter_service.py` | Letter create/read/update/archive business logic (Phase 4B) — `recorded_by`/`recipient_department_id` always derived from the caller; reference-number/source-department/category/classification validation. `list_letters` (Phase 4C) adds pagination/sorting/search, raising `InvalidDateRangeError` for a reversed `received_from`/`received_to` |
 | `app/services/category_service.py`, `app/services/classification_service.py` | Category/Classification CRUD business logic (Phase 4B), mirroring `department_service.py` |
 | `app/services/exceptions.py` | Service-layer domain errors, mapped to HTTP responses in the endpoint layer |
 | `app/repositories/user_repository.py` | The only code that queries `User` — extended in Phase 3B.3 with `find_admin_by_id`/`list_admins`/`update_status`/`update_department`, and in Phase 3B.4 with `find_user_by_id`/`list_users`, rather than a new repository each time |
 | `app/repositories/user_authorization_repository.py` | The only code that queries `UserAuthorization`, including the race-safe `SELECT ... FOR UPDATE` signup consumes, (Phase 3B.3) `create`/`find_unresolved`, and (Phase 3B.4) `find_by_id`/`list_by_department`/`revoke` |
 | `app/repositories/department_repository.py` | The only code that queries `Department` |
-| `app/repositories/letter_repository.py` | The only code that queries `Letter` (Phase 4B) — every read eagerly loads `classification`, since `assert_letter_access` needs `restricts_access` without a second query at each call site |
+| `app/repositories/letter_repository.py` | The only code that queries `Letter` (Phase 4B). `find_by_id` eagerly loads `classification` for `assert_letter_access`. `list_letters` (Phase 4C) builds one filtered `stmt` and derives both the `COUNT` and the paginated `items` query from it — never two independently-built queries that could disagree about which rows are visible; `SORTABLE_COLUMNS` is the explicit sort-field whitelist |
 | `app/repositories/category_repository.py`, `app/repositories/classification_repository.py` | The only code that queries `Category`/`Classification` (Phase 4B) |
 | `app/utils/email.py` | `normalize_email` — the one place "same email" is defined |
 | `app/middleware/` | Request correlation and audit middleware (empty) |
@@ -140,7 +149,7 @@ competing one.
 injects `DATABASE_URL` from the environment at runtime, so no connection
 string ever appears in source control.
 
-Five migrations exist: `3da4b7ee8167_core_schema_...` (baseline — every
+Six migrations exist: `3da4b7ee8167_core_schema_...` (baseline — every
 table, enum type, foreign key, index, and constraint),
 `e8a5cea2ccc6_database_hardening_...` (a corrective follow-up from a Phase 2
 self-review: two missed indexes and a database-level default for
@@ -155,14 +164,17 @@ an actual pre-existing row, not just an empty table),
 sender-detail/reference-number/source-department/source-location columns
 with the same safe backfill pattern, adds
 `classifications.restricts_access`, and seeds exactly three `categories`
-rows), and `c887ab35e4a3_remove_premature_reference_number_...` (a
+rows), `c887ab35e4a3_remove_premature_reference_number_...` (a
 same-phase hardening-pass correction: drops
 `uq_letters_reference_number` — the finalized decision confirmed
 reference numbers "must be unique" but never confirmed the scope, and
 global was an unconfirmed guess that a real multi-department registry
 could easily violate legitimately; see
-`docs/architecture/letter-registry.md` §2.3/§14). All five are described
-in `docs/database/schema.md`.
+`docs/architecture/letter-registry.md` §2.3/§14), and
+`9fa970ffa560_add_letters_reference_number_index_...` (Phase 4C: re-adds
+a plain, non-unique index on `reference_number` — lost when its unique
+constraint was dropped — since reference-number search is a real Phase
+4C requirement). All six are described in `docs/database/schema.md`.
 **None of Phase 3A (authentication), 3B.1 (RBAC/department authorization),
 3B.2 (department management), or 3B.4 (User management) required a schema
 change** — every column either needed already existed from Phase 2, or
@@ -171,12 +183,13 @@ change** — every column either needed already existed from Phase 2, or
 setting it until now. Phase 3B.2 did fix a constraint-*naming*
 inconsistency in `app/models/department.py` (see `docs/database/schema.md`
 §2.1) — a Python-model-only change, not a migration, since the real
-database already had the correct name. Phase 3B.3 and Phase 4B (two
-migrations) are the only phases since Phase 2's hardening pass to need
-one; `alembic check` confirms zero drift after all five.
+database already had the correct name. Phase 3B.3, Phase 4B (two
+migrations), and Phase 4C (one migration) are the only phases since
+Phase 2's hardening pass to need one; `alembic check` confirms zero
+drift after all six.
 
 ```bash
-alembic upgrade head       # apply all five, in order
+alembic upgrade head       # apply all six, in order
 alembic downgrade base     # fully reverse — drops all tables and enum types
 alembic current            # show the applied revision
 alembic history            # list all revisions
@@ -220,9 +233,9 @@ decoded, mirroring `DATABASE_URL`'s existing lazy-check pattern in
 pytest
 ```
 
-344 tests total (277 baseline + 67 new in Phase 4B). `SECRET_KEY` must be
-set (via `.env`) for the JWT-dependent tests to run — copy
-`.env.example` to `.env` first if you haven't.
+387 tests total (277 baseline + 67 in Phase 4B + 43 new in Phase 4C).
+`SECRET_KEY` must be set (via `.env`) for the JWT-dependent tests to
+run — copy `.env.example` to `.env` first if you haven't.
 
 **Model layer (Phase 2)** — `tests/integration/test_models.py`: creation,
 relationships, constraints, FK `RESTRICT`/`CASCADE` behavior, and database
@@ -317,9 +330,32 @@ exits cleanly in an environment without PostgreSQL.
 * `tests/integration/test_category_management.py` (8),
   `test_classification_management.py` (9) — SYSTEM_ADMIN-only CRUD
   authorization and essentials, mirroring
-  `test_department_management.py`'s shape; `restricts_access`
-  toggling is covered in the Classification file, its actual
-  *enforcement* against real Letters in `test_letter_registry.py`.
+  `test_department_management.py`'s shape; `restricts_access` toggling
+  is covered in the Classification file, its actual *enforcement*
+  against real Letters (single-get) in `test_letter_registry.py` and
+  (search/list, including the count-leakage regression) in
+  `test_letter_search.py`.
+
+**Registry Operations & Search (Phase 4C)**:
+
+* `tests/integration/test_letter_search.py` (43 tests) — real JWTs,
+  real database-backed Letters (via the `make_letter` factory, not the
+  HTTP create endpoint, for efficient multi-row setup), real HTTP
+  requests through `GET /api/v1/letters`. Covers pagination (defaults,
+  custom page/page_size, out-of-range rejection, beyond-last-page),
+  sorting (all four whitelisted fields, both directions, invalid-field
+  rejection, stable ordering via the secondary id-sort), all seven
+  text-search filters (case-insensitive contains, no-result case), the
+  three exact filters, inclusive date-range filtering (including
+  reversed-range rejection), multi-filter `AND` combination, department
+  isolation (including that a client-supplied `department_id` is
+  silently ignored for USER/ADMIN, never expanding their scope), and —
+  highest priority — the classified-access query-level fix:
+  `test_classified_record_excluded_from_total_count` and
+  `test_classified_record_excluded_across_all_pages` directly prove an
+  inaccessible letter can no longer inflate `total` or occupy a page
+  slot, the exact regression this phase's own architecture review
+  identified as the reason to fix the query *before* adding pagination.
 
 `tests/unit/test_imports.py` needs no database — it runs `from app.models
 import X` in fresh subprocesses to guard against the circular-import

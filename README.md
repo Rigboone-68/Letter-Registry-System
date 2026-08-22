@@ -2,30 +2,33 @@
 
 **A Production of AJ-Labs**
 
-> **Current status: Phase 4B — Letter Registry Core implemented (Phase 3B
-> complete).** Local email/password login, JWT access tokens, role-based
-> access control, System-Admin-controlled department management,
-> System-Admin-controlled Admin management, and Admin-controlled User
-> management are implemented and validated against a real local
-> PostgreSQL instance — see `docs/architecture/authentication.md`,
+> **Current status: Phase 4C — Registry Operations & Search implemented
+> (Phase 3B complete).** Local email/password login, JWT access tokens,
+> role-based access control, System-Admin-controlled department
+> management, System-Admin-controlled Admin management, and Admin-
+> controlled User management are implemented and validated against a real
+> local PostgreSQL instance — see `docs/architecture/authentication.md`,
 > `docs/architecture/authorization.md`,
 > `docs/architecture/department-management.md`,
 > `docs/architecture/admin-management.md`, and
 > `docs/architecture/user-management.md`. Phase 4B implemented the
-> product owner's finalized Letter Registry decisions: a `Letter` now
-> distinguishes its recipient department (the authorization boundary)
-> from its source, records structured sender details, carries a
-> required, manually-entered reference number, is tagged with one of
-> exactly three Categories, and can be marked with a Classification that
-> actually restricts visibility for non-recording Users — see
-> `docs/architecture/letter-registry.md`. A pre-commit hardening pass then
-> found and corrected one unconfirmed assumption (reference-number
-> uniqueness had been implemented as globally unique; the scope was never
-> actually confirmed, so the constraint was removed rather than kept on a
-> guess — duplicates are currently accepted, pending clarification). **No
-> file upload/download, dashboard, or notification generation exists
-> yet** — those remain for later phases. See `docs/PROJECT_STATUS.md` for
-> the full picture.
+> product owner's finalized Letter Registry decisions (recipient/source
+> department separation, structured sender details, a required reference
+> number, three Categories, a classified-access boundary), and a
+> pre-commit hardening pass corrected one unconfirmed assumption
+> (reference-number uniqueness — the scope was never confirmed, so the
+> constraint was removed). Phase 4C then added pagination, explicit
+> whitelisted sorting, and seven text-search filters to
+> `GET /api/v1/letters` — but only *after* fixing a real leakage risk its
+> own architecture review found first: the letter list used to filter
+> classified records out in Python after fetching them, which would have
+> let a paginated `total` leak how many inaccessible records existed. That
+> fix now runs at the database query level, verified by live testing
+> before any pagination code was added. See
+> `docs/architecture/letter-registry.md` and
+> `docs/architecture/registry-search.md`. **No file upload/download,
+> dashboard, or notification generation exists yet** — those remain for
+> later phases. See `docs/PROJECT_STATUS.md` for the full picture.
 
 ---
 
@@ -179,7 +182,9 @@ Admin management endpoints (`/api/v1/admins*`, SYSTEM_ADMIN only), the
 User management endpoints (`/api/v1/users*`, ADMIN only, scoped to the
 caller's own department), the Letter registry endpoints (`/api/v1/letters*`
 — USER/ADMIN create; any authenticated role reads/updates/archives,
-subject to department and classified-access checks), Category/
+subject to department and classified-access checks; `GET /api/v1/letters`
+supports pagination, sorting, and search — see
+`docs/architecture/registry-search.md`), Category/
 Classification management endpoints (`/api/v1/categories*`,
 `/api/v1/classifications*`, SYSTEM_ADMIN only), and five verification-only
 authorization endpoints (`/api/v1/auth/test/*` — not business
@@ -221,13 +226,14 @@ backend.
 | 3B.3 | Admin management: System Admin authorizes/approves/deactivates/reactivates/transfers Admins | **Complete** |
 | 3B.4 | User management & approval: Admin authorizes/approves/deactivates/reactivates Users, issues/revokes `UserAuthorization` — scoped to their own department | **Complete** |
 | 4A | Letter Registry Core: architecture & model review against confirmed V1 requirements | **Complete** |
-| **4B** | Letter Registry Core: recipient/source departments, sender details, reference number, Category/Classification management, classified-access boundary, full Letter CRUD | **Complete** |
+| 4B | Letter Registry Core: recipient/source departments, sender details, reference number, Category/Classification management, classified-access boundary, full Letter CRUD | **Complete** |
+| **4C** | Registry Operations & Search: pagination, whitelisted sorting, 7 text-search filters, inclusive date-range filtering — with the classified-access query-level fix applied first | **Complete** |
 | — | Letter document upload/download (not yet scheduled to a phase) | Not started |
-| 5 | Dashboards, search, notifications, reporting | Not started |
+| 5 | Dashboards, notifications, reporting | Not started |
 | 6 | Administration, audit trail, deployment hardening | Not started |
 
-See `docs/PROJECT_STATUS.md` for what Phase 4B delivered,
-`docs/architecture/letter-registry.md` for the full design, and known
+See `docs/PROJECT_STATUS.md` for what Phase 4C delivered,
+`docs/architecture/registry-search.md` for the full design, and known
 limitations. The next phase begins only when explicitly instructed.
 
 ---

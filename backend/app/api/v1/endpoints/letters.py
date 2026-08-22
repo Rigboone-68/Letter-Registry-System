@@ -30,10 +30,21 @@ database constraint to violate (removed by migration `c887ab35e4a3`, a
 Phase 4B hardening finding; see `app/models/letter.py`). Duplicate
 reference numbers are currently accepted; the actual uniqueness scope
 remains PENDING BUSINESS CLARIFICATION — see
-docs/architecture/letter-registry.md §2.3/§12.
+docs/architecture/letter-registry.md §2.3/§12. A search/list request may
+therefore match more than one Letter for the same reference number
+(Phase 4C).
+
+**Phase 4C** extends `list_letters` with pagination (`page`/`page_size`,
+FastAPI-validated bounds — no service-layer re-validation needed),
+explicit whitelisted sorting (`sort_by`/`sort_order` — `LetterSortField`/
+`SortOrder` enums, so an invalid value is a `422` before this function
+ever runs), and per-field search/filters. The `department_id` parameter
+keeps its Phase 4B behavior unchanged — SYSTEM_ADMIN-only, silently
+ignored for USER/ADMIN (see `app/services/letter_service.py:list_letters`).
 """
 
 import uuid
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -44,18 +55,26 @@ from app.database.session import get_db
 from app.models.enums import LetterStatus
 from app.models.letter import Letter
 from app.models.user import User
-from app.schemas.letter import LetterCreate, LetterListResponse, LetterResponse, LetterUpdate
+from app.schemas.letter import (
+    LetterCreate,
+    LetterListResponse,
+    LetterResponse,
+    LetterSortField,
+    LetterUpdate,
+    SortOrder,
+)
 from app.services.exceptions import (
     CategoryNotActiveError,
     CategoryNotFoundError,
     ClassificationNotActiveError,
     ClassificationNotFoundError,
     DepartmentAccessDeniedError,
+    InvalidDateRangeError,
     LetterNotFoundError,
     SourceDepartmentNotActiveError,
     SourceDepartmentNotFoundError,
 )
-from app.services.letter_service import LetterService
+from app.services.letter_service import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, LetterService
 
 router = APIRouter(prefix="/letters", tags=["letters"])
 
@@ -145,7 +164,7 @@ def create_letter(
 @router.get(
     "",
     response_model=LetterListResponse,
-    summary="List letters visible to you — own department (USER/ADMIN) or all (SYSTEM_ADMIN)",
+    summary="Search/list letters visible to you — own department (USER/ADMIN) or all (SYSTEM_ADMIN)",
 )
 def list_letters(
     department_id: Optional[uuid.UUID] = Query(
@@ -154,18 +173,65 @@ def list_letters(
     status_filter: Optional[LetterStatus] = Query(default=None, alias="status"),
     category_id: Optional[uuid.UUID] = Query(default=None),
     classification_id: Optional[uuid.UUID] = Query(default=None),
+    reference_number: Optional[str] = Query(
+        default=None, description="Case-insensitive contains match — may match more than one Letter"
+    ),
+    subject: Optional[str] = Query(default=None, description="Case-insensitive contains match"),
+    sender_name: Optional[str] = Query(default=None, description="Case-insensitive contains match"),
+    sender_designation: Optional[str] = Query(
+        default=None, description="Case-insensitive contains match"
+    ),
+    sender_department: Optional[str] = Query(
+        default=None, description="Case-insensitive contains match"
+    ),
+    source_name: Optional[str] = Query(default=None, description="Case-insensitive contains match"),
+    source_location: Optional[str] = Query(
+        default=None, description="Case-insensitive contains match"
+    ),
+    received_from: Optional[datetime] = Query(
+        default=None, description="Inclusive lower bound on received_at"
+    ),
+    received_to: Optional[datetime] = Query(
+        default=None, description="Inclusive upper bound on received_at"
+    ),
+    sort_by: LetterSortField = Query(default=LetterSortField.RECEIVED_AT),
+    sort_order: SortOrder = Query(default=SortOrder.DESC),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> LetterListResponse:
     service = LetterService(db)
-    letters = service.list_letters(
-        user=current_user,
-        department_id=department_id,
-        status_filter=status_filter,
-        category_id=category_id,
-        classification_id=classification_id,
+    try:
+        items, total = service.list_letters(
+            user=current_user,
+            department_id=department_id,
+            status_filter=status_filter,
+            category_id=category_id,
+            classification_id=classification_id,
+            reference_number=reference_number,
+            subject=subject,
+            sender_name=sender_name,
+            sender_designation=sender_designation,
+            sender_department=sender_department,
+            source_name=source_name,
+            source_location=source_location,
+            received_from=received_from,
+            received_to=received_to,
+            sort_by=sort_by.value,
+            sort_descending=(sort_order == SortOrder.DESC),
+            page=page,
+            page_size=page_size,
+        )
+    except InvalidDateRangeError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="received_from must not be after received_to.",
+        )
+    total_pages = (total + page_size - 1) // page_size
+    return LetterListResponse(
+        items=items, total=total, page=page, page_size=page_size, total_pages=total_pages
     )
-    return LetterListResponse(items=letters, total=len(letters))
 
 
 @router.get(

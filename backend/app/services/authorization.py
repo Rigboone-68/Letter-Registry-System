@@ -46,6 +46,9 @@ The rule itself (brief §2, §4, §8; extended in Phase 3B.2 §11):
 import uuid
 from typing import Optional
 
+from sqlalchemy import ColumnElement, or_
+
+from app.models.classification import Classification
 from app.models.enums import ActiveStatus, UserRole
 from app.models.letter import Letter
 from app.models.user import User
@@ -106,13 +109,59 @@ def assert_letter_access(user: User, letter: Letter) -> None:
 
 
 def can_view_letter(user: User, letter: Letter) -> bool:
-    """Boolean convenience wrapper around `assert_letter_access`, for
-    filtering a list of letters (app/services/letter_service.py:list_letters)
-    rather than gating a single-resource endpoint. Shares the exact same
-    policy — never reimplemented as a second, potentially-drifting
-    check."""
+    """Boolean convenience wrapper around `assert_letter_access`, for a
+    single already-loaded `Letter` (e.g. inside a loop, or a test
+    assertion). **Not used by `list_letters`** — a query-level result set
+    must never be filtered by fetching every row and then discarding some
+    in Python; see `letter_visibility_filter` below and
+    docs/architecture/registry-search.md §8 for why that pattern is a
+    count/pagination leakage risk."""
     try:
         assert_letter_access(user, letter)
         return True
     except (DepartmentAccessDeniedError, ClassifiedAccessDeniedError):
         return False
+
+
+def letter_visibility_filter(user: User) -> Optional[ColumnElement[bool]]:
+    """The SQL-expressible half of `assert_letter_access`'s classified-
+    access rule (its third and final step) — for building a `Letter`
+    *list/search* query whose `WHERE` clause, `COUNT`, and `LIMIT`/
+    `OFFSET` all agree on which rows are visible, rather than fetching
+    every department-scoped row and discarding some afterward. Department
+    scoping (`assert_letter_access`'s first step) is not this function's
+    job — the caller (`app/repositories/letter_repository.py:list_letters`)
+    already applies `Letter.recipient_department_id == :dept` as a plain
+    `WHERE` clause, computed exactly as before by
+    `app/services/letter_service.py:list_letters`; nothing about that
+    part changed or needed to.
+
+    Returns `None` for `SYSTEM_ADMIN`/`ADMIN` — no additional restriction
+    applies, so the caller should add no extra `WHERE` clause (and, not
+    incidentally, does not need the `LEFT JOIN` to `classifications` this
+    predicate would otherwise require). Returns a SQLAlchemy boolean
+    expression for `USER` — true when the letter's classification doesn't
+    restrict access, or the letter has no classification, or the caller
+    themselves recorded it. Requires the query to join to
+    `Classification` (on `Letter.classification_id ==
+    Classification.id`) for `Classification.restricts_access` to be
+    referenceable — the repository adds this join only when this function
+    returns non-`None`, so an ADMIN/SYSTEM_ADMIN query pays no extra join
+    cost.
+
+    This expresses the *same* policy as `assert_letter_access`'s third
+    step, not a second, independently-maintained one — both must be kept
+    in sync by hand if the provisional policy ever changes, since one is
+    Python boolean logic over an already-loaded row and the other is a
+    SQL expression; there is no single shared implementation that could
+    produce both without a much heavier abstraction than this policy
+    (a three-line rule) justifies. See
+    docs/architecture/registry-search.md §8 for the full reasoning.
+    """
+    if user.role != UserRole.USER:
+        return None
+    return or_(
+        Letter.classification_id.is_(None),
+        Classification.restricts_access.is_(False),
+        Letter.recorded_by == user.id,
+    )

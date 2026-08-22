@@ -29,6 +29,7 @@ letters, numbers, and special characters are all permitted, per explicit
 instruction not to invent a format the business didn't specify.
 """
 
+import enum
 import uuid
 from datetime import datetime
 from typing import List, Optional
@@ -36,6 +37,26 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.enums import LetterStatus
+
+
+class LetterSortField(str, enum.Enum):
+    """The explicit sort-field whitelist (Phase 4C) — a client value
+    outside this set is rejected by FastAPI/Pydantic with `422` before
+    ever reaching the service/repository layer. Never accept a raw
+    client string for `ORDER BY`; see
+    app/repositories/letter_repository.py:SORTABLE_COLUMNS, which this
+    enum's values are kept in sync with by hand (four fields, not
+    expected to change often enough to justify a shared source)."""
+
+    RECEIVED_AT = "received_at"
+    CREATED_AT = "created_at"
+    REFERENCE_NUMBER = "reference_number"
+    SUBJECT = "subject"
+
+
+class SortOrder(str, enum.Enum):
+    ASC = "asc"
+    DESC = "desc"
 
 
 def _require_non_blank(value: str) -> str:
@@ -146,6 +167,53 @@ class LetterResponse(BaseModel):
     updated_at: datetime
 
 
+class LetterListItem(BaseModel):
+    """A lightweight registry-row shape for `GET /api/v1/letters`
+    (Phase 4C) — every field except `text_content` and `reason`, which a
+    tabular list view has no use for and which cost more to transfer per
+    row at no benefit; `GET /api/v1/letters/{id}` keeps returning the
+    full `LetterResponse` unchanged. See
+    docs/architecture/registry-search.md §17/§9 (implemented, not just
+    recommended, as of this phase)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    reference_number: str
+    recipient_department_id: uuid.UUID
+
+    source_name: str
+    source_department_id: Optional[uuid.UUID]
+    source_location: Optional[str]
+
+    sender_name: str
+    sender_designation: str
+    sender_department: str
+    sender_address: Optional[str]
+
+    subject: Optional[str]
+    category_id: Optional[uuid.UUID]
+    classification_id: Optional[uuid.UUID]
+    received_at: datetime
+    recorded_by: uuid.UUID
+    status: LetterStatus
+    created_at: datetime
+    updated_at: datetime
+
+
 class LetterListResponse(BaseModel):
-    items: List[LetterResponse]
+    """Extends the original `{"items": [...], "total": N}` envelope
+    (unchanged field names, so existing consumers of `items`/`total`
+    keep working) with pagination metadata (Phase 4C):
+    `page`/`page_size` echo the effective request; `total_pages` is
+    computed from `total`/`page_size`. `total` (and therefore
+    `total_pages`) already reflects the caller's full authorization
+    scope — department isolation and the classified-access boundary are
+    both applied inside the query that produces it, never after — see
+    app/repositories/letter_repository.py:list_letters."""
+
+    items: List[LetterListItem]
     total: int
+    page: int
+    page_size: int
+    total_pages: int

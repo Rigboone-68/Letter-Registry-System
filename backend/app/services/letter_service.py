@@ -31,7 +31,8 @@ takes either as a caller-suppliable argument for `create_letter`.
 """
 
 import uuid
-from typing import List, Optional
+from datetime import datetime
+from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -42,7 +43,11 @@ from app.repositories.category_repository import CategoryRepository
 from app.repositories.classification_repository import ClassificationRepository
 from app.repositories.department_repository import DepartmentRepository
 from app.repositories.letter_repository import LetterRepository
-from app.services.authorization import assert_department_access, assert_letter_access, can_view_letter
+from app.services.authorization import (
+    assert_department_access,
+    assert_letter_access,
+    letter_visibility_filter,
+)
 from app.services.exceptions import (
     CategoryNotActiveError,
     CategoryNotFoundError,
@@ -50,10 +55,14 @@ from app.services.exceptions import (
     ClassificationNotFoundError,
     ClassifiedAccessDeniedError,
     DepartmentAccessDeniedError,
+    InvalidDateRangeError,
     LetterNotFoundError,
     SourceDepartmentNotActiveError,
     SourceDepartmentNotFoundError,
 )
+
+MAX_PAGE_SIZE = 100
+DEFAULT_PAGE_SIZE = 25
 
 
 class LetterService:
@@ -181,26 +190,70 @@ class LetterService:
         status_filter: Optional[LetterStatus] = None,
         category_id: Optional[uuid.UUID] = None,
         classification_id: Optional[uuid.UUID] = None,
-    ) -> List[Letter]:
-        """`department_id` is only meaningful for a SYSTEM_ADMIN caller
-        (optionally scope to one department; omit to see every
-        department). A USER/ADMIN caller is always scoped to their own
-        department regardless of what (if anything) they pass — the same
-        "the caller doesn't get to choose the isolation-relevant
-        parameter" convention `UserService.authorize_user` already
-        established."""
+        reference_number: Optional[str] = None,
+        subject: Optional[str] = None,
+        sender_name: Optional[str] = None,
+        sender_designation: Optional[str] = None,
+        sender_department: Optional[str] = None,
+        source_name: Optional[str] = None,
+        source_location: Optional[str] = None,
+        received_from: Optional[datetime] = None,
+        received_to: Optional[datetime] = None,
+        sort_by: str = "received_at",
+        sort_descending: bool = True,
+        page: int = 1,
+        page_size: int = DEFAULT_PAGE_SIZE,
+    ) -> Tuple[List[Letter], int]:
+        """Returns `(items, total)`. `department_id` is only meaningful
+        for a SYSTEM_ADMIN caller (optionally scope to one department;
+        omit to see every department). A USER/ADMIN caller is always
+        scoped to their own department regardless of what (if anything)
+        they pass — the same "the caller doesn't get to choose the
+        isolation-relevant parameter" convention `UserService.authorize_user`
+        already established. Unchanged from before this phase.
+
+        The classified-access rule is applied as a query-level predicate
+        (`letter_visibility_filter`), not a post-fetch Python filter —
+        `total` therefore already excludes anything the caller can't see,
+        at every page, not just page 1. See
+        docs/architecture/registry-search.md §8.
+
+        `sort_by` is expected to already be a validated key from
+        `app/repositories/letter_repository.py:SORTABLE_COLUMNS` — the
+        endpoint layer maps a client-supplied enum value to one of these
+        keys (rejecting anything else with `422`) before calling this
+        method; this method does not re-validate it against arbitrary
+        input, since it is never called with unvalidated client input
+        directly.
+        """
         if user.role == UserRole.SYSTEM_ADMIN:
             recipient_department_id = department_id
         else:
             recipient_department_id = user.department_id
 
-        letters = self.letters.list_letters(
+        if received_from is not None and received_to is not None and received_from > received_to:
+            raise InvalidDateRangeError()
+
+        return self.letters.list_letters(
             recipient_department_id=recipient_department_id,
             status_filter=status_filter,
             category_id=category_id,
             classification_id=classification_id,
+            reference_number=reference_number,
+            subject=subject,
+            sender_name=sender_name,
+            sender_designation=sender_designation,
+            sender_department=sender_department,
+            source_name=source_name,
+            source_location=source_location,
+            received_from=received_from,
+            received_to=received_to,
+            visibility_filter=letter_visibility_filter(user),
+            sort_column_key=sort_by,
+            sort_descending=sort_descending,
+            page=page,
+            page_size=page_size,
         )
-        return [letter for letter in letters if can_view_letter(user, letter)]
 
     # --- Update / Archive ------------------------------------------------------
 

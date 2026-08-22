@@ -7,8 +7,78 @@ supervisor as-is.
 
 ## Current Phase
 
-**Phase 4B — Letter Registry Core Implementation, plus a pre-commit
-hardening pass.** Complete. Builds directly on Phase 4A's review: the
+**Phase 4C — Registry Operations & Search: Implementation.** Complete.
+Builds directly on this phase's own prior architecture review: every
+decision that review recommended was implemented, in the exact order the
+review itself prescribed — the query-level classified-access fix first,
+*before* pagination, so the count-leakage risk the review found was
+never live for even one commit. `GET /api/v1/letters` now supports
+pagination (`page`/`page_size`, bounded, `{"items", "total", "page",
+"page_size", "total_pages"}`), explicit whitelisted sorting (`sort_by`/
+`sort_order`, four fields, stable via a secondary id-sort), seven
+case-insensitive "contains" text filters, three exact filters (unchanged
+from Phase 4B) plus inclusive `received_from`/`received_to` date-range
+filtering, all `AND`-combined, and a lightweight list-row response
+shape. Full design and implementation record in
+`docs/architecture/registry-search.md`.
+
+**Not in scope for this phase, and not added:** full-text search,
+`pg_trgm`, export, uploads, dashboards, notifications, automatic audit
+logging, or frontend changes.
+
+## Completed
+
+### Phase 4C — Registry Operations & Search implementation
+
+* **Fixed the query-level classified-access gap first**, exactly as
+  planned. `app/services/authorization.py:letter_visibility_filter(user)`
+  returns a SQLAlchemy boolean expression (`None` for
+  `SYSTEM_ADMIN`/`ADMIN`; the classified-access rule as a `WHERE`
+  fragment for `USER`), consumed by
+  `app/repositories/letter_repository.py:list_letters`, which builds
+  **one** filtered statement and derives both the `COUNT` and the
+  paginated `items` query from it — structurally impossible for the two
+  to disagree about which rows are visible. Verified by two dedicated
+  regression tests and a live `lrs_dev` check (see "Validation
+  performed" below).
+* **Pagination** — `page`/`page_size` (defaults `1`/`25`, `page_size`
+  capped at `100`, both FastAPI-validated), envelope extended with
+  `page`/`page_size`/`total_pages` (the existing `items`/`total` keys
+  unchanged).
+* **Sorting** — `sort_by`/`sort_order` via `LetterSortField`/`SortOrder`
+  enums (an invalid value is `422` before the endpoint runs — never a
+  raw client string reaching `ORDER BY`), default `received_at desc`,
+  stabilized with a secondary sort on `Letter.id`.
+* **Search/filters** — `reference_number`, `subject`, `sender_name`,
+  `sender_designation`, `sender_department`, `source_name`,
+  `source_location` (case-insensitive contains, `ILIKE`-escaped against
+  literal `%`/`_` in the search term); `received_from`/`received_to`
+  (inclusive, rejected with `422` if reversed); `category_id`/
+  `classification_id`/`status`/`department_id` (exact, `department_id`
+  unchanged Phase 4B behavior — SYSTEM_ADMIN-only, silently ignored
+  otherwise). All combine with `AND`.
+* **Lightweight list response** — `LetterListItem`
+  (`app/schemas/letter.py`) omits `text_content`/`reason`;
+  `GET /api/v1/letters/{id}` unchanged, still returns the full
+  `LetterResponse`.
+* **Migration `9fa970ffa560`** — adds `ix_letters_reference_number` (a
+  plain, non-unique B-tree index; re-added after Phase 4B's hardening
+  pass removed the unique constraint that used to imply one). No other
+  index added — a B-tree index gives `ILIKE '%contains%'` no benefit.
+* **43 new tests** (`tests/integration/test_letter_search.py`) — the two
+  highest-priority ones prove the central fix directly:
+  `test_classified_record_excluded_from_total_count` and
+  `test_classified_record_excluded_across_all_pages`.
+* **No physical Letter deletion, no reference-number uniqueness
+  reintroduced, no Phase 4D functionality** — confirmed explicitly, see
+  "Explicit Scope Confirmation" in the phase's own final report.
+* **Documentation**: `docs/architecture/registry-search.md` updated from
+  recommendation to implementation record, plus updates to the root
+  README, `backend/README.md`, and `docs/architecture/overview.md`.
+
+### Phase 4B — Letter Registry Core implementation, plus a pre-commit hardening pass
+
+Complete. Builds directly on Phase 4A's review: the
 product owner resolved all six pending business decisions, and this
 phase implemented them — a Letter registry with recipient/source
 department separation, required structured sender details, a required
@@ -28,15 +98,11 @@ placeholders, source/sender semantics, classified-access boundary,
 department isolation, historical identity, input security) was
 re-verified against actual code and found already correct. Full design
 in `docs/architecture/letter-registry.md`, hardening findings in its §14.
-
-**Not in scope for this phase, and not added:** file upload/download
-(the `LetterDocument` relationship remains schema-only), dashboards,
-automatic notification generation, automatic audit logging, full-text
-search, frontend, System Admin handover, or an ADMIN-purpose
-authorization-revocation endpoint (a pre-existing Phase 3B.4 gap,
-unrelated to this phase).
-
-## Completed
+Not in scope for that phase: file upload/download (the `LetterDocument`
+relationship remains schema-only), dashboards, automatic notification
+generation, automatic audit logging, full-text search, frontend, System
+Admin handover, or an ADMIN-purpose authorization-revocation endpoint (a
+pre-existing Phase 3B.4 gap, unrelated to that phase).
 
 ### Phase 4B hardening pass — pre-commit correctness/security review
 
@@ -419,6 +485,26 @@ detail behind each:
 | 5 | `letter_documents.uploaded_by` had no index, unlike every other User-referencing FK in the schema | Added (`ix_letter_documents_uploaded_by`) |
 | 6 | The role/department `CHECK` constraint hardcoded role strings, duplicating `UserRole`'s values | Model-side constraint now built from `UserRole.*.value`; the migration's own copy is deliberately still a literal (migrations are frozen snapshots) — see `app/models/user.py` docstring |
 
+### Validation performed — Phase 4C
+
+All against the same real, local, disposable PostgreSQL 17 instance used
+for every prior phase (`lrs_dev` for manual checks, `lrs_test` for the
+suite — never a shared or departmental database):
+
+| Check | Result |
+|---|---|
+| `pytest` (full suite) against `lrs_test` | **387 passed**, 0 failed, 0 skipped (344 baseline + 43 new). Re-run 3 consecutive times, identical results |
+| `alembic upgrade head` against `lrs_dev` (new migration `9fa970ffa560`) | Applied cleanly (`c887ab35e4a3 -> 9fa970ffa560`) |
+| `alembic downgrade -1` -> `alembic upgrade head` | Full round-trip verified — `ix_letters_reference_number` correctly absent after downgrade, correctly present again after re-upgrade |
+| `alembic check` | "No new upgrade operations detected" |
+| Live-server verification against `lrs_dev` with real JWTs — the central fix, proven end-to-end | 3 ordinary letters + 2 classified letters (recorded by a different User) created in one department; the non-recording User's `GET /api/v1/letters` returned `total: 3` (not 5), with no `HIDDEN`-tagged reference number appearing in `items`; the same query paginated at `page_size=2` still reported `total: 3`/`total_pages: 2` across both pages; the department's Admin and a SYSTEM_ADMIN both correctly saw `total: 5` |
+| Live sort + search + filter combined | `?subject=live&sort_by=reference_number&sort_order=asc` returned exactly the visible (non-classified) letters, correctly ordered |
+| `git status` review | No secrets tracked; `.env` confirmed gitignored; no historical migration file modified |
+
+All data created during manual verification was deleted from `lrs_dev`
+afterward, except the three seeded `categories` rows (unchanged,
+permanent V1 configuration); `lrs_dev` otherwise empty again.
+
 ### Validation performed — Phase 4B
 
 All against the same real, local, disposable PostgreSQL 17 instance used
@@ -610,11 +696,12 @@ afterward — `lrs_dev` is empty again.
 
 ## In Progress
 
-Nothing — Phase 4B is complete and the project is paused pending explicit
-instruction to begin the next phase, per the standing project rule that
-phases are reviewed before the next begins.
+Nothing — Phase 4C is complete (architecture review and implementation
+both) and the project is paused pending explicit instruction to begin
+the next phase, per the standing project rule that phases are reviewed
+before the next begins.
 
-## Pending (Phase 4C/5 and later)
+## Pending (Phase 4D and later)
 
 * **File upload/download for `LetterDocument`** — the relationship
   remains schema-only (unchanged since Phase 2); Phase 4A confirmed it is
@@ -628,10 +715,19 @@ phases are reviewed before the next begins.
   Category's three now are). See `docs/architecture/letter-registry.md`
   §2.5/§12.
 * **The exact classified-letter visibility matrix beyond "not every
-  department user by default"** — `app/services/authorization.py:assert_letter_access`
-  currently allows `ADMIN`/`SYSTEM_ADMIN`/the letter's own recorder; this
-  is an explicit, documented, provisional default, not a confirmed final
-  policy. See `docs/architecture/letter-registry.md` §8/§12.
+  department user by default"** — `app/services/authorization.py:assert_letter_access`/
+  `letter_visibility_filter` currently allow `ADMIN`/`SYSTEM_ADMIN`/the
+  letter's own recorder; this is an explicit, documented, provisional
+  default, not a confirmed final policy. See
+  `docs/architecture/letter-registry.md` §8/§12 and
+  `docs/architecture/registry-search.md` §11.
+* **Exact reference-number search semantics beyond "contains"** (Phase
+  4C) — prefix matching was considered and not chosen; contains was
+  implemented as the more forgiving default. A product/UX question, not
+  a blocking one. See `docs/architecture/registry-search.md` §11.
+* **Whether a single free-text `search=` box (spanning multiple fields)
+  is wanted** alongside the per-field parameters implemented in Phase
+  4C. See `docs/architecture/registry-search.md` §11.
 * **A revoke endpoint for ADMIN-purpose `UserAuthorization` rows** — Phase
   3B.4 added revocation only for the USER-purpose path
   (`DELETE /api/v1/users/authorizations/{id}`); a System Admin still
@@ -724,13 +820,27 @@ behind each.
 
 ## Known Limitations
 
+* **RESOLVED (Phase 4C)** — the classified-record count/pagination
+  leakage risk identified in this phase's own architecture review
+  (a non-recording `USER`'s `total` could have included letters they
+  couldn't see, once pagination existed) was fixed *before* pagination
+  was built, not after: `letter_visibility_filter` makes the
+  classified-access rule a SQL `WHERE` clause, and `total`/`items` are
+  derived from the identical filtered query. Verified by two dedicated
+  regression tests and a live `lrs_dev` check — see
+  `docs/architecture/registry-search.md` §1/§9.
 * **`letters.reference_number` currently has no uniqueness enforcement
-  at all** (Phase 4B hardening pass finding) — a global constraint was
-  implemented then removed once it became clear the business never
-  actually confirmed the scope ("must be unique" alone doesn't say
-  global vs. per-department vs. per-source vs. per-year). Duplicates are
-  currently accepted anywhere in the system. See
-  `docs/architecture/letter-registry.md` §2.3/§14.
+  at all** (Phase 4B hardening pass finding, unchanged by Phase 4C) — a
+  global constraint was implemented then removed once it became clear
+  the business never actually confirmed the scope ("must be unique"
+  alone doesn't say global vs. per-department vs. per-source vs.
+  per-year). Duplicates are currently accepted anywhere in the system,
+  and a reference-number search can return more than one result. It is,
+  however, indexed again (`ix_letters_reference_number`, migration
+  `9fa970ffa560`, Phase 4C) — a plain, non-unique index, added because
+  reference-number search is a real requirement. See
+  `docs/architecture/letter-registry.md` §2.3/§14 and
+  `docs/architecture/registry-search.md` §8.
 * **RESOLVED (Phase 4B)** — `Letter` now has `recipient_department_id`
   (the department-isolation boundary) and `source_department_id`/
   `source_name` (the letter's origin) as distinct fields; the single-
@@ -869,20 +979,17 @@ behind each.
 
 ## Next Recommended Phase
 
-**Phase 4C — Letter Attachments, or Phase 5 — Dashboards/Search/
-Notifications** (either is a reasonable next slice; not yet decided).
-Phase 4B delivered a complete, tested, department-isolated Letter
-registry with a real classified-access boundary — the core business
-entity this whole project exists to manage is now creatable, listable,
-retrievable, updatable, and archivable entirely through the API. The two
-largest remaining gaps are (1) `LetterDocument` file upload/download
-(schema-ready since Phase 2, never implemented — Phase 4A §16 confirmed
-compatibility, nothing about it changed in 4B) and (2) everything V1
-requirements describe as later-phase work: dashboards, structured search
-beyond basic filtering, real notification generation, and automatic audit
-logging. Recommended before either: resolve the exact classification
-value list and the exact classified-visibility matrix
-(`docs/architecture/letter-registry.md` §12) with the product owner, since
-both remaining implementation phases (attachments, dashboards) will
-surface classified letters in new UI/API surfaces where the provisional
-policy's limits become more visible.
+**Phase 4D — Letter Attachments (`LetterDocument` upload/download)**, or
+resolving the outstanding business clarifications first. The registry is
+now a complete, tested, paginated/sortable/searchable, department- and
+classification-isolated system — every V1 requirement about *finding*
+and *managing* letters (not their attached files) is built. The largest
+remaining functional gap is attachments: `LetterDocument` has been
+schema-ready since Phase 2, confirmed architecturally compatible in
+Phase 4A, and untouched since. Recommended before starting it: resolve
+the exact classification value list and the exact classified-visibility
+matrix with the product owner (`docs/architecture/letter-registry.md`
+§12, `docs/architecture/registry-search.md` §11) — attachments on a
+classified letter are exactly the kind of surface where the current
+provisional policy's limits become more visible than plain CRUD already
+makes them.

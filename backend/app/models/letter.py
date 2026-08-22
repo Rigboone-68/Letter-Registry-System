@@ -38,7 +38,10 @@ departments each issuing their own overlapping numbering. Enforcing a
 guessed scope (global was the first guess, tried and reverted) risks
 rejecting legitimate real-world duplicates. See
 docs/architecture/letter-registry.md §2.3/§12, PENDING BUSINESS
-CLARIFICATION.
+CLARIFICATION. It is, however, indexed (`ix_letters_reference_number`,
+migration `9fa970ffa560`, Phase 4C) — a plain, non-unique B-tree index,
+added because reference-number search is a real requirement, not because
+uniqueness returned.
 
 `category_id`/`classification_id` remain nullable — neither the Phase 4A
 nor Phase 4B decisions confirmed that every letter must have one assigned
@@ -76,7 +79,7 @@ if TYPE_CHECKING:
 class Letter(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "letters"
 
-    reference_number: Mapped[str] = mapped_column(String(255), nullable=False)
+    reference_number: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
 
     recipient_department_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

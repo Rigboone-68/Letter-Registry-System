@@ -18,8 +18,11 @@ for authentication, [`authorization.md`](authorization.md) for the RBAC/
 department-isolation design, [`department-management.md`](department-management.md)
 for department CRUD, [`admin-management.md`](admin-management.md) for the
 Admin lifecycle, [`user-management.md`](user-management.md) for the User
-lifecycle, and [`letter-registry.md`](letter-registry.md) for the Letter
-Registry Core (Phase 4A review + Phase 4B implementation).
+lifecycle, [`letter-registry.md`](letter-registry.md) for the Letter
+Registry Core (Phase 4A review + Phase 4B implementation), and
+[`registry-search.md`](registry-search.md) for the Phase 4C review of
+what listing/filtering/search/pagination will need — architecture and
+planning only; no search or pagination code exists yet.
 
 ## 1. The hierarchy
 
@@ -345,6 +348,36 @@ resource existed to protect.
 * 67 new tests against a real PostgreSQL test database, plus a full
   live-server verification against `lrs_dev` exercising the classified-
   access boundary across every role.
+
+### Implemented (Phase 4C — Registry Operations & Search)
+
+* Confirmed every field requested as searchable already existed on
+  `Letter` before implementation began — nothing invented. See
+  [`registry-search.md`](registry-search.md) §1/§5.
+* **Fixed a real architectural risk found in this phase's own
+  architecture review, before adding the feature that would have
+  exposed it**: the (Phase 4B) `list_letters` implementation used to
+  filter classified letters *after* fetching them from the database, in
+  Python — harmless while no pagination existed, but a genuine count/
+  pagination leakage risk once it did.
+  `app/services/authorization.py:letter_visibility_filter` moved the
+  same rule into the SQL query itself, and
+  `app/repositories/letter_repository.py:list_letters` derives its
+  `COUNT` and paginated `items` from one identical filtered statement —
+  verified by two dedicated regression tests and a live `lrs_dev` check.
+  See [`registry-search.md`](registry-search.md) §1.
+* Implemented pagination (`page`/`page_size`, bounded), explicit
+  whitelisted sorting (`LetterSortField`/`SortOrder` enums, stable via a
+  secondary id-sort), seven case-insensitive contains-match text
+  filters (escaped against literal `%`/`_`), and inclusive
+  `received_from`/`received_to` date-range filtering, all `AND`-
+  combined — exactly the design the review recommended, `pg_trgm`/
+  full-text search still not adopted.
+* Added `ix_letters_reference_number` (migration `9fa970ffa560`) — the
+  one index the review concluded was justified.
+* 43 new tests
+  (`tests/integration/test_letter_search.py`), full suite **387
+  passed, 0 failed**, re-run 3 consecutive times.
 
 ### Explicitly deferred (not yet implemented)
 
