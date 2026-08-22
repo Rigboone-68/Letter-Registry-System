@@ -44,7 +44,7 @@ The rule itself (brief §2, §4, §8; extended in Phase 3B.2 §11):
 """
 
 import uuid
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import ColumnElement, or_
 
@@ -53,6 +53,9 @@ from app.models.enums import ActiveStatus, UserRole
 from app.models.letter import Letter
 from app.models.user import User
 from app.services.exceptions import ClassifiedAccessDeniedError, DepartmentAccessDeniedError
+
+if TYPE_CHECKING:
+    from app.models.letter_document import LetterDocument
 
 
 def assert_department_access(user: User, department_id: Optional[uuid.UUID]) -> None:
@@ -121,6 +124,28 @@ def can_view_letter(user: User, letter: Letter) -> bool:
         return True
     except (DepartmentAccessDeniedError, ClassifiedAccessDeniedError):
         return False
+
+
+def assert_document_access(user: User, document: "LetterDocument") -> None:
+    """Raise `DepartmentAccessDeniedError` or `ClassifiedAccessDeniedError`
+    unless `user` may access `document`. A thin delegate to
+    `assert_letter_access(user, document.letter)` and nothing else — a
+    `LetterDocument` has no authorization logic of its own to duplicate.
+    `LetterDocument` also has no department field at all (only a
+    transitive relationship via `letter.recipient_department_id`), so
+    there is nothing here that could be derived from
+    `document.uploaded_by_user.department_id` even by mistake — see
+    docs/architecture/document-management.md §16-17.
+
+    In practice, `app/services/document_service.py` reaches the same
+    result by calling `LetterService.get_letter` directly (which already
+    collapses "doesn't exist"/"wrong department"/"classified and
+    inaccessible" into one `LetterNotFoundError`) rather than loading a
+    `LetterDocument` first and calling this function — this function
+    exists for any future caller that already holds a loaded
+    `LetterDocument` and needs the same check without a second Letter
+    fetch."""
+    assert_letter_access(user, document.letter)
 
 
 def letter_visibility_filter(user: User) -> Optional[ColumnElement[bool]]:

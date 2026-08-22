@@ -51,8 +51,19 @@ class Settings(BaseSettings):
 
     # --- Document storage ----------------------------------------------
     # Filesystem root for scanned letters. The database stores only metadata
-    # and a relative path into this root.
+    # and a relative path into this root. Resolved to an absolute path (and
+    # created if missing) at the point of use by
+    # app/services/document_storage.py — see
+    # docs/architecture/document-management.md §5.
     STORAGE_PATH: str = "../storage/letters"
+
+    # Maximum accepted size, in bytes, for one uploaded LetterDocument.
+    # 10 MB is an ARCHITECTURAL RECOMMENDATION from the Phase 4D review
+    # (docs/architecture/document-management.md §9), not a confirmed
+    # organizational requirement — no limit was given by the business.
+    # Centralized here, not hardcoded at each call site, so it can be
+    # changed without touching validation/upload code.
+    MAX_DOCUMENT_SIZE_BYTES: int = 10 * 1024 * 1024
 
     # --- Logging --------------------------------------------------------
     LOG_LEVEL: str = "INFO"

@@ -12,6 +12,7 @@ from app.api.v1.endpoints import (
     classifications,
     departments,
     dev_authz_test,
+    documents,
     letters,
     users,
 )
@@ -24,5 +25,9 @@ api_router.include_router(users.router)
 api_router.include_router(categories.router)
 api_router.include_router(classifications.router)
 api_router.include_router(letters.router)
+# Nested under /letters/{letter_id}/documents — see that module's
+# docstring for why this is a separate router rather than routes added
+# directly to letters.py.
+api_router.include_router(documents.router)
 # Phase 3B.1 verification-only routes — see that module's docstring.
 api_router.include_router(dev_authz_test.router)

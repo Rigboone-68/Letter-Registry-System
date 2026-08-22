@@ -2,11 +2,12 @@
 
 FastAPI service for the Letter Registry System. **Phase 4B: Letter
 Registry Core — implemented, with a pre-commit hardening pass applied on
-top. Phase 4C: Registry Operations & Search — implemented.** Builds on
-Phase 4A's architecture review and the fully-delivered Phase 3B (Roles &
-Access Management: authentication, RBAC/department isolation, department
-management, Admin management, User management). Full design in
-`docs/architecture/authentication.md` (auth),
+top. Phase 4C: Registry Operations & Search — implemented. Phase 4D:
+Document Management — implemented, on top of this phase's own
+architecture review.** Builds on Phase 4A's architecture review and the
+fully-delivered Phase 3B (Roles & Access Management: authentication,
+RBAC/department isolation, department management, Admin management, User
+management). Full design in `docs/architecture/authentication.md` (auth),
 `docs/architecture/authorization.md` (RBAC/department isolation),
 `docs/architecture/department-management.md` (department CRUD),
 `docs/architecture/admin-management.md` (Admin lifecycle),
@@ -18,7 +19,7 @@ separation, required sender details, a required reference number (no
 uniqueness constraint — its scope was never confirmed and was removed
 after an initial global-uniqueness assumption; see §14 of that doc),
 exactly three seeded Categories, and a real, documented-as-provisional
-classified-access authorization boundary), and
+classified-access authorization boundary),
 `docs/architecture/registry-search.md` (Phase 4C: pagination, explicit
 whitelisted sorting, and seven case-insensitive text-search filters on
 `GET /api/v1/letters`, implemented only after fixing a real architectural
@@ -26,11 +27,21 @@ risk that phase's own review found first — the letter list used to
 filter classified records out in Python *after* fetching them, which
 would have let a paginated `total` leak how many inaccessible records
 existed; the fix moved that check into the SQL query itself before any
-pagination code was written). File upload/download, dashboards, and
-notifications are still not implemented — see
-`docs/architecture/overview.md` §4 and
-`docs/architecture/registry-search.md` §12 for exactly what is and isn't
-in place.
+pagination code was written), and `docs/architecture/document-management.md`
+(Phase 4D: `LetterDocument` upload/list/download —
+`POST`/`GET /api/v1/letters/{letter_id}/documents`,
+`GET .../{document_id}` — with a server-generated, UUID-based storage
+path that never trusts client input, layered file-type/size validation
+(extension allowlist then an authoritative magic-byte content
+signature), and an authorization chain that reuses
+`assert_letter_access`/`LetterService.get_letter` rather than a new
+document-level check, so classified-letter protection extends to its
+documents automatically. No schema change was needed; there is still no
+document deletion endpoint of any kind — a deliberate scope decision,
+not a gap. See §33 of that doc for the full implementation record).
+Dashboards and notifications are still not implemented — see
+`docs/architecture/overview.md` §4 for exactly what is and isn't in
+place.
 
 ## Setup
 
@@ -51,8 +62,11 @@ Admin management endpoints (`/api/v1/admins*`, SYSTEM_ADMIN only), the
 User management endpoints (`/api/v1/users*`, ADMIN only, scoped to the
 caller's own department), the Letter registry endpoints (`/api/v1/letters*`,
 USER/ADMIN create; any authenticated role reads/updates/archives subject
-to `assert_letter_access`), Category/Classification management
-endpoints (`/api/v1/categories*`, `/api/v1/classifications*`,
+to `assert_letter_access`), the document endpoints
+(`/api/v1/letters/{letter_id}/documents*` — upload/list/download, any
+role that can already access the parent Letter, including SYSTEM_ADMIN
+cross-department; no deletion endpoint), Category/Classification
+management endpoints (`/api/v1/categories*`, `/api/v1/classifications*`,
 SYSTEM_ADMIN only), five verification-only authorization endpoints under
 `/api/v1/auth/test/*` (not business functionality — see
 `docs/architecture/authorization.md` §7), plus `/docs` and `/redoc`.
@@ -83,13 +97,14 @@ if an active System Admin already exists. See
 | `app/core/logging.py` | Uniform log format and level |
 | `app/database/base.py` | Declarative `Base` only — deliberately does not import `app.models` (see its docstring, and `docs/database/schema.md` §1) |
 | `app/database/session.py` | Lazy engine, session factory, `get_db()` dependency |
-| `app/models/` | SQLAlchemy models — 9 core entities (see `docs/database/schema.md`); `Letter`/`Classification` extended in Phase 4B |
+| `app/models/` | SQLAlchemy models — 9 core entities (see `docs/database/schema.md`); `Letter`/`Classification` extended in Phase 4B; `LetterDocument` unchanged since Phase 2 — Phase 4D needed no schema change |
 | `app/schemas/auth.py` | Signup/login/token/current-user request-response contracts |
 | `app/schemas/department.py` | Department create/update/response/list-envelope contracts — no server-controlled field (`id`/`status`/timestamps) is ever accepted from a client |
 | `app/schemas/admin.py` | Admin-authorization/response/list-envelope/department-transfer contracts — same no-server-controlled-field guarantee |
 | `app/schemas/user.py` | User-authorization/response/list-envelope contracts (Phase 3B.4) — `UserAuthorizationCreate` has no `department_id` field at all (always derived from the calling Admin), unlike `AdminAuthorizationCreate` |
 | `app/schemas/letter.py` | Letter create/update/response/list-envelope contracts (Phase 4B) — no `recipient_department_id`/`recorded_by`/`status` field on `LetterCreate` |
 | `app/schemas/category.py`, `app/schemas/classification.py` | Category/Classification create/update/response/list-envelope contracts (Phase 4B) — same no-server-controlled-field guarantee; `Classification` additionally carries `restricts_access` |
+| `app/schemas/document.py` | `DocumentResponse`/`DocumentListResponse` (Phase 4D) — no `storage_path` field exists on the response at all, `LetterDocument`'s equivalent of never serializing `password_hash`; no `DocumentCreate` schema (upload is a multipart file field, not a JSON body) |
 | `app/api/deps.py` | `get_current_user` (authentication) plus `require_system_admin`/`require_admin`/`require_admin_or_system_admin`/`require_user_or_admin`/`require_department_access` (authorization) |
 | `app/api/v1/router.py` | Aggregate v1 router |
 | `app/api/v1/endpoints/auth.py` | `/auth/signup`, `/auth/login`, `/auth/me` |
@@ -98,6 +113,7 @@ if an active System Admin already exists. See
 | `app/api/v1/endpoints/users.py` | `/users*` — ADMIN only, scoped to the caller's own department (Phase 3B.4); includes the project's first authorization-revocation endpoint |
 | `app/api/v1/endpoints/letters.py` | `/letters*` (Phase 4B) — `POST` is USER/ADMIN only; every other route accepts any authenticated role, with the actual department/classified-access decision made inside `LetterService`, not the route dependency |
 | `app/api/v1/endpoints/categories.py`, `app/api/v1/endpoints/classifications.py` | `/categories*`, `/classifications*` (Phase 4B) — SYSTEM_ADMIN only, mirroring `departments.py` exactly |
+| `app/api/v1/endpoints/documents.py` | `/letters/{letter_id}/documents*` (Phase 4D) — nested under Letter on purpose, so the letter-first authorization chain is structurally unavoidable; every route uses `get_current_user` only (no `require_user_or_admin`), since the real decision is `LetterService.get_letter`'s `assert_letter_access`, exactly the same one-check-not-two principle `letters.py` already established. No delete route |
 | `app/api/v1/endpoints/dev_authz_test.py` | `/auth/test/*` — verification-only, not business functionality (see `docs/architecture/authorization.md` §7) |
 | `app/services/auth_service.py` | Signup and login business logic — role now derived from `UserAuthorization.purpose` (Phase 3B.3) |
 | `app/services/bootstrap_service.py` | First-System-Admin creation logic (called by `app/cli.py`) |
@@ -107,12 +123,16 @@ if an active System Admin already exists. See
 | `app/services/user_service.py` | User authorization/approval/lifecycle/revocation business logic, scoped to the calling Admin's own department (Phase 3B.4) |
 | `app/services/letter_service.py` | Letter create/read/update/archive business logic (Phase 4B) — `recorded_by`/`recipient_department_id` always derived from the caller; reference-number/source-department/category/classification validation. `list_letters` (Phase 4C) adds pagination/sorting/search, raising `InvalidDateRangeError` for a reversed `received_from`/`received_to` |
 | `app/services/category_service.py`, `app/services/classification_service.py` | Category/Classification CRUD business logic (Phase 4B), mirroring `department_service.py` |
+| `app/services/document_service.py` | Upload/list/get business logic (Phase 4D) — reuses `LetterService.get_letter` for authorization rather than a parallel check; write-then-commit-with-compensation ordering (file written before the DB row is committed; a DB failure after a successful write deletes the now-orphaned file) |
+| `app/services/document_storage.py` | Server-controlled filesystem paths (Phase 4D) — `STORAGE_PATH` resolved to an absolute path fresh on every call (never cached), `<letter_uuid>/<document_uuid>.<ext>` built entirely from server-generated UUIDs and a fixed MIME-to-extension map, atomic temp-file-then-rename writes |
+| `app/services/document_validation.py` | Layered file-type/size validation (Phase 4D) — extension allowlist, size limit, then an authoritative magic-byte content-signature check (hand-rolled, no `python-magic`/libmagic dependency); client-supplied `Content-Type` is never consulted |
 | `app/services/exceptions.py` | Service-layer domain errors, mapped to HTTP responses in the endpoint layer |
 | `app/repositories/user_repository.py` | The only code that queries `User` — extended in Phase 3B.3 with `find_admin_by_id`/`list_admins`/`update_status`/`update_department`, and in Phase 3B.4 with `find_user_by_id`/`list_users`, rather than a new repository each time |
 | `app/repositories/user_authorization_repository.py` | The only code that queries `UserAuthorization`, including the race-safe `SELECT ... FOR UPDATE` signup consumes, (Phase 3B.3) `create`/`find_unresolved`, and (Phase 3B.4) `find_by_id`/`list_by_department`/`revoke` |
 | `app/repositories/department_repository.py` | The only code that queries `Department` |
 | `app/repositories/letter_repository.py` | The only code that queries `Letter` (Phase 4B). `find_by_id` eagerly loads `classification` for `assert_letter_access`. `list_letters` (Phase 4C) builds one filtered `stmt` and derives both the `COUNT` and the paginated `items` query from it — never two independently-built queries that could disagree about which rows are visible; `SORTABLE_COLUMNS` is the explicit sort-field whitelist |
 | `app/repositories/category_repository.py`, `app/repositories/classification_repository.py` | The only code that queries `Category`/`Classification` (Phase 4B) |
+| `app/repositories/letter_document_repository.py` | The only code that queries `LetterDocument` (Phase 4D). `find_by_id_and_letter` is scoped by *both* ids at once, so a document that exists under a different letter 404s identically to one that doesn't exist |
 | `app/utils/email.py` | `normalize_email` — the one place "same email" is defined |
 | `app/middleware/` | Request correlation and audit middleware (empty) |
 
@@ -176,17 +196,19 @@ a plain, non-unique index on `reference_number` — lost when its unique
 constraint was dropped — since reference-number search is a real Phase
 4C requirement). All six are described in `docs/database/schema.md`.
 **None of Phase 3A (authentication), 3B.1 (RBAC/department authorization),
-3B.2 (department management), or 3B.4 (User management) required a schema
-change** — every column either needed already existed from Phase 2, or
-(Phase 3B.4) from Phase 3B.3's `purpose` column and Phase 2's own
-`AuthorizationStatus.REVOKED` enum value, which simply had no endpoint
-setting it until now. Phase 3B.2 did fix a constraint-*naming*
-inconsistency in `app/models/department.py` (see `docs/database/schema.md`
-§2.1) — a Python-model-only change, not a migration, since the real
-database already had the correct name. Phase 3B.3, Phase 4B (two
-migrations), and Phase 4C (one migration) are the only phases since
-Phase 2's hardening pass to need one; `alembic check` confirms zero
-drift after all six.
+3B.2 (department management), 3B.4 (User management), or 4D (document
+management) required a schema change** — every column either needed
+already existed from Phase 2, or (Phase 3B.4) from Phase 3B.3's `purpose`
+column and Phase 2's own `AuthorizationStatus.REVOKED` enum value, which
+simply had no endpoint setting it until now, or (Phase 4D) already
+existed on `LetterDocument` since the Phase 2 baseline. Phase 3B.2 did
+fix a constraint-*naming* inconsistency in `app/models/department.py`
+(see `docs/database/schema.md` §2.1) — a Python-model-only change, not a
+migration, since the real database already had the correct name. Phase
+3B.3, Phase 4B (two migrations), and Phase 4C (one migration) are the
+only phases since Phase 2's hardening pass to need one; `alembic check`
+confirms zero drift after all six, and still confirms zero drift after
+Phase 4D (no seventh migration was added).
 
 ```bash
 alembic upgrade head       # apply all six, in order
@@ -230,12 +252,19 @@ decoded, mirroring `DATABASE_URL`'s existing lazy-check pattern in
 ## Tests
 
 ```bash
-pytest
+pytest tests/
 ```
 
-387 tests total (277 baseline + 67 in Phase 4B + 43 new in Phase 4C).
-`SECRET_KEY` must be set (via `.env`) for the JWT-dependent tests to
-run — copy `.env.example` to `.env` first if you haven't.
+425 tests total (277 baseline + 67 in Phase 4B + 43 in Phase 4C + 38 new
+in Phase 4D). `SECRET_KEY` must be set (via `.env`) for the JWT-dependent
+tests to run — copy `.env.example` to `.env` first if you haven't.
+Scope the invocation to `tests/` (not a bare `pytest`) — `app/api/v1/endpoints/dev_authz_test.py`'s
+filename incidentally matches pytest's default `*_test.py` discovery
+pattern, and a bare `pytest` run from `backend/` will also try (and fail)
+to collect its route-handler functions as test functions. This is a
+pre-existing environment quirk, not a Phase 4D regression — confirmed by
+running the identical bare `pytest` invocation against the tree before
+this phase's changes and observing the same collection error.
 
 **Model layer (Phase 2)** — `tests/integration/test_models.py`: creation,
 relationships, constraints, FK `RESTRICT`/`CASCADE` behavior, and database
@@ -356,6 +385,28 @@ exits cleanly in an environment without PostgreSQL.
   inaccessible letter can no longer inflate `total` or occupy a page
   slot, the exact regression this phase's own architecture review
   identified as the reason to fix the query *before* adding pagination.
+
+**Document management (Phase 4D)**:
+
+* `tests/integration/test_document_management.py` (38 tests) — real
+  JWTs, real database-backed Letters, real HTTP requests through
+  `/api/v1/letters/{letter_id}/documents*`. An autouse `storage_root`
+  fixture redirects `STORAGE_PATH` to a per-test `tmp_path`, the
+  filesystem equivalent of `db_session`'s per-test rollback isolation —
+  no test ever writes into the real `storage/letters/` tree. Covers file
+  acceptance (PDF/JPEG/PNG/TXT) and rejection (bad extension, HTML, MIME
+  spoofing, malformed content, oversized, empty), path security (five
+  malicious-filename variants plus a direct containment-check test),
+  authorization (USER/ADMIN own vs. other department, SYSTEM_ADMIN
+  cross-department, classified-letter recorder vs. non-recorder,
+  wrong-letter/document pairing, nonexistent letter/document), historical
+  integrity (deactivated uploader still represented, archived letters
+  keep their documents and stay downloadable), storage guarantees
+  (UUID-based server-controlled path, no `storage_path` in any response,
+  no static route exposes storage), and failure handling (a simulated
+  DB failure after a successful write deletes the orphaned file; a
+  simulated storage failure creates no DB row; a normal upload leaves
+  exactly one file).
 
 `tests/unit/test_imports.py` needs no database — it runs `from app.models
 import X` in fresh subprocesses to guard against the circular-import

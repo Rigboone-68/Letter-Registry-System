@@ -263,3 +263,24 @@ class ClassifiedAccessDeniedError(ServiceError):
 class InvalidDateRangeError(ServiceError):
     """`received_from` is after `received_to` on a Letter search/list
     request — see app/services/letter_service.py:list_letters."""
+
+
+# --- Document management (Phase 4D implementation) --------------------------
+#
+# Authorization for a document is never a separate check — every path below
+# first resolves the parent Letter via LetterService.get_letter (which
+# already raises LetterNotFoundError for "doesn't exist", "wrong
+# department", and "classified and inaccessible" identically), then looks
+# the document up scoped to that letter. See
+# docs/architecture/document-management.md §16-17.
+
+
+class DocumentNotFoundError(ServiceError):
+    """No `LetterDocument` exists with this id under the given letter —
+    covers "no such document", "exists but under a different letter", and
+    (transitively, since the parent Letter is loaded first) "the parent
+    Letter doesn't exist or isn't accessible" identically. Same
+    enumeration-prevention reasoning as `LetterNotFoundError`: a document
+    id must never be distinguishable-by-response-code from one that
+    belongs to an inaccessible or nonexistent letter."""
+

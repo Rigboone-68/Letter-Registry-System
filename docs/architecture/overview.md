@@ -1,9 +1,13 @@
 # Architecture Overview — Roles, Hierarchy, and Department Isolation
 
-**Status:** Phase 3B (Roles & Access Management) is fully delivered, and
-Phase 4B has now built the Letter Registry Core on top of it — the first
-real departmental *business* resource, not just a management resource.
-This document explains the roles and hierarchy the database schema is
+**Status:** Phase 3B (Roles & Access Management) is fully delivered, Phase
+4B built the Letter Registry Core on top of it — the first real
+departmental *business* resource, not just a management resource — Phase
+4C added operations/search on top of that, and Phase 4D implemented
+document upload/list/download for `LetterDocument`, extending the same
+authorization chain (`assert_letter_access`) to per-letter document
+attachments rather than adding a second one. This document explains the
+roles and hierarchy the database schema is
 built to support, how a caller's identity is established (Phase 3A), how
 role/department authorization decisions are enforced on top of that
 identity (Phase 3B.1), how departments themselves are managed (Phase
@@ -20,9 +24,11 @@ for department CRUD, [`admin-management.md`](admin-management.md) for the
 Admin lifecycle, [`user-management.md`](user-management.md) for the User
 lifecycle, [`letter-registry.md`](letter-registry.md) for the Letter
 Registry Core (Phase 4A review + Phase 4B implementation), and
-[`registry-search.md`](registry-search.md) for the Phase 4C review of
-what listing/filtering/search/pagination will need — architecture and
-planning only; no search or pagination code exists yet.
+[`registry-search.md`](registry-search.md) for the Phase 4C
+implementation of listing/filtering/search/pagination, and
+[`document-management.md`](document-management.md) for the Phase 4D
+architecture review of document upload/download — review and design
+only; no upload/download code exists yet.
 
 ## 1. The hierarchy
 
@@ -56,7 +62,12 @@ deactivates/reactivates Admin accounts, and moves an Admin between
 departments (`/api/v1/admins*` —
 [`admin-management.md`](admin-management.md)) — using the *same* signup
 workflow a regular User goes through, not a separate one. Managing
-Categories and Classifications remains future work (§4).
+Categories and Classifications remains future work (§4). As of Phase
+4D, a System Admin can also upload, list, and download any Letter's
+documents regardless of department — the one place document access is
+deliberately *not* restricted the way Letter *creation* is (System Admin
+still cannot create a Letter, having no department to record one
+against) — see [`document-management.md`](document-management.md) §33.
 
 ### Admin
 
@@ -69,7 +80,9 @@ scoped strictly to their own department (`/api/v1/users*` —
 [`user-management.md`](user-management.md)). As of Phase 4B, an Admin also
 has the same Letter CRUD access as a User in their department — create,
 read, update, archive — narrowed only by the classified-access boundary
-(`/api/v1/letters*` — [`letter-registry.md`](letter-registry.md) §9). An
+(`/api/v1/letters*` — [`letter-registry.md`](letter-registry.md) §9). As of Phase 4D, an Admin's document upload/list/download access
+on a Letter follows the same department boundary as its Letter access —
+[`document-management.md`](document-management.md) §16-17. An
 Admin **cannot** authorize or manage other Admins, approve or create
 Admin accounts, or change their own role or department — every
 Admin-management operation still requires `SYSTEM_ADMIN`; see
@@ -88,7 +101,12 @@ Also bound to exactly one department. As of Phase 4B, registers/reads/
 edits/archives Letters for their own department — but not another
 department's, and not another user's classified letters unless they
 recorded it themselves (`/api/v1/letters*` —
-[`letter-registry.md`](letter-registry.md) §8-9). A User account is
+[`letter-registry.md`](letter-registry.md) §8-9). As of Phase 4D, the
+same rule gates a User's access to a Letter's documents
+(`/api/v1/letters/{letter_id}/documents*` —
+[`document-management.md`](document-management.md) §16-17) — there is no
+separate document-level permission check to bypass or fall out of sync
+with the Letter-level one. A User account is
 created via signup against an Admin-issued `UserAuthorization`, starting
 `PENDING_APPROVAL` — as of Phase 3B.4, an Admin (scoped to their own
 department) approves it, the same way a System Admin approves an Admin
@@ -379,11 +397,79 @@ resource existed to protect.
   (`tests/integration/test_letter_search.py`), full suite **387
   passed, 0 failed**, re-run 3 consecutive times.
 
+### Implemented (Phase 4D — Document Management)
+
+Built on this phase's own architecture review — see
+[`document-management.md`](document-management.md) §1-32 for the
+review and §33 for the full implementation record.
+
+* **Storage foundation** — `app/services/document_storage.py`.
+  `STORAGE_PATH` is resolved to an absolute path fresh on every call
+  (never cached), created if missing. Every filesystem path segment is
+  server-generated: `<letter_uuid>/<document_uuid>.<ext>`, with the
+  extension chosen from a fixed map keyed by the already magic-byte-
+  validated content type — never a client-supplied filename or
+  extension. **One deliberate deviation from the review's own §7
+  recommendation**: the implementation brief's literal example
+  (`<letter_uuid>/<document_uuid>.<ext>`, no department/year/month
+  grouping layer) was followed exactly as specified, rather than the
+  review's own recommended reconciliation with the Phase 1
+  department/year/month convention — see `storage/README.md`, updated
+  to match what was actually built and explicit about the gap.
+* **Layered file validation** — `app/services/document_validation.py`.
+  Extension allowlist → size limit
+  (`settings.MAX_DOCUMENT_SIZE_BYTES`, still labeled an architectural
+  recommendation, not a confirmed limit) → an authoritative magic-byte
+  content-signature check (hand-rolled, not a `python-magic`/libmagic
+  dependency) → extension/content-type agreement. Client-supplied
+  `Content-Type` is read but never trusted by any validation decision.
+* **Authorization chain (CRITICAL) — reused, not duplicated.**
+  `DocumentService` resolves and authorizes the parent Letter via the
+  existing `LetterService.get_letter` (which already applies
+  `assert_letter_access` — [`authorization.md`](authorization.md)) before
+  ever touching a document; a thin `assert_document_access` delegate was
+  also added to `app/services/authorization.py` for any future caller
+  holding an already-loaded `LetterDocument`. Classified-letter
+  protection extends to its documents automatically, by construction —
+  live-verified against `lrs_dev` (a non-recording USER denied a
+  classified letter's documents with the identical `404` a nonexistent
+  one gets; a SYSTEM_ADMIN retains full cross-department access, per the
+  brief's explicit instruction not to invent a separate document
+  permission hierarchy).
+* **Deletion policy (CRITICAL) — implemented exactly as recommended,
+  the one recommendation with zero deviation.** No document deletion
+  endpoint exists, physical or soft — `grep` for `@router.delete` in
+  `app/api/v1/endpoints/documents.py` returns nothing. Uploading again
+  simply adds another `LetterDocument`; nothing removes a prior one.
+* **Retrieval** — `GET /api/v1/letters/{letter_id}/documents` (metadata
+  list, no `storage_path` field on the response — `LetterDocument`'s
+  equivalent of never serializing `password_hash`) and
+  `GET .../{document_id}` (binary download, streamed via Starlette's
+  `FileResponse`; `Content-Type` always the server-validated
+  `mime_type`; the download filename sanitized against header
+  injection; `X-Content-Type-Options: nosniff` on every response).
+* **Write-then-commit failure handling** — the file is written to its
+  final path before the database row is committed; a DB failure after a
+  successful write rolls back and deletes the now-orphaned file as
+  compensation (directly tested, not just asserted).
+* **Zero schema change** — `LetterDocument` is untouched; `alembic
+  check` confirms zero drift both before and after this phase. The
+  review's own `checksum_sha256` recommendation was explicitly not
+  implemented, per the brief's own instruction.
+* 38 new tests
+  (`tests/integration/test_document_management.py`), full suite **425
+  passed**, re-run 3 consecutive times, plus a live-server verification
+  against `lrs_dev` (upload/download round-trip, cross-department and
+  classified-access denial, SYSTEM_ADMIN cross-department access, MIME
+  spoofing rejection, no `storage_path` leakage, no unauthenticated
+  access) — all test data removed afterward.
+
 ### Explicitly deferred (not yet implemented)
 
-* **File upload/download for `LetterDocument`** — schema-only since
-  Phase 2; Phase 4A confirmed architectural compatibility, Phase 4B did
-  not change or build on it. See [`letter-registry.md`](letter-registry.md) §13.
+* **Document deletion for `LetterDocument`** — a deliberate Phase 4D
+  scope decision (see [`document-management.md`](document-management.md)
+  §14), not a gap: `LetterDocument` has no lifecycle/status field to
+  soft-delete into, and no requirement confirms deletion is needed.
 * **The exact classification value list and the exact classified-
   visibility matrix** — both deliberately left open by the product owner;
   see [`letter-registry.md`](letter-registry.md) §12.

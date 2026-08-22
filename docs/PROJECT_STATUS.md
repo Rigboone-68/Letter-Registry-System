@@ -7,26 +7,237 @@ supervisor as-is.
 
 ## Current Phase
 
-**Phase 4C — Registry Operations & Search: Implementation.** Complete.
-Builds directly on this phase's own prior architecture review: every
-decision that review recommended was implemented, in the exact order the
-review itself prescribed — the query-level classified-access fix first,
-*before* pagination, so the count-leakage risk the review found was
-never live for even one commit. `GET /api/v1/letters` now supports
-pagination (`page`/`page_size`, bounded, `{"items", "total", "page",
-"page_size", "total_pages"}`), explicit whitelisted sorting (`sort_by`/
-`sort_order`, four fields, stable via a secondary id-sort), seven
-case-insensitive "contains" text filters, three exact filters (unchanged
-from Phase 4B) plus inclusive `received_from`/`received_to` date-range
-filtering, all `AND`-combined, and a lightweight list-row response
-shape. Full design and implementation record in
-`docs/architecture/registry-search.md`.
+**Phase 4D — Document Management: Implementation.** Complete. Builds
+directly on this phase's own prior architecture review: `LetterDocument`
+upload, listing, and download are now implemented —
+`POST`/`GET /api/v1/letters/{letter_id}/documents` and
+`GET .../{document_id}` — with a server-generated, UUID-based storage
+path that never trusts client input, layered file-type/size validation
+(extension allowlist, then an authoritative magic-byte content
+signature — client-supplied `Content-Type` is never trusted), and an
+authorization chain that reuses `LetterService.get_letter`/
+`assert_letter_access` rather than a new, parallel document-level check,
+so classified-letter protection extends to its documents automatically.
+No document deletion endpoint exists, of any kind — an explicit,
+deliberate scope decision matching the review's own recommendation, not
+a gap. No schema change was needed; `alembic check` confirms zero drift.
+38 new tests, full suite **425 passed**, re-run 3 consecutive times, plus
+a live-server verification against `lrs_dev` with real minted JWTs. Full
+design and implementation record in
+`docs/architecture/document-management.md` §33.
 
-**Not in scope for this phase, and not added:** full-text search,
-`pg_trgm`, export, uploads, dashboards, notifications, automatic audit
-logging, or frontend changes.
+**One deliberate deviation from the review's own §7 recommendation**:
+the implementation brief's literal example
+(`<letter_uuid>/<document_uuid>.<ext>`, no department/year/month
+grouping) was followed exactly as specified, rather than the review's
+own recommended reconciliation with the Phase 1 storage convention —
+`storage/README.md` now documents what was actually built and is
+explicit about the gap between the two.
+
+**Not in scope for this phase, and not added:** document deletion
+(physical or soft), document replacement as a distinct endpoint (upload
+again instead), OCR, antivirus/malware scanning, cloud storage, backup
+automation, notifications, automatic audit logging, frontend upload UI,
+or a `checksum_sha256` column (recommended by the review, explicitly
+deferred by the implementation brief).
+
+This implementation phase was preceded, in this same phase, by an
+architecture-and-requirements-review-only pass — no code was written
+until the review's recommendations were approved; see "Completed" below
+for both, in order.
 
 ## Completed
+
+### Phase 4D — Document Management implementation
+
+* **`POST /api/v1/letters/{letter_id}/documents`** (upload),
+  **`GET /api/v1/letters/{letter_id}/documents`** (metadata list, no
+  `storage_path` field on the response), and
+  **`GET /api/v1/letters/{letter_id}/documents/{document_id}`**
+  (streamed binary download) — nested under Letter on purpose, per the
+  review's own §19 recommendation, so the letter-first authorization
+  chain is structurally unavoidable rather than a discipline to remember.
+* **Storage foundation** (`app/services/document_storage.py`) —
+  `STORAGE_PATH` resolved to an absolute path fresh on every call (never
+  cached at import time), created if missing. Every filesystem path
+  segment is server-generated:
+  `<STORAGE_PATH>/<letter_uuid>/<document_uuid>.<ext>`, the extension
+  chosen from a fixed map keyed by the already magic-byte-validated
+  content type — never a client-supplied filename or extension. Writes
+  are staged to a uniquely-named temp file and atomically renamed into
+  place. **One deliberate deviation from the review's own §7
+  recommendation**: the implementation brief's literal example (this
+  exact flat, no-department/year/month-grouping structure) was followed
+  as an explicit instruction, rather than the review's own recommended
+  reconciliation with the Phase 1 `storage/README.md` convention — that
+  file now documents what was actually built and is explicit about the
+  gap, rather than silently updated to match either.
+* **Layered file validation** (`app/services/document_validation.py`) —
+  extension allowlist → size limit
+  (`settings.MAX_DOCUMENT_SIZE_BYTES`, 10 MB default, still labeled an
+  architectural recommendation in `config.py`/`.env.example`, not a
+  confirmed organizational limit) → an authoritative magic-byte
+  content-signature check (hand-rolled byte-prefix checks for
+  PDF/JPEG/PNG, a UTF-8/control-character heuristic for text —
+  deliberately no `python-magic`/libmagic dependency, given the small
+  fixed type set and the native-install friction such a dependency adds
+  on Windows) → extension/content-type agreement (a `.pdf` upload whose
+  bytes are actually a PNG is rejected as mismatched). Client-supplied
+  `Content-Type` is read but never consulted by any validation decision
+  — confirmed live by uploading real PNG bytes under a `.pdf` filename
+  and declared `Content-Type: application/pdf` (`422`, rejected).
+* **Authorization chain (CRITICAL) — reused, not duplicated.**
+  `DocumentService` resolves and authorizes the parent Letter via the
+  existing `LetterService.get_letter` (already applying
+  `assert_letter_access`) before ever touching a document — no new
+  department/classification logic was written. A thin
+  `assert_document_access` delegate was also added to
+  `app/services/authorization.py` for any future caller holding an
+  already-loaded `LetterDocument`, per the review's own suggestion. Every
+  document route uses `get_current_user` only (not
+  `require_user_or_admin`) so SYSTEM_ADMIN retains the same system-wide
+  access to documents it already has to Letters — deliberately different
+  from `POST /letters`, which excludes SYSTEM_ADMIN for a structural
+  reason (no department to record a letter against) that doesn't apply
+  to attaching a document to an *existing* letter.
+* **Deletion policy (CRITICAL) — implemented exactly as recommended,
+  the one recommendation with zero deviation.** No document deletion
+  endpoint exists, physical or soft (`grep` for `@router.delete` in
+  `app/api/v1/endpoints/documents.py` returns nothing). Uploading again
+  is the only way to add a document; nothing removes a prior one.
+* **Write-then-commit failure handling** — the file is written to its
+  final path *before* the database row is committed; a DB failure after
+  a successful write rolls back the transaction and deletes the
+  now-orphaned file as compensation. Both failure branches (DB failure
+  after a successful write; storage failure before any DB write) are
+  directly tested, not just asserted.
+* **Zero schema change.** `LetterDocument` is untouched;
+  `alembic check` against `lrs_dev` reports "No new upgrade operations
+  detected" both before and after this phase. The review's own
+  `checksum_sha256` recommendation (§12) was explicitly not implemented,
+  per the implementation brief's own instruction not to add it yet.
+* **`python-multipart` added as a new dependency** (`requirements.txt`)
+  — required by FastAPI/Starlette to parse `multipart/form-data` upload
+  requests; no application code imports it directly.
+* **38 new tests**
+  (`tests/integration/test_document_management.py`) — file acceptance
+  (PDF/JPEG/PNG/TXT) and rejection (bad extension, HTML, MIME spoofing,
+  malformed content, oversized, empty), path security (five malicious-
+  filename variants plus a direct containment-check test), authorization
+  (USER/ADMIN own vs. other department, SYSTEM_ADMIN cross-department,
+  classified-letter recorder vs. non-recorder, wrong-letter/document
+  pairing, nonexistent letter/document), historical integrity
+  (deactivated uploader still represented, archived letters keep their
+  documents and stay downloadable), storage guarantees (UUID-based
+  server-controlled path, no `storage_path` in any response, no static
+  route exposes storage, correct download headers), and failure handling
+  — against a real PostgreSQL test database, with an autouse
+  `storage_root` fixture redirecting every test's `STORAGE_PATH` to a
+  per-test temporary directory (the filesystem equivalent of
+  `db_session`'s per-test rollback isolation).
+* **Full suite: 425 passed** (387 baseline + 38 new), re-run 3
+  consecutive times, identical results.
+* **Live-server verification against `lrs_dev`**, real minted JWTs, real
+  HTTP — see "Validation performed" below.
+* **Documentation**: `docs/architecture/document-management.md` §33
+  (new implementation record), `storage/README.md` (updated to match
+  what was actually built), plus updates to the root README,
+  `backend/README.md`, `docs/README.md`, and
+  `docs/architecture/overview.md`.
+
+### Phase 4D — Document Management architecture & requirements review
+
+* **Inspected the actual current repository state, not assumed** —
+  confirmed `LetterDocument` (`document_type`, `original_filename`,
+  `storage_path`, `file_size`, `mime_type`, `uploaded_by`, `uploaded_at`)
+  is byte-for-byte unchanged since the Phase 2 baseline + hardening
+  migrations; confirmed zero application code (service/repository/
+  schema/endpoint) exists above the model layer; confirmed no
+  `StaticFiles` mount exists in `app/main.py`; confirmed `.gitignore`
+  excludes `storage/letters/*` except `.gitkeep`; confirmed only two
+  Phase 2 model-level tests touch `LetterDocument` (multi-document
+  attachment, CASCADE-on-physical-delete), with no upload/validation/
+  security test existing anywhere.
+* **Surfaced a real, previously-unnoticed documentation conflict** — the
+  pre-existing Phase 1 `storage/README.md` path convention
+  (`<department-code>/<year>/<month>/<letter-uuid>.<ext>`) has no
+  document-identifier segment, structurally assuming one file per
+  letter; this conflicts with the schema's already-confirmed 1-to-many
+  `Letter → LetterDocument` capability. Not silently resolved — reconciled
+  with a recommended combined convention
+  (`<department-id>/<year>/<month>/<letter-uuid>/<document-uuid>.<ext>`)
+  that keeps Phase 1's department/year/month grouping and adds
+  multi-document support, using `department.id` rather than the
+  nullable, unconfirmed-format `department.code`. See
+  `docs/architecture/document-management.md` §7.
+* **Two CRITICAL findings resolved by design, not new code**:
+  (1) department isolation for documents must derive from
+  `LetterDocument.letter_id → Letter.recipient_department_id`, never
+  `uploaded_by.department_id` (a User can change departments) —
+  `LetterDocument` already has no department field of its own, so there
+  is nothing to misuse; (2) classified-document access must chain
+  through the existing `assert_letter_access`
+  (`app/services/authorization.py`, Phase 4B/4C) via a thin future
+  `assert_document_access` delegate, never a new parallel check — so
+  classified-letter protection extends to attachments automatically. See
+  §16-17.
+* **Document deletion policy (CRITICAL) — recommended that V1 build no
+  deletion endpoint at all**, physical or soft. Physical deletion would
+  break this project's established never-physically-delete principle
+  (Department/User/Category/Classification/Letter all archive, never
+  delete); soft-delete would need a new lifecycle/status field
+  `LetterDocument` doesn't have today; and no confirmed requirement asks
+  for document deletion in the first place. See §14.
+* **Document replacement policy — resolved without a schema change.**
+  "Replacing" a document is recommended to mean simply uploading another
+  document for the same letter (the old one stays) — already fully
+  supported by the existing multi-document capability, the safest option
+  against historical-record loss. A "mark as superseded" concept would
+  need a new field and isn't adopted without further business
+  confirmation. See §13.
+* **Layered file validation strategy designed (not implemented)**:
+  extension allowlist, never-trust-client-`Content-Type`, magic-byte
+  signature verification as the authoritative check, size limit — with
+  an explicit note that type validation is not a substitute for
+  antivirus scanning (out of scope). A 10 MB default size limit is
+  labeled an ARCHITECTURAL RECOMMENDATION, not a confirmed organizational
+  limit — none was given. See §8-9.
+* **Checksum field recommended as an additive future column**
+  (`checksum_sha256`, nullable, no uniqueness constraint — two different
+  letters can legitimately share an identical attachment) — the only
+  schema change any recommendation in this review implies, and not
+  created this phase. See §12, §28.
+* **Text-content relationship clarified without a schema change** —
+  `Letter.text_content` (typed/transcribed content) and a `LetterDocument`
+  with `mime_type="text/plain"` (an uploaded `.txt` file) are
+  complementary, not redundant; the model already supports both. The
+  *workflow* question (which one a User is expected to use) is marked
+  PENDING BUSINESS CLARIFICATION. See §10.
+* **API design recommended**: documents nested under their Letter
+  (`GET /api/v1/letters/{letter_id}/documents/{document_id}`) rather than
+  a flat `/api/v1/documents/{id}`, so the letter-first authorization
+  chain is structurally unavoidable, not just a discipline. Content-Type
+  on download always server-controlled from the validated `mime_type`,
+  never re-trusted from a client header. See §19.
+* **Transaction/failure-handling strategy designed** for five scenarios
+  (DB-row-created-but-file-write-fails, file-succeeds-but-DB-fails,
+  interrupted upload, duplicate upload, storage-directory-unavailable) —
+  recommended ordering is write-file-then-commit-DB-row, biasing failures
+  toward the recoverable outcome (an orphaned file, cleanable later) over
+  the unrecoverable one (a DB row referencing a file that was never
+  written). See §23.
+* **16+ scenario test plan designed, not implemented** — file-type
+  validation, path/storage safety, authorization (cross-department,
+  classified-access, IDOR/enumeration), historical integrity, failure
+  handling, and static-file-exposure regression. See §29.
+* **No migration, model, service, repository, schema, endpoint, or test
+  file touched** — confirmed by `git status` before/after; this phase
+  produced documentation only.
+* **Documentation**: `docs/architecture/document-management.md` (new),
+  plus updates to the root README, `backend/README.md`, `docs/README.md`,
+  and `docs/architecture/overview.md`.
+
+### Phase 4C — Registry Operations & Search implementation
 
 ### Phase 4C — Registry Operations & Search implementation
 
@@ -485,6 +696,48 @@ detail behind each:
 | 5 | `letter_documents.uploaded_by` had no index, unlike every other User-referencing FK in the schema | Added (`ix_letter_documents_uploaded_by`) |
 | 6 | The role/department `CHECK` constraint hardcoded role strings, duplicating `UserRole`'s values | Model-side constraint now built from `UserRole.*.value`; the migration's own copy is deliberately still a literal (migrations are frozen snapshots) — see `app/models/user.py` docstring |
 
+### Validation performed — Phase 4D implementation
+
+All against the same real, local, disposable PostgreSQL 17 instance
+used for every prior phase (`lrs_dev` for manual checks, `lrs_test` for
+the suite — never a shared or departmental database):
+
+| Check | Result |
+|---|---|
+| `pytest tests/` (full suite) against `lrs_test` | **425 passed**, 0 failed, 0 skipped (387 baseline + 38 new). Re-run 3 consecutive times, identical results |
+| `alembic check` against `lrs_dev` | "No new upgrade operations detected" — this phase needed no schema change |
+| No test writes into the real `storage/letters/` tree | Confirmed by `find storage/letters -type f` before/after the full suite run — only `.gitkeep` present both times; the autouse `storage_root` test fixture redirects every test's `STORAGE_PATH` to a per-test `tmp_path` |
+| Live-server verification against `lrs_dev`, real minted JWTs, a running `uvicorn` instance | Upload as the recording USER (`201`); download — content byte-for-byte identical to what was uploaded (`200`); cross-department USER upload and download (`404`, both); SYSTEM_ADMIN upload to a letter in a department it doesn't belong to (`201` — confirms system-wide access); non-recording USER in the *same* department denied a classified letter's documents (`404`); the recording USER allowed (`201`); unsupported extension `.docx` (`422`); MIME spoofing — `.pdf` filename/declared `Content-Type`, real PNG bytes — rejected (`422`); metadata list response confirmed free of any `storage_path` field; nonexistent document id (`404`); unauthenticated request (`401`) |
+| Live download response headers | `Content-Type: application/pdf` (server-validated, not client-supplied), `Content-Disposition: attachment; filename="..."`, `X-Content-Type-Options: nosniff` |
+| Files written during live verification, confirmed and cleaned up | `storage/letters/<letter_id>/<document_id>.pdf` for each upload — matches the documented convention exactly; all removed after verification |
+| All live-verification data removed afterward | Departments/Users/Letters/`LetterDocument` rows deleted via direct session cleanup; `lrs_dev`'s `categories` table reconfirmed unchanged (still exactly 3 seeded rows) |
+| `git status` review | No secrets tracked; `.env` confirmed gitignored (see "Known Limitations" for a local-environment note about this file, unrelated to what was committed) |
+
+**Environment note, not a Phase 4D defect**: a bare `pytest` invocation
+from `backend/` also tries to collect
+`app/api/v1/endpoints/dev_authz_test.py` as a test module (its filename
+incidentally matches pytest's default `*_test.py` discovery pattern),
+producing one collection error unrelated to any test in this suite.
+Confirmed pre-existing (not introduced by this phase) by stashing every
+Phase 4D change and reproducing the identical error against the
+unmodified tree. `pytest tests/` (scoped explicitly) avoids it; that
+scoped form is what every count above uses, and what `backend/README.md`
+now documents.
+
+### Validation performed — Phase 4D review
+
+An architecture review, not an implementation phase — validation here
+means confirming no code was written and no drift was introduced, not
+running new business-logic tests (the same standard applied to Phase
+4A's review):
+
+| Check | Result |
+|---|---|
+| `git status` before and after the review | Identical except one new documentation file and five documentation updates — no model, migration, repository, schema, service, endpoint, or test file touched |
+| `alembic check` | "No new upgrade operations detected" — no migration was created, consistent with a read-only review |
+| Direct reads of `app/models/letter_document.py`, `app/models/letter.py`, `app/core/config.py`, migrations, tests, `app/main.py`, `.gitignore`, `storage/README.md` | Confirmed empirically (not from Phase 4A memory) that `LetterDocument` is unchanged since Phase 2, no `StaticFiles` mount exists, and only two model-level tests touch the entity |
+| `grep` across `app/services/`, `app/repositories/`, `app/schemas/`, `app/api/` for `LetterDocument`/`storage_path`/`STORAGE_PATH`/`upload`/`download` | Zero real matches — confirms zero application code exists above the model layer for documents |
+
 ### Validation performed — Phase 4C
 
 All against the same real, local, disposable PostgreSQL 17 instance used
@@ -696,18 +949,43 @@ afterward — `lrs_dev` is empty again.
 
 ## In Progress
 
-Nothing — Phase 4C is complete (architecture review and implementation
+Nothing — Phase 4D is complete (architecture review and implementation
 both) and the project is paused pending explicit instruction to begin
 the next phase, per the standing project rule that phases are reviewed
 before the next begins.
 
-## Pending (Phase 4D and later)
+## Pending (Phase 5 and later)
 
-* **File upload/download for `LetterDocument`** — the relationship
-  remains schema-only (unchanged since Phase 2); Phase 4A confirmed it is
-  architecturally compatible with PDF/image/text and multiple
-  attachments, but no upload endpoint, storage service, or download
-  endpoint exists. See `docs/architecture/letter-registry.md` §13.
+* **Document deletion for `LetterDocument`** — deliberately not built in
+  Phase 4D (physical or soft), matching the review's own recommendation.
+  `LetterDocument` still has no lifecycle/status field to soft-delete
+  into if that's ever wanted; no requirement has confirmed deletion is
+  needed. See `docs/architecture/document-management.md` §14.
+* **An optional `checksum_sha256` column on `LetterDocument`** — the one
+  schema change Phase 4D's review recommended (nullable, no uniqueness
+  constraint); the implementation brief explicitly deferred it
+  ("Do not add checksum yet"). See
+  `docs/architecture/document-management.md` §12/§28.
+* **Department/year/month grouping in the document storage path** —
+  Phase 4D's own architecture review recommended layering this on top
+  of the per-letter UUID structure for long-term browsability at high
+  volume; the implementation brief's literal example
+  (`<letter_uuid>/<document_uuid>.<ext>`, no such grouping) was followed
+  instead. Revisit if the flat per-letter directory layout becomes
+  unwieldy. See `docs/architecture/document-management.md` §33 and
+  `storage/README.md`.
+* **The text-attachment workflow** (typed `Letter.text_content` vs. an
+  uploaded `.txt` file vs. either, at the User's discretion) — the data
+  model already supports all three readings without change; only the
+  expected workflow is unconfirmed. See
+  `docs/architecture/document-management.md` §10.
+* **A document-replacement "supersede" workflow distinct from "just
+  upload another document"** — the current, implemented behavior
+  (uploading again simply adds another `LetterDocument`; nothing is ever
+  marked as superseded or hidden) is the safe default Phase 4D's review
+  recommended; a first-class "this replaces that" concept would need a
+  new field and isn't built. See
+  `docs/architecture/document-management.md` §13.
 * **The exact classification value list** — no `Classification` rows are
   seeded; a System Admin can create them through the management API once
   the organization confirms the final list (Important/Classified/Budget/
@@ -853,9 +1131,50 @@ behind each.
   the letter's own recorder can view a restricted letter; a `USER` who is
   none of those cannot, even within their own department. See
   `docs/architecture/letter-registry.md` §8/§12.
-* **No file upload/download exists for `LetterDocument`** (unchanged
-  since Phase 2/4A) — the relationship is schema-only; see
-  `docs/architecture/letter-registry.md` §13.
+* **RESOLVED (Phase 4D implementation)** — `LetterDocument` upload,
+  listing, and download are implemented
+  (`/api/v1/letters/{letter_id}/documents*`). `storage/README.md` now
+  documents the actual, implemented path convention (no longer the
+  Phase 1 illustrative one, which had no document-identifier segment and
+  conflicted with the schema's multi-document capability).
+* **`LetterDocument` has no lifecycle/status field** (Phase 4D
+  finding, still true) — unlike `Letter`/`User`/`Department`/`Category`/
+  `Classification`, there is currently nothing to soft-delete a document
+  into. Phase 4D's implementation deliberately built **no document
+  deletion endpoint of any kind** (physical or soft), matching the
+  review's own recommendation rather than adding one prematurely. See
+  `docs/architecture/document-management.md` §14.
+* **The document storage path has no department/year/month grouping**
+  (Phase 4D implementation, a deliberate deviation from the review's own
+  §7 recommendation) — the flat `<letter_uuid>/<document_uuid>.<ext>`
+  structure the implementation brief specified literally was built
+  instead; revisit if the per-letter directory layout becomes unwieldy
+  at high volume. See `docs/architecture/document-management.md` §33.
+* **A bare `pytest` invocation from `backend/` produces one unrelated
+  collection error** — `app/api/v1/endpoints/dev_authz_test.py`'s
+  filename incidentally matches pytest's default `*_test.py` discovery
+  pattern, so pytest also tries (and fails) to collect its route-handler
+  functions as test functions. Discovered while validating Phase 4D;
+  confirmed pre-existing, not a regression, by reproducing the identical
+  error against the unmodified pre-Phase-4D tree. `pytest tests/`
+  (scoped explicitly, now documented in `backend/README.md`) avoids it;
+  not fixed, since renaming or reconfiguring collection for an unrelated
+  Phase 3B.1 file is outside this phase's scope.
+* **The local `backend/.env` file was inadvertently overwritten during
+  Phase 4D's validation** (copied fresh from `.env.example` while
+  setting up an `alembic check` run) — `.env` is git-ignored and was
+  never committed, so this is local-environment-only, not a repository
+  or data issue. No actual data was lost: the real `lrs_dev` database
+  and its schema/rows were confirmed completely intact afterward
+  (`lrs_dev:lrs_dev` credentials — matching this project's existing
+  `lrs_test:lrs_test` convention — still connect, and its 3 seeded
+  `categories` rows were reconfirmed unchanged both before and after
+  Phase 4D's live verification). `.env` was restored with a freshly
+  generated `SECRET_KEY` and `DATABASE_URL` pointed back at `lrs_dev`; a
+  freshly generated `SECRET_KEY` invalidates any JWT signed with the
+  previous one (an accepted, already-documented consequence of rotating
+  this value — see "Configuration" in `backend/README.md`), not a data
+  loss. Flagged here for transparency, not because it blocks anything.
 * **No PostgreSQL was available in the initial development environment.**
   One was installed and configured specifically to validate this phase (see
   "Validation performed" above) rather than leaving the migration and test
@@ -979,17 +1298,21 @@ behind each.
 
 ## Next Recommended Phase
 
-**Phase 4D — Letter Attachments (`LetterDocument` upload/download)**, or
-resolving the outstanding business clarifications first. The registry is
-now a complete, tested, paginated/sortable/searchable, department- and
-classification-isolated system — every V1 requirement about *finding*
-and *managing* letters (not their attached files) is built. The largest
-remaining functional gap is attachments: `LetterDocument` has been
-schema-ready since Phase 2, confirmed architecturally compatible in
-Phase 4A, and untouched since. Recommended before starting it: resolve
-the exact classification value list and the exact classified-visibility
-matrix with the product owner (`docs/architecture/letter-registry.md`
-§12, `docs/architecture/registry-search.md` §11) — attachments on a
-classified letter are exactly the kind of surface where the current
+**Phase 5 — Dashboards, notifications, reporting**, or resolving the
+outstanding business clarifications first. The registry is now a
+complete, tested, paginated/sortable/searchable, department- and
+classification-isolated system with working document attachment
+upload/list/download — every V1 requirement confirmed so far (finding,
+managing, and now attaching files to letters) is built. Recommended
+before or alongside Phase 5: resolve the exact classification value list
+and the exact classified-visibility matrix with the product owner
+(`docs/architecture/letter-registry.md` §12,
+`docs/architecture/registry-search.md` §11) — document access on a
+classified letter is exactly the kind of surface where the current
 provisional policy's limits become more visible than plain CRUD already
-makes them.
+made them, and Phase 4D's document authorization now depends on that
+same policy too; the text-attachment workflow question
+(`docs/architecture/document-management.md` §10, typed content vs.
+uploaded `.txt`); and whether document deletion or a `checksum_sha256`
+column is ever actually needed (`docs/architecture/document-management.md`
+§12/§14) before either is built speculatively.

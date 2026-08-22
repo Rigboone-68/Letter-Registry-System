@@ -2,12 +2,13 @@
 
 **A Production of AJ-Labs**
 
-> **Current status: Phase 4C — Registry Operations & Search implemented
-> (Phase 3B complete).** Local email/password login, JWT access tokens,
-> role-based access control, System-Admin-controlled department
-> management, System-Admin-controlled Admin management, and Admin-
-> controlled User management are implemented and validated against a real
-> local PostgreSQL instance — see `docs/architecture/authentication.md`,
+> **Current status: Phase 4D — Document Management implemented (Phase
+> 4C Registry Operations & Search implemented; Phase 3B complete).**
+> Local email/password login, JWT access tokens, role-based access
+> control, System-Admin-controlled department management,
+> System-Admin-controlled Admin management, and Admin-controlled User
+> management are implemented and validated against a real local
+> PostgreSQL instance — see `docs/architecture/authentication.md`,
 > `docs/architecture/authorization.md`,
 > `docs/architecture/department-management.md`,
 > `docs/architecture/admin-management.md`, and
@@ -24,11 +25,22 @@
 > classified records out in Python after fetching them, which would have
 > let a paginated `total` leak how many inaccessible records existed. That
 > fix now runs at the database query level, verified by live testing
-> before any pagination code was added. See
-> `docs/architecture/letter-registry.md` and
-> `docs/architecture/registry-search.md`. **No file upload/download,
-> dashboard, or notification generation exists yet** — those remain for
-> later phases. See `docs/PROJECT_STATUS.md` for the full picture.
+> before any pagination code was added. Phase 4D first reviewed, then
+> implemented, document upload/download for `LetterDocument`:
+> `POST`/`GET /api/v1/letters/{letter_id}/documents` and
+> `GET .../{document_id}` (upload, list, download), with a
+> server-generated `<letter_uuid>/<document_uuid>.<ext>` storage path
+> that never trusts client input, layered file-type/size validation
+> (extension allowlist, then an authoritative magic-byte content
+> signature — client-supplied `Content-Type` is never trusted), and an
+> authorization chain that reuses `assert_letter_access`/
+> `LetterService.get_letter` rather than a parallel document-level check
+> (so classified-letter protection extends to its documents
+> automatically). No schema change was needed. There is still no
+> document deletion endpoint of any kind — a deliberate scope decision,
+> not a gap — see `docs/architecture/document-management.md` §14/§33.
+> **No dashboard or notification generation exists yet** — those remain
+> for later phases. See `docs/PROJECT_STATUS.md` for the full picture.
 
 ---
 
@@ -111,11 +123,11 @@ letter-registry-system/
 │   │   ├── core/                # config, security (hashing + JWT), logging
 │   │   ├── database/            # declarative base, engine, session
 │   │   ├── models/              # ORM models            (9 core entities — Phase 2; Letter/Classification extended — 4B)
-│   │   ├── schemas/             # Pydantic contracts    (auth — 3A; department — 3B.2; admin — 3B.3; user — 3B.4; letter/category/classification — 4B)
+│   │   ├── schemas/             # Pydantic contracts    (auth — 3A; department — 3B.2; admin — 3B.3; user — 3B.4; letter/category/classification — 4B; document — 4D)
 │   │   ├── api/deps.py          # auth + RBAC dependencies (Phase 3A/3B.1)
-│   │   ├── api/v1/endpoints/    # versioned routers     (auth — 3A; dev authz test — 3B.1; departments — 3B.2; admins — 3B.3; users — 3B.4; letters/categories/classifications — 4B)
-│   │   ├── services/            # business logic        (auth, bootstrap — 3A; authorization — 3B.1; department — 3B.2; admin — 3B.3; user — 3B.4; letter/category/classification — 4B)
-│   │   ├── repositories/        # data access           (user, user_authorization — 3A/3B.3/3B.4; department — 3B.2; letter/category/classification — 4B)
+│   │   ├── api/v1/endpoints/    # versioned routers     (auth — 3A; dev authz test — 3B.1; departments — 3B.2; admins — 3B.3; users — 3B.4; letters/categories/classifications — 4B; documents — 4D)
+│   │   ├── services/            # business logic        (auth, bootstrap — 3A; authorization — 3B.1; department — 3B.2; admin — 3B.3; user — 3B.4; letter/category/classification — 4B; document/document_storage/document_validation — 4D)
+│   │   ├── repositories/        # data access           (user, user_authorization — 3A/3B.3/3B.4; department — 3B.2; letter/category/classification — 4B; letter_document — 4D)
 │   │   ├── middleware/          # request ID, audit     (empty — later phases)
 │   │   └── utils/               # shared helpers        (email normalization — Phase 3A)
 │   ├── alembic/                 # migration environment (4 revisions: core schema + hardening + admin authorizations + letter registry core)
@@ -186,11 +198,14 @@ subject to department and classified-access checks; `GET /api/v1/letters`
 supports pagination, sorting, and search — see
 `docs/architecture/registry-search.md`), Category/
 Classification management endpoints (`/api/v1/categories*`,
-`/api/v1/classifications*`, SYSTEM_ADMIN only), and five verification-only
+`/api/v1/classifications*`, SYSTEM_ADMIN only), the document endpoints
+(`/api/v1/letters/{letter_id}/documents*` — upload/list/download,
+subject to the same department/classified-access rules as their parent
+Letter; no deletion endpoint exists), and five verification-only
 authorization endpoints (`/api/v1/auth/test/*` — not business
 functionality, see `docs/architecture/authorization.md` §7) respond —
-file upload/download and dashboard endpoints don't exist until later
-phases. See `docs/architecture/authentication.md` for authentication,
+dashboard endpoints don't exist until a later phase. See
+`docs/architecture/authentication.md` for authentication,
 `docs/architecture/authorization.md` for RBAC and department isolation,
 `docs/architecture/department-management.md` for department CRUD,
 `docs/architecture/admin-management.md` for the Admin lifecycle,
@@ -227,14 +242,15 @@ backend.
 | 3B.4 | User management & approval: Admin authorizes/approves/deactivates/reactivates Users, issues/revokes `UserAuthorization` — scoped to their own department | **Complete** |
 | 4A | Letter Registry Core: architecture & model review against confirmed V1 requirements | **Complete** |
 | 4B | Letter Registry Core: recipient/source departments, sender details, reference number, Category/Classification management, classified-access boundary, full Letter CRUD | **Complete** |
-| **4C** | Registry Operations & Search: pagination, whitelisted sorting, 7 text-search filters, inclusive date-range filtering — with the classified-access query-level fix applied first | **Complete** |
-| — | Letter document upload/download (not yet scheduled to a phase) | Not started |
+| 4C | Registry Operations & Search: pagination, whitelisted sorting, 7 text-search filters, inclusive date-range filtering — with the classified-access query-level fix applied first | **Complete** |
+| **4D** | Document Management: `LetterDocument` upload/list/download — storage-path safety, layered file validation, department/classified-access authorization reuse, write-then-commit failure handling. No deletion endpoint (deliberate). | **Complete** |
 | 5 | Dashboards, notifications, reporting | Not started |
 | 6 | Administration, audit trail, deployment hardening | Not started |
 
-See `docs/PROJECT_STATUS.md` for what Phase 4C delivered,
-`docs/architecture/registry-search.md` for the full design, and known
-limitations. The next phase begins only when explicitly instructed.
+See `docs/PROJECT_STATUS.md` for what Phase 4D delivered,
+`docs/architecture/document-management.md` for the full design and
+implementation record, and known limitations. The next phase begins only
+when explicitly instructed.
 
 ---
 
