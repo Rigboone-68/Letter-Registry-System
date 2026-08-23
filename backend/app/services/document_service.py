@@ -20,6 +20,7 @@ from app.models.letter import Letter
 from app.models.letter_document import LetterDocument
 from app.models.user import User
 from app.repositories.letter_document_repository import LetterDocumentRepository
+from app.services.audit_service import AuditService
 from app.services.document_storage import build_storage_path, delete_document_file, write_document_file
 from app.services.document_validation import validate_upload
 from app.services.exceptions import DocumentNotFoundError
@@ -31,6 +32,7 @@ class DocumentService:
         self.session = session
         self.documents = LetterDocumentRepository(session)
         self.letters = LetterService(session)
+        self.audit = AuditService(session)
 
     def _get_letter_for_access(self, letter_id: uuid.UUID, *, user: User) -> Letter:
         """Reuses `LetterService.get_letter` rather than a parallel
@@ -78,6 +80,28 @@ class DocumentService:
                 uploaded_by=user.id,
             )
             self.session.flush()
+
+            # Audit is mandatory (docs/architecture/audit-notifications.md
+            # §20) and, per §10 of this implementation phase, must commit
+            # atomically with the document row — recording it inside this
+            # same try block means an audit failure is caught below and
+            # triggers the existing file-cleanup compensation exactly as
+            # a database failure would, never leaving the file and the
+            # (now-uncommitted) audit/document rows out of sync. Only
+            # safe metadata is recorded — never document bytes.
+            self.audit.record(
+                actor_id=user.id,
+                action="DOCUMENT_UPLOADED",
+                entity_type="LetterDocument",
+                entity_id=document.id,
+                new_values={
+                    "letter_id": str(letter.id),
+                    "original_filename": filename,
+                    "mime_type": mime_type,
+                    "file_size": len(content),
+                },
+            )
+
             self.session.commit()
             self.session.refresh(document)
         except Exception:

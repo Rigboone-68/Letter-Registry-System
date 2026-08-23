@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session
 from app.models.department import Department
 from app.models.enums import ActiveStatus
 from app.repositories.department_repository import DepartmentRepository
+from app.services.audit_service import AuditService
 from app.services.exceptions import (
     DepartmentNotFoundError,
     DuplicateDepartmentCodeError,
@@ -55,8 +56,9 @@ class DepartmentService:
     def __init__(self, session: Session):
         self.session = session
         self.departments = DepartmentRepository(session)
+        self.audit = AuditService(session)
 
-    def create_department(self, *, name: str, code: Optional[str]) -> Department:
+    def create_department(self, *, name: str, code: Optional[str], actor_id: uuid.UUID) -> Department:
         """New departments are always created ACTIVE — there is no
         documented reason for any other default (brief §4)."""
         department = self.departments.create(name=name, code=code, status=ActiveStatus.ACTIVE)
@@ -65,6 +67,13 @@ class DepartmentService:
         except IntegrityError as exc:
             self.session.rollback()
             _raise_for_integrity_error(exc)
+        self.audit.record(
+            actor_id=actor_id,
+            action="DEPARTMENT_CREATED",
+            entity_type="Department",
+            entity_id=department.id,
+            new_values={"name": department.name, "code": department.code},
+        )
         self.session.commit()
         self.session.refresh(department)
         return department
@@ -104,26 +113,48 @@ class DepartmentService:
         self.session.refresh(department)
         return department
 
-    def activate_department(self, department_id: uuid.UUID) -> Department:
+    def activate_department(self, department_id: uuid.UUID, *, actor_id: uuid.UUID) -> Department:
         """Idempotent (brief §9): activating an already-ACTIVE department
         just returns its current state rather than erroring — the brief
         explicitly preferred this over a conflict response "if it keeps
         client behavior simple", and it does: a caller never needs to
         check current status before calling this."""
         department = self.get_department(department_id)
+        was_active = department.status == ActiveStatus.ACTIVE
         self.departments.update_status(department, ActiveStatus.ACTIVE)
+        self.session.flush()
+        if not was_active:
+            self.audit.record(
+                actor_id=actor_id,
+                action="DEPARTMENT_ACTIVATED",
+                entity_type="Department",
+                entity_id=department.id,
+                old_values={"status": "INACTIVE"},
+                new_values={"status": "ACTIVE"},
+            )
         self.session.commit()
         self.session.refresh(department)
         return department
 
-    def deactivate_department(self, department_id: uuid.UUID) -> Department:
+    def deactivate_department(self, department_id: uuid.UUID, *, actor_id: uuid.UUID) -> Department:
         """Idempotent, same reasoning as activate_department. Never
         touches `users`, `letters`, or any other row — see
         app/models/department.py and
         docs/architecture/department-management.md, "Historical data
         preservation"."""
         department = self.get_department(department_id)
+        was_inactive = department.status == ActiveStatus.INACTIVE
         self.departments.update_status(department, ActiveStatus.INACTIVE)
+        self.session.flush()
+        if not was_inactive:
+            self.audit.record(
+                actor_id=actor_id,
+                action="DEPARTMENT_DEACTIVATED",
+                entity_type="Department",
+                entity_id=department.id,
+                old_values={"status": "ACTIVE"},
+                new_values={"status": "INACTIVE"},
+            )
         self.session.commit()
         self.session.refresh(department)
         return department

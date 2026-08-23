@@ -50,7 +50,7 @@ def _duplicate() -> HTTPException:
 def create_classification(
     payload: ClassificationCreate,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_system_admin),
+    current_user: User = Depends(require_system_admin),
 ) -> Classification:
     service = ClassificationService(db)
     try:
@@ -58,6 +58,7 @@ def create_classification(
             name=payload.name,
             description=payload.description,
             restricts_access=payload.restricts_access,
+            actor_id=current_user.id,
         )
     except DuplicateClassificationError:
         raise _duplicate()
@@ -104,7 +105,7 @@ def update_classification(
     classification_id: uuid.UUID,
     payload: ClassificationUpdate,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_system_admin),
+    current_user: User = Depends(require_system_admin),
 ) -> Classification:
     service = ClassificationService(db)
     try:
@@ -113,6 +114,7 @@ def update_classification(
             name=payload.name,
             description=payload.description,
             restricts_access=payload.restricts_access,
+            actor_id=current_user.id,
         )
     except ClassificationNotFoundError:
         raise _not_found()
@@ -128,11 +130,11 @@ def update_classification(
 def activate_classification(
     classification_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_system_admin),
+    current_user: User = Depends(require_system_admin),
 ) -> Classification:
     service = ClassificationService(db)
     try:
-        return service.activate_classification(classification_id)
+        return service.activate_classification(classification_id, actor_id=current_user.id)
     except ClassificationNotFoundError:
         raise _not_found()
 
@@ -145,10 +147,10 @@ def activate_classification(
 def deactivate_classification(
     classification_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_system_admin),
+    current_user: User = Depends(require_system_admin),
 ) -> Classification:
     service = ClassificationService(db)
     try:
-        return service.deactivate_classification(classification_id)
+        return service.deactivate_classification(classification_id, actor_id=current_user.id)
     except ClassificationNotFoundError:
         raise _not_found()

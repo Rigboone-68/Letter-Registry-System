@@ -14,6 +14,7 @@ from app.api.v1.endpoints import (
     dev_authz_test,
     documents,
     letters,
+    notifications,
     users,
 )
 
@@ -29,5 +30,6 @@ api_router.include_router(letters.router)
 # docstring for why this is a separate router rather than routes added
 # directly to letters.py.
 api_router.include_router(documents.router)
+api_router.include_router(notifications.router)
 # Phase 3B.1 verification-only routes — see that module's docstring.
 api_router.include_router(dev_authz_test.router)

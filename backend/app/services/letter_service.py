@@ -43,11 +43,13 @@ from app.repositories.category_repository import CategoryRepository
 from app.repositories.classification_repository import ClassificationRepository
 from app.repositories.department_repository import DepartmentRepository
 from app.repositories.letter_repository import LetterRepository
+from app.services.audit_service import AuditService
 from app.services.authorization import (
     assert_department_access,
     assert_letter_access,
     letter_visibility_filter,
 )
+from app.services.notification_service import NotificationService
 from app.services.exceptions import (
     CategoryNotActiveError,
     CategoryNotFoundError,
@@ -72,6 +74,8 @@ class LetterService:
         self.categories = CategoryRepository(session)
         self.classifications = ClassificationRepository(session)
         self.departments = DepartmentRepository(session)
+        self.audit = AuditService(session)
+        self.notification_service = NotificationService(session)
 
     # --- Shared validation ---------------------------------------------------
 
@@ -173,6 +177,25 @@ class LetterService:
         # `reference_number` has no uniqueness constraint (removed by
         # migration c887ab35e4a3 — see app/models/letter.py).
         self.session.flush()
+
+        # Audit is mandatory (docs/architecture/audit-notifications.md
+        # §20) — a failure here propagates uncaught, so the letter above
+        # is never committed either. Only targeted, non-sensitive fields
+        # are recorded — never text_content or sender details (§8/§10).
+        self.audit.record(
+            actor_id=recorder.id,
+            action="LETTER_CREATED",
+            entity_type="Letter",
+            entity_id=letter.id,
+            new_values={
+                "reference_number": letter.reference_number,
+                "recipient_department_id": str(letter.recipient_department_id),
+            },
+        )
+        # Notification is best-effort (§20/§21) — notify_letter_registered
+        # never raises; a failure there cannot affect the commit below.
+        self.notification_service.notify_letter_registered(letter)
+
         self.session.commit()
         self.session.refresh(letter)
         return letter
@@ -286,6 +309,31 @@ class LetterService:
         if classification_id is not None:
             self._validate_classification(classification_id)
 
+        # Captured before the repository mutates `letter` in place —
+        # needed for the targeted old/new audit pairs below (§8/§11).
+        old_category_id = letter.category_id
+        old_classification_id = letter.classification_id
+        changed_fields = [
+            field
+            for field, value in (
+                ("reference_number", reference_number),
+                ("source_name", source_name),
+                ("source_department_id", source_department_id),
+                ("source_location", source_location),
+                ("sender_name", sender_name),
+                ("sender_designation", sender_designation),
+                ("sender_department", sender_department),
+                ("sender_address", sender_address),
+                ("subject", subject),
+                ("reason", reason),
+                ("category_id", category_id),
+                ("classification_id", classification_id),
+                ("received_at", received_at),
+                ("text_content", text_content),
+            )
+            if value is not None
+        ]
+
         self.letters.update(
             letter,
             reference_number=reference_number,
@@ -304,6 +352,46 @@ class LetterService:
             text_content=text_content,
         )
         self.session.flush()
+
+        # A general edit trail records only which fields changed, never
+        # their values (§8) — field *names* are safe; a value could be
+        # sender/content data this project has no reason to duplicate
+        # into the audit table.
+        if changed_fields:
+            self.audit.record(
+                actor_id=user.id,
+                action="LETTER_UPDATED",
+                entity_type="Letter",
+                entity_id=letter.id,
+                new_values={"changed_fields": changed_fields},
+            )
+
+        # Classification/category changes get their own, higher-priority
+        # events with targeted old/new id pairs (§11) — classification in
+        # particular can alter who is even allowed to see the letter.
+        if classification_id is not None and classification_id != old_classification_id:
+            self.audit.record(
+                actor_id=user.id,
+                action="LETTER_CLASSIFICATION_CHANGED",
+                entity_type="Letter",
+                entity_id=letter.id,
+                old_values={
+                    "classification_id": str(old_classification_id)
+                    if old_classification_id
+                    else None
+                },
+                new_values={"classification_id": str(classification_id)},
+            )
+        if category_id is not None and category_id != old_category_id:
+            self.audit.record(
+                actor_id=user.id,
+                action="LETTER_CATEGORY_CHANGED",
+                entity_type="Letter",
+                entity_id=letter.id,
+                old_values={"category_id": str(old_category_id) if old_category_id else None},
+                new_values={"category_id": str(category_id)},
+            )
+
         self.session.commit()
         self.session.refresh(letter)
         return letter
@@ -315,7 +403,23 @@ class LetterService:
         "lock things down" actions (Department/Admin/User
         deactivate)."""
         letter = self._get_for_access(letter_id, user=user)
+        was_already_archived = letter.status == LetterStatus.ARCHIVED
         self.letters.update_status(letter, LetterStatus.ARCHIVED)
+        self.session.flush()
+
+        # Only audit a real transition — re-archiving an already-ARCHIVED
+        # letter is a no-op (idempotent, per this method's own docstring)
+        # and shouldn't produce a redundant trail entry.
+        if not was_already_archived:
+            self.audit.record(
+                actor_id=user.id,
+                action="LETTER_ARCHIVED",
+                entity_type="Letter",
+                entity_id=letter.id,
+                old_values={"status": "ACTIVE"},
+                new_values={"status": "ARCHIVED"},
+            )
+
         self.session.commit()
         self.session.refresh(letter)
         return letter

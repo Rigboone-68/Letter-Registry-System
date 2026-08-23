@@ -55,6 +55,7 @@ from app.models.user import User
 from app.models.user_authorization import UserAuthorization
 from app.repositories.user_authorization_repository import UserAuthorizationRepository
 from app.repositories.user_repository import UserRepository
+from app.services.audit_service import AuditService
 from app.services.authorization import assert_department_access
 from app.services.exceptions import (
     AuthorizationNotFoundError,
@@ -72,6 +73,7 @@ class UserService:
         self.session = session
         self.users = UserRepository(session)
         self.authorizations = UserAuthorizationRepository(session)
+        self.audit = AuditService(session)
 
     # --- Authorization -------------------------------------------------------
 
@@ -106,6 +108,14 @@ class UserService:
             department_id=admin.department_id,
             authorized_by=admin.id,
             purpose=AuthorizationPurpose.USER,
+        )
+        self.session.flush()
+        self.audit.record(
+            actor_id=admin.id,
+            action="USER_AUTHORIZATION_CREATED",
+            entity_type="UserAuthorization",
+            entity_id=authorization.id,
+            new_values={"email": normalized_email, "department_id": str(admin.department_id)},
         )
         self.session.commit()
         self.session.refresh(authorization)
@@ -145,6 +155,15 @@ class UserService:
 
         if authorization.status == AuthorizationStatus.ACTIVE:
             self.authorizations.revoke(authorization)
+            self.session.flush()
+            self.audit.record(
+                actor_id=admin.id,
+                action="USER_AUTHORIZATION_REVOKED",
+                entity_type="UserAuthorization",
+                entity_id=authorization.id,
+                old_values={"status": "ACTIVE"},
+                new_values={"status": "REVOKED"},
+            )
             self.session.commit()
             self.session.refresh(authorization)
 
@@ -176,6 +195,15 @@ class UserService:
         assert_department_access(admin, admin.department_id)
 
         self.users.update_status(user, UserStatus.ACTIVE)
+        self.session.flush()
+        self.audit.record(
+            actor_id=admin.id,
+            action="USER_APPROVED",
+            entity_type="User",
+            entity_id=user.id,
+            old_values={"status": "PENDING_APPROVAL"},
+            new_values={"status": "ACTIVE"},
+        )
         self.session.commit()
         self.session.refresh(user)
         return user
@@ -184,7 +212,18 @@ class UserService:
         """Idempotent, always allowed regardless of the Admin's own
         department status — see module docstring."""
         user = self.get_user(user_id, admin=admin)
+        was_active = user.status == UserStatus.ACTIVE
         self.users.update_status(user, UserStatus.DEACTIVATED)
+        self.session.flush()
+        if was_active:
+            self.audit.record(
+                actor_id=admin.id,
+                action="USER_DEACTIVATED",
+                entity_type="User",
+                entity_id=user.id,
+                old_values={"status": "ACTIVE"},
+                new_values={"status": "DEACTIVATED"},
+            )
         self.session.commit()
         self.session.refresh(user)
         return user
@@ -196,7 +235,18 @@ class UserService:
         user = self.get_user(user_id, admin=admin)
         assert_department_access(admin, admin.department_id)
 
+        was_deactivated = user.status == UserStatus.DEACTIVATED
         self.users.update_status(user, UserStatus.ACTIVE)
+        self.session.flush()
+        if was_deactivated:
+            self.audit.record(
+                actor_id=admin.id,
+                action="USER_REACTIVATED",
+                entity_type="User",
+                entity_id=user.id,
+                old_values={"status": "DEACTIVATED"},
+                new_values={"status": "ACTIVE"},
+            )
         self.session.commit()
         self.session.refresh(user)
         return user

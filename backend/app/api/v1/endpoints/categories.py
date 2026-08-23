@@ -50,11 +50,13 @@ def _duplicate() -> HTTPException:
 def create_category(
     payload: CategoryCreate,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_system_admin),
+    current_user: User = Depends(require_system_admin),
 ) -> Category:
     service = CategoryService(db)
     try:
-        return service.create_category(name=payload.name, description=payload.description)
+        return service.create_category(
+            name=payload.name, description=payload.description, actor_id=current_user.id
+        )
     except DuplicateCategoryError:
         raise _duplicate()
 
@@ -100,12 +102,15 @@ def update_category(
     category_id: uuid.UUID,
     payload: CategoryUpdate,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_system_admin),
+    current_user: User = Depends(require_system_admin),
 ) -> Category:
     service = CategoryService(db)
     try:
         return service.update_category(
-            category_id, name=payload.name, description=payload.description
+            category_id,
+            name=payload.name,
+            description=payload.description,
+            actor_id=current_user.id,
         )
     except CategoryNotFoundError:
         raise _not_found()
@@ -121,11 +126,11 @@ def update_category(
 def activate_category(
     category_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_system_admin),
+    current_user: User = Depends(require_system_admin),
 ) -> Category:
     service = CategoryService(db)
     try:
-        return service.activate_category(category_id)
+        return service.activate_category(category_id, actor_id=current_user.id)
     except CategoryNotFoundError:
         raise _not_found()
 
@@ -138,10 +143,10 @@ def activate_category(
 def deactivate_category(
     category_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_system_admin),
+    current_user: User = Depends(require_system_admin),
 ) -> Category:
     service = CategoryService(db)
     try:
-        return service.deactivate_category(category_id)
+        return service.deactivate_category(category_id, actor_id=current_user.id)
     except CategoryNotFoundError:
         raise _not_found()

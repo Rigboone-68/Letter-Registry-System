@@ -141,11 +141,11 @@ def get_admin(
 def approve_admin(
     user_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_system_admin),
+    current_user: User = Depends(require_system_admin),
 ) -> User:
     service = AdminService(db)
     try:
-        return service.approve_admin(user_id)
+        return service.approve_admin(user_id, actor_id=current_user.id)
     except AdminNotFoundError:
         raise _admin_not_found()
     except AdminNotPendingApprovalError:
@@ -165,11 +165,11 @@ def approve_admin(
 def deactivate_admin(
     user_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_system_admin),
+    current_user: User = Depends(require_system_admin),
 ) -> User:
     service = AdminService(db)
     try:
-        return service.deactivate_admin(user_id)
+        return service.deactivate_admin(user_id, actor_id=current_user.id)
     except AdminNotFoundError:
         raise _admin_not_found()
 
@@ -182,11 +182,11 @@ def deactivate_admin(
 def reactivate_admin(
     user_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_system_admin),
+    current_user: User = Depends(require_system_admin),
 ) -> User:
     service = AdminService(db)
     try:
-        return service.reactivate_admin(user_id)
+        return service.reactivate_admin(user_id, actor_id=current_user.id)
     except AdminNotFoundError:
         raise _admin_not_found()
     except DepartmentNotActiveError:
@@ -202,11 +202,13 @@ def change_admin_department(
     user_id: uuid.UUID,
     payload: AdminDepartmentUpdate,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_system_admin),
+    current_user: User = Depends(require_system_admin),
 ) -> User:
     service = AdminService(db)
     try:
-        return service.change_admin_department(user_id, department_id=payload.department_id)
+        return service.change_admin_department(
+            user_id, department_id=payload.department_id, actor_id=current_user.id
+        )
     except AdminNotFoundError:
         raise _admin_not_found()
     except DepartmentNotFoundError:

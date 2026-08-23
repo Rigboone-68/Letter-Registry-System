@@ -29,6 +29,7 @@ from app.models.user_authorization import UserAuthorization
 from app.repositories.department_repository import DepartmentRepository
 from app.repositories.user_authorization_repository import UserAuthorizationRepository
 from app.repositories.user_repository import UserRepository
+from app.services.audit_service import AuditService
 from app.services.exceptions import (
     AdminNotFoundError,
     AdminNotPendingApprovalError,
@@ -46,6 +47,7 @@ class AdminService:
         self.users = UserRepository(session)
         self.authorizations = UserAuthorizationRepository(session)
         self.departments = DepartmentRepository(session)
+        self.audit = AuditService(session)
 
     # --- Authorization -----------------------------------------------------
 
@@ -84,6 +86,14 @@ class AdminService:
             authorized_by=authorized_by,
             purpose=AuthorizationPurpose.ADMIN,
         )
+        self.session.flush()
+        self.audit.record(
+            actor_id=authorized_by,
+            action="ADMIN_AUTHORIZATION_CREATED",
+            entity_type="UserAuthorization",
+            entity_id=authorization.id,
+            new_values={"email": normalized_email, "department_id": str(department_id)},
+        )
         self.session.commit()
         self.session.refresh(authorization)
         return authorization
@@ -106,7 +116,7 @@ class AdminService:
 
     # --- Lifecycle -------------------------------------------------------------
 
-    def approve_admin(self, user_id: uuid.UUID) -> User:
+    def approve_admin(self, user_id: uuid.UUID, *, actor_id: uuid.UUID) -> User:
         """PENDING_APPROVAL -> ACTIVE. Not idempotent (brief §8/test §22):
         approval is a one-time event, not a status toggle — approving an
         already-ACTIVE or DEACTIVATED account is rejected, unlike
@@ -118,22 +128,42 @@ class AdminService:
             raise DepartmentNotActiveError()
 
         self.users.update_status(admin, UserStatus.ACTIVE)
+        self.session.flush()
+        self.audit.record(
+            actor_id=actor_id,
+            action="ADMIN_APPROVED",
+            entity_type="User",
+            entity_id=admin.id,
+            old_values={"status": "PENDING_APPROVAL"},
+            new_values={"status": "ACTIVE"},
+        )
         self.session.commit()
         self.session.refresh(admin)
         return admin
 
-    def deactivate_admin(self, user_id: uuid.UUID) -> User:
+    def deactivate_admin(self, user_id: uuid.UUID, *, actor_id: uuid.UUID) -> User:
         """Idempotent (consistent with Department activate/deactivate,
         Phase 3B.2) — always allowed regardless of department status; you
         can always deactivate an Admin. Deletes nothing: no letters, no
         audit history, no other row — only this User's own `status`."""
         admin = self.get_admin(user_id)
+        was_active = admin.status == UserStatus.ACTIVE
         self.users.update_status(admin, UserStatus.DEACTIVATED)
+        self.session.flush()
+        if was_active:
+            self.audit.record(
+                actor_id=actor_id,
+                action="ADMIN_DEACTIVATED",
+                entity_type="User",
+                entity_id=admin.id,
+                old_values={"status": "ACTIVE"},
+                new_values={"status": "DEACTIVATED"},
+            )
         self.session.commit()
         self.session.refresh(admin)
         return admin
 
-    def reactivate_admin(self, user_id: uuid.UUID) -> User:
+    def reactivate_admin(self, user_id: uuid.UUID, *, actor_id: uuid.UUID) -> User:
         """DEACTIVATED -> ACTIVE, idempotent if already ACTIVE — but
         *always* re-validates the Admin's department is ACTIVE first, even
         in the already-ACTIVE case (brief §10's preferred behavior): an
@@ -148,12 +178,25 @@ class AdminService:
         if admin.department is None or admin.department.status != ActiveStatus.ACTIVE:
             raise DepartmentNotActiveError()
 
+        was_deactivated = admin.status == UserStatus.DEACTIVATED
         self.users.update_status(admin, UserStatus.ACTIVE)
+        self.session.flush()
+        if was_deactivated:
+            self.audit.record(
+                actor_id=actor_id,
+                action="ADMIN_REACTIVATED",
+                entity_type="User",
+                entity_id=admin.id,
+                old_values={"status": "DEACTIVATED"},
+                new_values={"status": "ACTIVE"},
+            )
         self.session.commit()
         self.session.refresh(admin)
         return admin
 
-    def change_admin_department(self, user_id: uuid.UUID, *, department_id: uuid.UUID) -> User:
+    def change_admin_department(
+        self, user_id: uuid.UUID, *, department_id: uuid.UUID, actor_id: uuid.UUID
+    ) -> User:
         """Changes only `department_id` — role and status are untouched by
         this operation, and there is no field on
         app/schemas/admin.py:AdminDepartmentUpdate for a client to attempt
@@ -167,7 +210,17 @@ class AdminService:
         if department.status != ActiveStatus.ACTIVE:
             raise DepartmentNotActiveError()
 
+        old_department_id = admin.department_id
         self.users.update_department(admin, department_id)
+        self.session.flush()
+        self.audit.record(
+            actor_id=actor_id,
+            action="ADMIN_DEPARTMENT_CHANGED",
+            entity_type="User",
+            entity_id=admin.id,
+            old_values={"department_id": str(old_department_id) if old_department_id else None},
+            new_values={"department_id": str(department_id)},
+        )
         self.session.commit()
         self.session.refresh(admin)
         return admin

@@ -7,9 +7,79 @@ supervisor as-is.
 
 ## Current Phase
 
-**Phase 4D — Document Management: Implementation.** Complete. Builds
-directly on this phase's own prior architecture review: `LetterDocument`
-upload, listing, and download are now implemented —
+**Phase 4E — Operational Activity, Notifications & Audit: Implementation.**
+Complete. Builds directly on this same phase's own prior architecture
+review: `AuditLog` generation is now wired into every event the review
+recommended — Letter (created/updated/archived/classification-changed/
+category-changed), Document (uploaded), User (approved/deactivated/
+reactivated), Admin (authorized/approved/deactivated/reactivated/
+department-changed), Department (created/activated/deactivated),
+Category/Classification (created/updated/activated/deactivated), and
+Authorization (created/revoked) — append-only (no update/delete
+endpoint exists anywhere), mandatory (a write failure rolls back the
+whole triggering operation, proven by a dedicated test), and using only
+targeted old/new field pairs, never a full row snapshot or a sensitive
+value. `Notification` generation is wired into the one CONFIRMED V1
+trigger — a letter being registered — with the recipient department's
+ACTIVE Admins as an explicit PROVISIONAL recipient strategy, best-effort
+via a real database `SAVEPOINT` (proven against an actual failure inside
+it, not a stand-in), and a deliberately generic message. Four new
+endpoints (`GET/PATCH /api/v1/notifications*`) let a user read and
+mark-read only their own notifications. No schema change was needed. 33
+new tests, full suite **458 passed**, re-run 3 consecutive times, plus a
+live-server verification against `lrs_dev` with real minted JWTs. Full
+design and implementation record in
+`docs/architecture/audit-notifications.md` §31.
+
+**Not in scope for this phase, and not added:** an audit-viewing/read
+API (deliberately left for a future phase — the access-control question,
+§9, is still PENDING), notification triggers beyond "letter registered,"
+dashboards, WebSockets, background queues, email/push notifications,
+frontend notification UI, or an automatic (event-listener-based) audit
+framework.
+
+### Phase 4E — Operational Activity, Notifications & Audit: Architecture & Requirements Review
+
+Complete (prior pass, this same phase). Review only — no code,
+migration, or test was written at that stage. Inspected the actual
+current state of `AuditLog` and `Notification` (both unchanged since the
+Phase 2 baseline + hardening migrations; confirmed by grep that zero
+application code anywhere wrote to either table) rather than assuming
+the five prior phases' own "planned, not implemented" audit-event lists
+were still complete. Consolidated those five lists into one place and
+identified the events none of them had itemized yet (Letter
+classification/category changes, Category/Classification management
+events). Worked through 22 analysis topics (§4-§25 of the review) — audit
+immutability, actor-vs-target model, target/change-detail strategy,
+audit access control and data-leakage risk, retention, notification
+purpose/recipients/security/lifecycle/API, real-time vs. polled
+delivery, event-generation architecture, transactional consistency,
+background processing, audit-vs-notification distinction, and
+dashboard/Letter-timeline/search implications — plus a database
+sufficiency review, and designed a 14-scenario test plan, all using the
+CONFIRMED/RECOMMENDED/OPTIONAL/PENDING taxonomy the brief specified. Full
+design in `docs/architecture/audit-notifications.md` §1-30.
+
+**Two CRITICAL findings, resolved by design in the review, confirmed
+correct by implementation**: (1) audit writes should be mandatory and
+share the triggering operation's own transaction (a failure fails the
+whole operation), while notification writes should be best-effort inside
+a database `SAVEPOINT` (`session.begin_nested()`) so a notification
+failure can never abort the audit row or business operation riding
+alongside it — the same savepoint mechanism `tests/conftest.py`'s
+`db_session` fixture already uses for an analogous reason, not a
+newly-invented pattern; (2) a notification's stored `message` text must
+stay generic (never interpolate Letter subject/content) because a later
+classification change cannot retroactively scrub text already sent — any
+richer display must re-check `assert_letter_access` fresh at read time,
+extending Phase 4D's "never cache authorization" principle to a third
+consumer.
+
+### Phase 4D — Document Management: Implementation
+
+Complete (prior phase). Built directly on that same phase's own prior
+architecture review: `LetterDocument` upload, listing, and download were
+implemented —
 `POST`/`GET /api/v1/letters/{letter_id}/documents` and
 `GET .../{document_id}` — with a server-generated, UUID-based storage
 path that never trusts client input, layered file-type/size validation
@@ -47,6 +117,212 @@ until the review's recommendations were approved; see "Completed" below
 for both, in order.
 
 ## Completed
+
+### Phase 4E — Operational Activity, Notifications & Audit implementation
+
+* **Audit foundation** (`app/services/audit_service.py:AuditService.record`,
+  `app/repositories/audit_log_repository.py`) — the single, reusable
+  service-level mechanism the review's §16/§19 called for: no event bus,
+  no SQLAlchemy event listeners, no domain-event framework. `record`
+  only `flush()`es, never `commit()`s/`rollback()`s — the caller's own
+  existing `session.commit()` is what actually makes a write mandatory.
+  Insert-only by construction: no `update`/`delete` method exists, and
+  **no audit-viewing or audit-mutation endpoint of any kind was built**
+  — confirmed by a dedicated test hitting a plausible audit URL and
+  getting `404`/`405`.
+* **Wired into eight entity types, exactly the events the review
+  named, no more**: `LETTER_CREATED`/`UPDATED`/`ARCHIVED`/
+  `CLASSIFICATION_CHANGED`/`CATEGORY_CHANGED`
+  (`app/services/letter_service.py`); `DOCUMENT_UPLOADED`
+  (`app/services/document_service.py`, recorded inside the same try
+  block that already handles Phase 4D's write-then-commit compensation,
+  so an audit failure triggers the identical file-cleanup path a
+  database failure would); `USER_APPROVED`/`DEACTIVATED`/`REACTIVATED`,
+  `USER_AUTHORIZATION_CREATED`/`REVOKED`
+  (`app/services/user_service.py`); `ADMIN_AUTHORIZATION_CREATED`,
+  `ADMIN_APPROVED`/`DEACTIVATED`/`REACTIVATED`/`DEPARTMENT_CHANGED`
+  (`app/services/admin_service.py` — required adding an `actor_id`
+  parameter to four methods that previously received no caller identity
+  at all, and threading `current_user.id` through `admins.py`, whose
+  `_current_user` dependency parameter had been unused until now);
+  `DEPARTMENT_CREATED`/`ACTIVATED`/`DEACTIVATED`
+  (`app/services/department_service.py` — `DEPARTMENT_UPDATED` was
+  deliberately not implemented, honoring the brief's own asymmetric
+  event list); `CATEGORY_CREATED`/`UPDATED`/`ACTIVATED`/`DEACTIVATED`
+  and the `CLASSIFICATION_*` equivalents
+  (`app/services/category_service.py`/`classification_service.py`).
+  Every "only on a genuine state transition" case (e.g. re-archiving an
+  already-archived letter) was checked explicitly, so idempotent no-op
+  calls never produce a redundant audit entry.
+* **Targeted old/new values only, verified not just designed** — a
+  dedicated test asserts `LETTER_CLASSIFICATION_CHANGED`'s
+  `old_values`/`new_values` contain *only* `classification_id`, and
+  another confirms a Letter's `text_content` and a User's
+  `password_hash` never appear in any audit row's values, across every
+  event type.
+* **Mandatory/same-transaction, proven by forcing a real failure** —
+  `test_audit_failure_rolls_back_letter_creation` makes
+  `AuditService.record` raise mid-`create_letter` and confirms, after
+  rolling back the still-open transaction, that the Letter row never
+  existed — not merely that the request returned an error.
+* **Notification foundation** (`app/services/notification_service.py`,
+  `app/repositories/notification_repository.py`) — the one CONFIRMED V1
+  trigger, `notify_letter_registered`, called from
+  `LetterService.create_letter`. Recipient strategy (the recipient
+  department's ACTIVE Admins, via `UserRepository.list_admins`) is
+  implemented exactly as the review's PROVISIONAL default, not quietly
+  promoted to a confirmed answer.
+* **Best-effort via a real database `SAVEPOINT`, proven against a
+  genuine internal failure** — `notify_letter_registered` wraps its body
+  in `session.begin_nested()`; a dedicated test makes
+  `NotificationRepository.create` itself raise (not a stand-in that
+  bypasses the savepoint) and confirms the Letter and its audit row
+  still commit successfully, the failure is logged at `WARNING`
+  (`app/core/logging.py:get_logger` — this project's one existing
+  logging convention, no new one introduced), and no notification row
+  exists for that letter.
+* **Generic message content, verified with a deliberately sensitive
+  test case** — `test_notification_message_contains_no_letter_content`
+  creates a Letter with a deliberately sensitive `subject` and confirms
+  it never appears in the generated notification text
+  (`"A new letter (reference: {reference_number}) has been registered
+  in your department."`).
+* **`GET /api/v1/notifications`** (paginated, newest-first),
+  **`GET /api/v1/notifications/unread-count`**,
+  **`PATCH /api/v1/notifications/{notification_id}/read`** (idempotent),
+  **`PATCH /api/v1/notifications/read-all`** — all four use
+  `get_current_user` only and are unconditionally scoped to
+  `current_user` for every role including `SYSTEM_ADMIN`; a mismatched
+  notification id 404s, matching the enumeration-resistant shape
+  `DocumentNotFoundError`/`LetterNotFoundError` already established.
+* **Zero schema change.** `alembic check` against `lrs_dev` reports "No
+  new upgrade operations detected" both before and after this phase —
+  `AuditLog`/`Notification` are used exactly as they already existed
+  since Phase 2.
+* **33 new tests** (`tests/integration/test_audit.py` — 21,
+  `test_notifications.py` — 12) — covering all 30 scenarios named in
+  the implementation brief; regression scenarios (existing
+  authorization, classified-Letter access, department isolation,
+  document access, Letter search/pagination) are covered by the
+  pre-existing 425-test suite, re-run after every wiring change and
+  confirmed to stay green throughout, rather than duplicated into new
+  test functions.
+* **Full suite: 458 passed** (425 baseline + 33 new), re-run 3
+  consecutive times, identical results.
+* **Live-server verification against `lrs_dev`**, real minted JWTs, real
+  HTTP — see "Validation performed" below.
+* **Documentation**: `docs/architecture/audit-notifications.md` §31
+  (new implementation record), plus updates to the root README,
+  `backend/README.md`, `docs/README.md`, and
+  `docs/architecture/overview.md`.
+
+### Phase 4E — Operational Activity, Notifications & Audit architecture & requirements review
+
+* **Inspected the actual current repository state, not assumed** —
+  confirmed `AuditLog` and `Notification` are byte-for-byte unchanged
+  since the Phase 2 baseline + hardening migrations; confirmed by `grep`
+  across `app/services/`, `app/repositories/`, `app/api/`,
+  `app/schemas/`, `app/core/` that **zero application code writes to
+  either table anywhere** — only two model-level tests touch each
+  (`tests/integration/test_models.py`), exercising relationships and
+  defaults, not generation logic. Confirmed no SQLAlchemy event-listener,
+  background-task, or queue infrastructure exists anywhere in the
+  codebase (`requirements.txt` has no Celery/Redis; `app/middleware/` is
+  still empty except `__init__.py`).
+* **Consolidated five prior phases' own "planned, not implemented" audit
+  lists into one place**, rather than starting a sixth competing one —
+  `authorization.md` §12, `department-management.md` §10,
+  `admin-management.md` §13, `user-management.md` §12, and
+  `document-management.md` §25 each already itemized their own entity's
+  events; this review confirmed all five are still accurate and added
+  the events none of them had ever itemized: Letter created/edited/
+  archived/classification-changed/category-changed, and
+  Category/Classification management events (created/updated/activated/
+  deactivated). Letter classification changes are flagged as the
+  highest-priority Letter-related event, since it's the one field whose
+  change can alter who can see the letter at all.
+* **Audit immutability (CRITICAL) — recommended append-only**, matching
+  this project's established never-physically-delete pattern
+  (Department/User/Category/Classification/Letter all deactivate/
+  archive; Phase 4D's own review concluded `LetterDocument` needs no
+  deletion endpoint at all). No role, including `SYSTEM_ADMIN`, should
+  ever get an API path that edits or deletes an `AuditLog` row.
+* **Audit target strategy — recommended keeping the existing
+  `entity_type`/`entity_id` design (no FK), no schema change.** Evaluated
+  against two rejected alternatives (per-entity audit tables; a wide
+  sparse-FK table) and confirmed the current, minimal design is already
+  the least-overengineered V1 choice. One clarification identified, not
+  a schema change: an Admin-related audit event should use
+  `entity_type="User"` (the real table an Admin account lives in, since
+  Admin accounts have been `User` rows with `role=ADMIN` since Phase
+  3B.3), disambiguated by the `action` string (`ADMIN_APPROVED` vs.
+  `USER_APPROVED`) — never a fictitious `entity_type="Admin"` that
+  doesn't correspond to any real table.
+* **Change detail strategy — recommended targeted old/new field pairs**
+  (e.g. `{"old_department_id": ..., "new_department_id": ...}`), **not a
+  generic full-row-snapshot JSON blob** — explicitly rejected as
+  something nothing in the confirmed requirements needs, and a real
+  future data-leakage risk if a full snapshot ever captured a classified
+  Letter's `text_content` alongside a mundane field change.
+* **Transactional consistency (CRITICAL) — an asymmetric, precisely
+  worked-out design.** Audit writes are recommended mandatory, sharing
+  the triggering operation's own transaction — a failure fails the whole
+  operation, since a silently-unaudited official action would defeat the
+  audit trail's entire stated purpose. Notification writes are
+  recommended best-effort — but a naive try/except around a same-session
+  notification write is **not sufficient**, since PostgreSQL aborts an
+  entire transaction the moment any statement inside it fails; the
+  review identifies a `SAVEPOINT` (`session.begin_nested()`) as the
+  correct mechanism, and points directly at `tests/conftest.py`'s
+  `db_session` fixture — already using `join_transaction_mode="create_savepoint"`
+  for an analogous reason — as existing, working proof the pattern is
+  sound in this exact codebase, not a novel proposal.
+* **Notification security (CRITICAL) — recommended keeping stored
+  `message` text generic**, never interpolating a Letter's subject or
+  content directly into it, because a later classification change cannot
+  retroactively scrub text already sent to a recipient. Any future
+  richer notification display (e.g. joining to live Letter fields) must
+  re-check `assert_letter_access` fresh at read time — extending Phase
+  4D's "authorization must never be cached or snapshotted" principle
+  (`document-management.md` §17) to a third consumer.
+* **Audit access control — deliberately left PENDING**, with a real
+  complexity surfaced rather than hand-waved: resolving "which
+  department does this audit entry belong to" for a polymorphic target
+  requires a per-entity-type join (a `Letter`'s via
+  `recipient_department_id`, a `User`'s via its own `department_id`, a
+  `Department` *is* one) that no authorization check in this project has
+  needed before. **Recommended safe default**: `SYSTEM_ADMIN`-only for
+  V1's audit-viewing API, whenever built — narrower than "ADMIN sees
+  their department," which shouldn't be built before that resolution
+  logic is deliberately designed and tested, given the data-leakage risk
+  of getting it wrong.
+* **Notification recipients — explicitly flagged as PENDING BUSINESS
+  CLARIFICATION**, with the specific trap named and avoided: recipient
+  selection must derive from `Letter.recipient_department_id`, never from
+  `uploaded_by.department_id` or any user's own department snapshotted
+  elsewhere. An interim recommended default (the recipient department's
+  Admins) is offered but explicitly marked a guess, not a confirmed
+  answer.
+* **Real-time delivery — confirmed, not guessed, out of scope**, quoting
+  `docs/database/schema.md` §2.8's own record of the original brief
+  directly: "V1 is an in-system notification center only... no delivery
+  mechanism (email, push, WebSocket) exists or is assumed." Polling or
+  manual refresh recommended; WebSockets/SSE explicitly not recommended
+  for V1.
+* **Event generation architecture — recommended service-level**,
+  evaluated against four alternatives (endpoint-level, SQLAlchemy event
+  listeners, a domain-event/pub-sub layer, background tasks) and
+  rejecting each with a specific, codebase-grounded reason — notably that
+  ORM event listeners would also fire during `tests/factories.py`'s
+  direct model construction, polluting test runs with synthetic
+  audit/notification rows.
+* **A 14-scenario test plan and a 7-step Recommended Phase 4E
+  implementation sequence were both designed, not implemented.** No
+  migration, model, service, repository, schema, or endpoint file was
+  touched — confirmed by `git status` before/after.
+* **Documentation**: `docs/architecture/audit-notifications.md` (new),
+  plus updates to the root README, `backend/README.md`, `docs/README.md`,
+  and `docs/architecture/overview.md`.
 
 ### Phase 4D — Document Management implementation
 
@@ -696,6 +972,36 @@ detail behind each:
 | 5 | `letter_documents.uploaded_by` had no index, unlike every other User-referencing FK in the schema | Added (`ix_letter_documents_uploaded_by`) |
 | 6 | The role/department `CHECK` constraint hardcoded role strings, duplicating `UserRole`'s values | Model-side constraint now built from `UserRole.*.value`; the migration's own copy is deliberately still a literal (migrations are frozen snapshots) — see `app/models/user.py` docstring |
 
+### Validation performed — Phase 4E implementation
+
+All against the same real, local, disposable PostgreSQL 17 instance
+used for every prior phase (`lrs_dev` for manual checks, `lrs_test` for
+the suite — never a shared or departmental database):
+
+| Check | Result |
+|---|---|
+| `pytest tests/` (full suite) against `lrs_test` | **458 passed**, 0 failed, 0 skipped (425 baseline + 33 new). Re-run 3 consecutive times, identical results |
+| `alembic check` against `lrs_dev` | "No new upgrade operations detected" — this phase needed no schema change |
+| No test writes into the real `storage/letters/` tree | Confirmed by `find storage/letters -type f` before/after the full suite run — only `.gitkeep` present both times (the Phase 4D document tests' storage isolation fixture is unaffected by this phase's changes) |
+| Live-server verification against `lrs_dev`, real minted JWTs, a running `uvicorn` instance | Letter registration produced a `LETTER_CREATED` audit row (correct actor, `entity_type="Letter"`, targeted `new_values`) and a `LETTER_REGISTERED` notification for each of the recipient department's two Admins (`200`, one item each); each Admin's own `GET /notifications` returned only their own row; one Admin marking their notification read left the other Admin's unread count untouched (`404` when the other Admin tried to mark it); `read-all` only affected the calling Admin's own rows; the `SYSTEM_ADMIN`'s own notification list was empty (never a recipient under the current strategy); an unauthenticated request got `401` |
+| Files/rows created during live verification, confirmed and cleaned up | One department, four users, one letter, one audit row, two notification rows — all deleted via direct session cleanup afterward; `lrs_dev`'s `categories` table reconfirmed unchanged (still exactly 3 seeded rows) |
+| `git status` review | No secrets tracked; `.env` confirmed gitignored |
+
+### Validation performed — Phase 4E review
+
+An architecture review, not an implementation phase — validation here
+means confirming no code was written and no drift was introduced, not
+running new business-logic tests (the same standard applied to the
+Phase 4A and Phase 4D review passes):
+
+| Check | Result |
+|---|---|
+| `git status` before and after the review | Identical except one new documentation file and five documentation updates — no model, migration, repository, schema, service, endpoint, or test file touched |
+| `alembic check` | Unaffected — no migration was created, consistent with a read-only review (last confirmed against `lrs_dev` at the end of Phase 4D's corrections pass; nothing since has touched the schema) |
+| Direct reads of `app/models/audit_log.py`, `app/models/notification.py`, `app/models/user.py`, `app/models/user_authorization.py`, `app/models/enums.py`, both Phase 2 migrations, `tests/integration/test_models.py` | Confirmed empirically (not from memory) that both tables are unchanged since Phase 2 and only touched by model-level tests |
+| `grep` across `app/services/`, `app/repositories/`, `app/api/`, `app/schemas/`, `app/core/` for `AuditLog`/`Notification` | Zero real matches (two incidental false positives were "Notification" as a seeded *Category* name, not the model) — confirms zero application code writes to either table |
+| `grep` for SQLAlchemy event listeners, `BackgroundTasks`, `Celery`/`Redis` across `app/` and `requirements.txt` | Zero matches — confirms no existing event/background-task infrastructure this review needed to account for |
+
 ### Validation performed — Phase 4D implementation
 
 All against the same real, local, disposable PostgreSQL 17 instance
@@ -949,13 +1255,39 @@ afterward — `lrs_dev` is empty again.
 
 ## In Progress
 
-Nothing — Phase 4D is complete (architecture review and implementation
+Nothing — Phase 4E is complete (architecture review and implementation
 both) and the project is paused pending explicit instruction to begin
 the next phase, per the standing project rule that phases are reviewed
 before the next begins.
 
 ## Pending (Phase 5 and later)
 
+* **An audit-viewing/read API** — `AuditLog` is now populated (Phase
+  4E), but nothing exposes it through the API; the access-control
+  question is genuinely unconfirmed. Phase 4E's review recommends
+  `SYSTEM_ADMIN`-only as the safe V1 default, with department-scoped
+  `ADMIN` access deferred until the per-entity-type department-resolution
+  logic it would require is deliberately designed. See
+  `docs/architecture/audit-notifications.md` §9/§28.
+* **Notification triggers beyond "letter registered"** — the one
+  CONFIRMED V1 trigger is implemented; document upload, classification/
+  category changes, and User/Admin/Department lifecycle notifications
+  remain unimplemented, deliberately, pending business confirmation each
+  is actually wanted. See `docs/architecture/audit-notifications.md` §12.
+* **Notification recipients for "letter registered" — still
+  PROVISIONAL, not confirmed.** Implemented as the recipient
+  department's ACTIVE Admins (an explicit, documented guess, not a
+  business answer); whole-department or recorder-only-receipt remain
+  live alternatives if the business ever weighs in. See
+  `docs/architecture/audit-notifications.md` §13/§28.
+* **`UserAuthorization.expires_at` enforcement** — the column exists, but
+  nothing currently checks it against the current time; an "expired"
+  audit event depends on that first being built. See
+  `docs/architecture/audit-notifications.md` §4/§28.
+* **Audit and notification retention periods** — no business period
+  exists for either; Phase 4E recommends archiving (never deleting) audit
+  rows whenever a period is set, and treats notifications as disposable
+  by design. See `docs/architecture/audit-notifications.md` §11/§15.
 * **Document deletion for `LetterDocument`** — deliberately not built in
   Phase 4D (physical or soft), matching the review's own recommendation.
   `LetterDocument` still has no lifecycle/status field to soft-delete
@@ -1278,6 +1610,21 @@ behind each.
   `docs/architecture/admin-management.md` §13, and
   `docs/architecture/user-management.md` §12 for the full list scoped for
   when the relevant actions exist.
+* **RESOLVED (Phase 4E implementation) — `AuditLog` and `Notification`
+  are now populated.** `AuditLog` records Letter/Document/User/Admin/
+  Department/Category/Classification/Authorization lifecycle events,
+  append-only and transactionally mandatory; `Notification` generates
+  for the one confirmed "letter registered" trigger, best-effort via a
+  database `SAVEPOINT`. See `docs/architecture/audit-notifications.md`
+  §31 for the full implementation record.
+* **No audit-viewing/read API exists** (Phase 4E, deliberate scope
+  decision, not a gap) — `AuditLog` is written to but nothing exposes it
+  through `/api/v1`; the access-control question (§9) remains genuinely
+  unconfirmed. See `docs/architecture/audit-notifications.md` §9/§31.
+* **Notification recipient strategy ("the recipient department's
+  Admins") is still PROVISIONAL** — implemented as the interim default
+  the review named, explicitly not confirmed by the business. See
+  `docs/architecture/audit-notifications.md` §13.
 * **RESOLVED (Phase 3B.4 hardening pass) — `test_me_with_tampered_token_is_rejected`
   (Phase 3A) was occasionally flaky on a full-suite run.** Root cause
   confirmed empirically (5,000-trial script): the old technique flipped
@@ -1298,21 +1645,26 @@ behind each.
 
 ## Next Recommended Phase
 
-**Phase 5 — Dashboards, notifications, reporting**, or resolving the
-outstanding business clarifications first. The registry is now a
+**Phase 5 — Dashboards and reporting**, reading from the operational
+tables plus the now-populated `AuditLog` (§20 of
+`docs/architecture/audit-notifications.md`), **or** an audit-viewing/
+read API once the access-control question is resolved, **or** resolving
+the outstanding business clarifications first. The registry now has a
 complete, tested, paginated/sortable/searchable, department- and
-classification-isolated system with working document attachment
-upload/list/download — every V1 requirement confirmed so far (finding,
-managing, and now attaching files to letters) is built. Recommended
-before or alongside Phase 5: resolve the exact classification value list
-and the exact classified-visibility matrix with the product owner
-(`docs/architecture/letter-registry.md` §12,
-`docs/architecture/registry-search.md` §11) — document access on a
-classified letter is exactly the kind of surface where the current
-provisional policy's limits become more visible than plain CRUD already
-made them, and Phase 4D's document authorization now depends on that
-same policy too; the text-attachment workflow question
-(`docs/architecture/document-management.md` §10, typed content vs.
-uploaded `.txt`); and whether document deletion or a `checksum_sha256`
-column is ever actually needed (`docs/architecture/document-management.md`
-§12/§14) before either is built speculatively.
+classification-isolated system with working document attachments, an
+audit trail for its core lifecycle events, and in-system notifications
+for letter registration — every V1 requirement confirmed so far is
+built. Recommended before or alongside Phase 5: resolve the exact
+classification value list and the exact classified-visibility matrix
+with the product owner (`docs/architecture/letter-registry.md` §12,
+`docs/architecture/registry-search.md` §11) — Phase 4E's audit-access
+and notification-security design both explicitly depend on that same
+policy (`docs/architecture/audit-notifications.md` §9/§14); who should
+receive a "letter registered" notification, since the current "department
+Admins" strategy is still an explicit guess
+(`docs/architecture/audit-notifications.md` §13); whether an audit
+read API is wanted yet, and if so, at what access scope
+(`docs/architecture/audit-notifications.md` §9); and whether document
+deletion or a `checksum_sha256` column is ever actually needed
+(`docs/architecture/document-management.md` §12/§14) before either is
+built speculatively.

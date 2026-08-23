@@ -284,3 +284,14 @@ class DocumentNotFoundError(ServiceError):
     id must never be distinguishable-by-response-code from one that
     belongs to an inaccessible or nonexistent letter."""
 
+
+# --- Notifications (Phase 4E) ------------------------------------------------
+
+
+class NotificationNotFoundError(ServiceError):
+    """No `Notification` exists with this id belonging to the calling
+    user — covers "no such notification" and "exists but belongs to a
+    different recipient" identically (docs/architecture/audit-notifications.md
+    §17): a mismatched id must never be distinguishable-by-response-code
+    from one that doesn't exist at all."""
+

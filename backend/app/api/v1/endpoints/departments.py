@@ -53,11 +53,13 @@ def _not_found() -> HTTPException:
 def create_department(
     payload: DepartmentCreate,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_system_admin),
+    current_user: User = Depends(require_system_admin),
 ) -> Department:
     service = DepartmentService(db)
     try:
-        return service.create_department(name=payload.name, code=payload.code)
+        return service.create_department(
+            name=payload.name, code=payload.code, actor_id=current_user.id
+        )
     except DuplicateDepartmentNameError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -138,11 +140,11 @@ def update_department(
 def activate_department(
     department_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_system_admin),
+    current_user: User = Depends(require_system_admin),
 ) -> Department:
     service = DepartmentService(db)
     try:
-        return service.activate_department(department_id)
+        return service.activate_department(department_id, actor_id=current_user.id)
     except DepartmentNotFoundError:
         raise _not_found()
 
@@ -155,10 +157,10 @@ def activate_department(
 def deactivate_department(
     department_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_system_admin),
+    current_user: User = Depends(require_system_admin),
 ) -> Department:
     service = DepartmentService(db)
     try:
-        return service.deactivate_department(department_id)
+        return service.deactivate_department(department_id, actor_id=current_user.id)
     except DepartmentNotFoundError:
         raise _not_found()

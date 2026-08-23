@@ -4,7 +4,9 @@ FastAPI service for the Letter Registry System. **Phase 4B: Letter
 Registry Core — implemented, with a pre-commit hardening pass applied on
 top. Phase 4C: Registry Operations & Search — implemented. Phase 4D:
 Document Management — implemented, on top of this phase's own
-architecture review.** Builds on Phase 4A's architecture review and the
+architecture review. Phase 4E: Operational Activity, Notifications &
+Audit — implemented, on top of this phase's own architecture
+review.** Builds on Phase 4A's architecture review and the
 fully-delivered Phase 3B (Roles & Access Management: authentication,
 RBAC/department isolation, department management, Admin management, User
 management). Full design in `docs/architecture/authentication.md` (auth),
@@ -38,9 +40,20 @@ signature), and an authorization chain that reuses
 document-level check, so classified-letter protection extends to its
 documents automatically. No schema change was needed; there is still no
 document deletion endpoint of any kind — a deliberate scope decision,
-not a gap. See §33 of that doc for the full implementation record).
-Dashboards and notifications are still not implemented — see
-`docs/architecture/overview.md` §4 for exactly what is and isn't in
+not a gap. See §33 of that doc for the full implementation record), and
+`docs/architecture/audit-notifications.md` (Phase 4E: `AuditLog`
+generation — append-only, mandatory/same-transaction, targeted old/new
+field pairs, never a full row snapshot — wired into Letter/Document/
+User/Admin/Department/Category/Classification/Authorization lifecycle
+events; `Notification` generation for the one confirmed V1 trigger
+("letter registered"), best-effort via a database `SAVEPOINT` so a
+failure there can never block the letter itself, with deliberately
+generic message text; `GET/PATCH /api/v1/notifications*` scoped
+unconditionally to the caller's own notifications. No schema change was
+needed; there is still no audit-viewing API — a deliberate scope
+decision, not a gap. See §31 of that doc for the full implementation
+record). Dashboards and an audit read API are still not implemented —
+see `docs/architecture/overview.md` §4 for exactly what is and isn't in
 place.
 
 ## Setup
@@ -67,7 +80,9 @@ to `assert_letter_access`), the document endpoints
 role that can already access the parent Letter, including SYSTEM_ADMIN
 cross-department; no deletion endpoint), Category/Classification
 management endpoints (`/api/v1/categories*`, `/api/v1/classifications*`,
-SYSTEM_ADMIN only), five verification-only authorization endpoints under
+SYSTEM_ADMIN only), the notification endpoints (`/api/v1/notifications*` —
+any authenticated role, always scoped to the caller's own notifications),
+five verification-only authorization endpoints under
 `/api/v1/auth/test/*` (not business functionality — see
 `docs/architecture/authorization.md` §7), plus `/docs` and `/redoc`.
 
@@ -105,6 +120,7 @@ if an active System Admin already exists. See
 | `app/schemas/letter.py` | Letter create/update/response/list-envelope contracts (Phase 4B) — no `recipient_department_id`/`recorded_by`/`status` field on `LetterCreate` |
 | `app/schemas/category.py`, `app/schemas/classification.py` | Category/Classification create/update/response/list-envelope contracts (Phase 4B) — same no-server-controlled-field guarantee; `Classification` additionally carries `restricts_access` |
 | `app/schemas/document.py` | `DocumentResponse`/`DocumentListResponse` (Phase 4D) — no `storage_path` field exists on the response at all, `LetterDocument`'s equivalent of never serializing `password_hash`; no `DocumentCreate` schema (upload is a multipart file field, not a JSON body) |
+| `app/schemas/notification.py` | `NotificationResponse`/`NotificationListResponse`/`UnreadCountResponse` (Phase 4E) — no `recipient_user_id` field anywhere a client could set; no request schema at all (generation is always server-side, triggered by a business event) |
 | `app/api/deps.py` | `get_current_user` (authentication) plus `require_system_admin`/`require_admin`/`require_admin_or_system_admin`/`require_user_or_admin`/`require_department_access` (authorization) |
 | `app/api/v1/router.py` | Aggregate v1 router |
 | `app/api/v1/endpoints/auth.py` | `/auth/signup`, `/auth/login`, `/auth/me` |
@@ -114,6 +130,7 @@ if an active System Admin already exists. See
 | `app/api/v1/endpoints/letters.py` | `/letters*` (Phase 4B) — `POST` is USER/ADMIN only; every other route accepts any authenticated role, with the actual department/classified-access decision made inside `LetterService`, not the route dependency |
 | `app/api/v1/endpoints/categories.py`, `app/api/v1/endpoints/classifications.py` | `/categories*`, `/classifications*` (Phase 4B) — SYSTEM_ADMIN only, mirroring `departments.py` exactly |
 | `app/api/v1/endpoints/documents.py` | `/letters/{letter_id}/documents*` (Phase 4D) — nested under Letter on purpose, so the letter-first authorization chain is structurally unavoidable; every route uses `get_current_user` only (no `require_user_or_admin`), since the real decision is `LetterService.get_letter`'s `assert_letter_access`, exactly the same one-check-not-two principle `letters.py` already established. No delete route |
+| `app/api/v1/endpoints/notifications.py` | `/notifications*` (Phase 4E) — `get_current_user` only, unconditionally scoped to `current_user` for every role including SYSTEM_ADMIN (ownership, not role/department, is the whole access rule); no `recipient_user_id` query parameter exists anywhere |
 | `app/api/v1/endpoints/dev_authz_test.py` | `/auth/test/*` — verification-only, not business functionality (see `docs/architecture/authorization.md` §7) |
 | `app/services/auth_service.py` | Signup and login business logic — role now derived from `UserAuthorization.purpose` (Phase 3B.3) |
 | `app/services/bootstrap_service.py` | First-System-Admin creation logic (called by `app/cli.py`) |
@@ -124,6 +141,8 @@ if an active System Admin already exists. See
 | `app/services/letter_service.py` | Letter create/read/update/archive business logic (Phase 4B) — `recorded_by`/`recipient_department_id` always derived from the caller; reference-number/source-department/category/classification validation. `list_letters` (Phase 4C) adds pagination/sorting/search, raising `InvalidDateRangeError` for a reversed `received_from`/`received_to` |
 | `app/services/category_service.py`, `app/services/classification_service.py` | Category/Classification CRUD business logic (Phase 4B), mirroring `department_service.py` |
 | `app/services/document_service.py` | Upload/list/get business logic (Phase 4D) — reuses `LetterService.get_letter` for authorization rather than a parallel check; write-then-commit-with-compensation ordering (file written before the DB row is committed; a DB failure after a successful write deletes the now-orphaned file) |
+| `app/services/audit_service.py` | `AuditService.record` (Phase 4E) — the single, reusable audit-write mechanism; only `flush()`es, never `commit()`s/`rollback()`s, so a failure surfaces inside the caller's own transaction and fails the whole operation (mandatory, by design) |
+| `app/services/notification_service.py` | `NotificationService` (Phase 4E) — `notify_letter_registered` (the one confirmed V1 trigger; recipient department's ACTIVE Admins, a PROVISIONAL default), wrapped in a database `SAVEPOINT` so a failure can never block the Letter transaction it rides alongside; plus recipient-scoped list/unread-count/mark-read/mark-all-read |
 | `app/services/document_storage.py` | Server-controlled filesystem paths (Phase 4D) — `STORAGE_PATH` resolved to an absolute path fresh on every call (never cached), `<letter_uuid>/<document_uuid>.<ext>` built entirely from server-generated UUIDs and a fixed MIME-to-extension map, atomic temp-file-then-rename writes |
 | `app/services/document_validation.py` | Layered file-type/size validation (Phase 4D) — extension allowlist, size limit, then an authoritative magic-byte content-signature check (hand-rolled, no `python-magic`/libmagic dependency); client-supplied `Content-Type` is never consulted |
 | `app/services/exceptions.py` | Service-layer domain errors, mapped to HTTP responses in the endpoint layer |
@@ -133,6 +152,8 @@ if an active System Admin already exists. See
 | `app/repositories/letter_repository.py` | The only code that queries `Letter` (Phase 4B). `find_by_id` eagerly loads `classification` for `assert_letter_access`. `list_letters` (Phase 4C) builds one filtered `stmt` and derives both the `COUNT` and the paginated `items` query from it — never two independently-built queries that could disagree about which rows are visible; `SORTABLE_COLUMNS` is the explicit sort-field whitelist |
 | `app/repositories/category_repository.py`, `app/repositories/classification_repository.py` | The only code that queries `Category`/`Classification` (Phase 4B) |
 | `app/repositories/letter_document_repository.py` | The only code that queries `LetterDocument` (Phase 4D). `find_by_id_and_letter` is scoped by *both* ids at once, so a document that exists under a different letter 404s identically to one that doesn't exist |
+| `app/repositories/audit_log_repository.py` | The only code that queries `AuditLog` (Phase 4E) — insert-only: no `update`/`delete` method exists, and none should ever be added |
+| `app/repositories/notification_repository.py` | The only code that queries `Notification` (Phase 4E) — every method except `create` is scoped by `recipient_user_id`, so recipient isolation lives here once rather than being re-checked ad hoc per endpoint |
 | `app/utils/email.py` | `normalize_email` — the one place "same email" is defined |
 | `app/middleware/` | Request correlation and audit middleware (empty) |
 
@@ -196,19 +217,23 @@ a plain, non-unique index on `reference_number` — lost when its unique
 constraint was dropped — since reference-number search is a real Phase
 4C requirement). All six are described in `docs/database/schema.md`.
 **None of Phase 3A (authentication), 3B.1 (RBAC/department authorization),
-3B.2 (department management), 3B.4 (User management), or 4D (document
-management) required a schema change** — every column either needed
-already existed from Phase 2, or (Phase 3B.4) from Phase 3B.3's `purpose`
-column and Phase 2's own `AuthorizationStatus.REVOKED` enum value, which
-simply had no endpoint setting it until now, or (Phase 4D) already
-existed on `LetterDocument` since the Phase 2 baseline. Phase 3B.2 did
-fix a constraint-*naming* inconsistency in `app/models/department.py`
-(see `docs/database/schema.md` §2.1) — a Python-model-only change, not a
-migration, since the real database already had the correct name. Phase
-3B.3, Phase 4B (two migrations), and Phase 4C (one migration) are the
-only phases since Phase 2's hardening pass to need one; `alembic check`
-confirms zero drift after all six, and still confirms zero drift after
-Phase 4D (no seventh migration was added).
+3B.2 (department management), 3B.4 (User management), 4D (document
+management), or 4E (audit/notification) required a schema change** —
+every column either needed already existed from Phase 2, or (Phase 3B.4)
+from Phase 3B.3's `purpose` column and Phase 2's own
+`AuthorizationStatus.REVOKED` enum value, which simply had no endpoint
+setting it until now, or (Phase 4D) already existed on `LetterDocument`
+since the Phase 2 baseline, or (Phase 4E) `AuditLog`/`Notification` were
+both already fully structured for this since the Phase 2 baseline —
+Phase 4E is the first phase to actually write rows to either table.
+Phase 3B.2 did fix a constraint-*naming* inconsistency in
+`app/models/department.py` (see `docs/database/schema.md` §2.1) — a
+Python-model-only change, not a migration, since the real database
+already had the correct name. Phase 3B.3, Phase 4B (two migrations), and
+Phase 4C (one migration) are the only phases since Phase 2's hardening
+pass to need one; `alembic check` confirms zero drift after all six, and
+still confirms zero drift after Phase 4D and Phase 4E (no seventh
+migration was ever added).
 
 ```bash
 alembic upgrade head       # apply all six, in order
@@ -255,10 +280,11 @@ decoded, mirroring `DATABASE_URL`'s existing lazy-check pattern in
 pytest tests/
 ```
 
-425 tests total (277 baseline + 67 in Phase 4B + 43 in Phase 4C + 38 new
-in Phase 4D). `SECRET_KEY` must be set (via `.env`) for the JWT-dependent
-tests to run — copy `.env.example` to `.env` first if you haven't.
-Scope the invocation to `tests/` (not a bare `pytest`) — `app/api/v1/endpoints/dev_authz_test.py`'s
+458 tests total (277 baseline + 67 in Phase 4B + 43 in Phase 4C + 38 in
+Phase 4D + 33 new in Phase 4E). `SECRET_KEY` must be set (via `.env`) for
+the JWT-dependent tests to run — copy `.env.example` to `.env` first if
+you haven't. Scope the invocation to `tests/` (not a bare `pytest`) —
+`app/api/v1/endpoints/dev_authz_test.py`'s
 filename incidentally matches pytest's default `*_test.py` discovery
 pattern, and a bare `pytest` run from `backend/` will also try (and fail)
 to collect its route-handler functions as test functions. This is a
@@ -407,6 +433,34 @@ exits cleanly in an environment without PostgreSQL.
   DB failure after a successful write deletes the orphaned file; a
   simulated storage failure creates no DB row; a normal upload leaves
   exactly one file).
+
+**Audit / notifications (Phase 4E)**:
+
+* `tests/integration/test_audit.py` (21 tests) — real JWTs, real
+  database-backed Letters/Users/Departments/Admins/Categories/
+  Classifications, real HTTP requests through the existing endpoints.
+  Verifies `AuditLog` rows are actually created with the correct actor/
+  target/values for Letter (created/updated/archived/classification-
+  changed/category-changed), Document (uploaded), User (approved/
+  deactivated/reactivated), Admin (department-changed), Department
+  (created/activated/deactivated), Category/Classification (created/
+  deactivated), and Authorization (created/revoked) events; that the
+  actor is always the caller, never the target; that only targeted old/
+  new field pairs are stored, never a full row snapshot or sensitive
+  values (`text_content`, `password_hash`); that a simulated audit
+  failure rolls back the entire business operation; and that no
+  audit-mutation endpoint exists anywhere.
+* `tests/integration/test_notifications.py` (12 tests) — same pattern,
+  through `/api/v1/letters` (registration) and `/api/v1/notifications*`.
+  Verifies the "letter registered" trigger creates one notification per
+  ACTIVE Admin in the recipient department (and none for an inactive
+  Admin, another department's Admins, or the plain-User recorder);
+  strict recipient isolation on every read/write (a mismatched id 404s;
+  unread counts and `read-all` never cross users); a simulated failure
+  *inside* the notification's `SAVEPOINT` is logged and does not block
+  the Letter's own commit; the generated `message` never contains Letter
+  content; and a deactivated recipient's notification remains in the
+  database but becomes unreachable (not deleted).
 
 `tests/unit/test_imports.py` needs no database — it runs `from app.models
 import X` in fresh subprocesses to guard against the circular-import

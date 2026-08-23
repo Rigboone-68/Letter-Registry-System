@@ -2,8 +2,9 @@
 
 **A Production of AJ-Labs**
 
-> **Current status: Phase 4D — Document Management implemented (Phase
-> 4C Registry Operations & Search implemented; Phase 3B complete).**
+> **Current status: Phase 4E — Operational Activity, Notifications &
+> Audit implemented (Phase 4D Document Management implemented; Phase
+> 3B complete).**
 > Local email/password login, JWT access tokens, role-based access
 > control, System-Admin-controlled department management,
 > System-Admin-controlled Admin management, and Admin-controlled User
@@ -39,8 +40,25 @@
 > automatically). No schema change was needed. There is still no
 > document deletion endpoint of any kind — a deliberate scope decision,
 > not a gap — see `docs/architecture/document-management.md` §14/§33.
-> **No dashboard or notification generation exists yet** — those remain
-> for later phases. See `docs/PROJECT_STATUS.md` for the full picture.
+> Phase 4E then implemented audit generation and in-system
+> notifications on top of its own architecture review: `AuditLog`
+> (append-only — no update/delete path exists anywhere) now records
+> Letter/Document/User/Admin/Department/Category/Classification/
+> Authorization lifecycle events with targeted old/new field pairs, never
+> a full row snapshot, and is mandatory — a write failure fails the
+> whole operation, in the same transaction. `Notification` now generates
+> for the one confirmed V1 trigger, a letter being registered (recipient
+> strategy: the recipient department's Admins, an explicit, provisional
+> default), best-effort via a database `SAVEPOINT` so a failure there
+> can never block the letter itself, with a deliberately generic
+> `message` (no Letter content) so a later classification change can't
+> retroactively leak what was already sent.
+> `GET/PATCH /api/v1/notifications*` lets a user read and mark-read only
+> their own notifications. No schema change was needed. See
+> `docs/architecture/audit-notifications.md`. **No dashboard, audit
+> read API, WebSockets, or email/push notifications exist yet** — those
+> remain for later phases. See `docs/PROJECT_STATUS.md` for the full
+> picture.
 
 ---
 
@@ -123,12 +141,12 @@ letter-registry-system/
 │   │   ├── core/                # config, security (hashing + JWT), logging
 │   │   ├── database/            # declarative base, engine, session
 │   │   ├── models/              # ORM models            (9 core entities — Phase 2; Letter/Classification extended — 4B)
-│   │   ├── schemas/             # Pydantic contracts    (auth — 3A; department — 3B.2; admin — 3B.3; user — 3B.4; letter/category/classification — 4B; document — 4D)
+│   │   ├── schemas/             # Pydantic contracts    (auth — 3A; department — 3B.2; admin — 3B.3; user — 3B.4; letter/category/classification — 4B; document — 4D; notification — 4E)
 │   │   ├── api/deps.py          # auth + RBAC dependencies (Phase 3A/3B.1)
-│   │   ├── api/v1/endpoints/    # versioned routers     (auth — 3A; dev authz test — 3B.1; departments — 3B.2; admins — 3B.3; users — 3B.4; letters/categories/classifications — 4B; documents — 4D)
-│   │   ├── services/            # business logic        (auth, bootstrap — 3A; authorization — 3B.1; department — 3B.2; admin — 3B.3; user — 3B.4; letter/category/classification — 4B; document/document_storage/document_validation — 4D)
-│   │   ├── repositories/        # data access           (user, user_authorization — 3A/3B.3/3B.4; department — 3B.2; letter/category/classification — 4B; letter_document — 4D)
-│   │   ├── middleware/          # request ID, audit     (empty — later phases)
+│   │   ├── api/v1/endpoints/    # versioned routers     (auth — 3A; dev authz test — 3B.1; departments — 3B.2; admins — 3B.3; users — 3B.4; letters/categories/classifications — 4B; documents — 4D; notifications — 4E)
+│   │   ├── services/            # business logic        (auth, bootstrap — 3A; authorization — 3B.1; department — 3B.2; admin — 3B.3; user — 3B.4; letter/category/classification — 4B; document/document_storage/document_validation — 4D; audit/notification — 4E)
+│   │   ├── repositories/        # data access           (user, user_authorization — 3A/3B.3/3B.4; department — 3B.2; letter/category/classification — 4B; letter_document — 4D; audit_log/notification — 4E)
+│   │   ├── middleware/          # request ID            (empty — later phases; audit generation now lives in the service layer instead, not middleware — see docs/architecture/audit-notifications.md §19)
 │   │   └── utils/               # shared helpers        (email normalization — Phase 3A)
 │   ├── alembic/                 # migration environment (4 revisions: core schema + hardening + admin authorizations + letter registry core)
 │   ├── tests/{unit,integration}
@@ -201,10 +219,13 @@ Classification management endpoints (`/api/v1/categories*`,
 `/api/v1/classifications*`, SYSTEM_ADMIN only), the document endpoints
 (`/api/v1/letters/{letter_id}/documents*` — upload/list/download,
 subject to the same department/classified-access rules as their parent
-Letter; no deletion endpoint exists), and five verification-only
-authorization endpoints (`/api/v1/auth/test/*` — not business
-functionality, see `docs/architecture/authorization.md` §7) respond —
-dashboard endpoints don't exist until a later phase. See
+Letter; no deletion endpoint exists), the notification endpoints
+(`/api/v1/notifications*` — any authenticated role, always scoped to the
+caller's own notifications, never another user's), and five
+verification-only authorization endpoints (`/api/v1/auth/test/*` — not
+business functionality, see `docs/architecture/authorization.md` §7)
+respond — dashboard endpoints and an audit-viewing API don't exist until
+a later phase. See
 `docs/architecture/authentication.md` for authentication,
 `docs/architecture/authorization.md` for RBAC and department isolation,
 `docs/architecture/department-management.md` for department CRUD,
@@ -243,14 +264,14 @@ backend.
 | 4A | Letter Registry Core: architecture & model review against confirmed V1 requirements | **Complete** |
 | 4B | Letter Registry Core: recipient/source departments, sender details, reference number, Category/Classification management, classified-access boundary, full Letter CRUD | **Complete** |
 | 4C | Registry Operations & Search: pagination, whitelisted sorting, 7 text-search filters, inclusive date-range filtering — with the classified-access query-level fix applied first | **Complete** |
-| **4D** | Document Management: `LetterDocument` upload/list/download — storage-path safety, layered file validation, department/classified-access authorization reuse, write-then-commit failure handling. No deletion endpoint (deliberate). | **Complete** |
-| 5 | Dashboards, notifications, reporting | Not started |
-| 6 | Administration, audit trail, deployment hardening | Not started |
+| 4D | Document Management: `LetterDocument` upload/list/download — storage-path safety, layered file validation, department/classified-access authorization reuse, write-then-commit failure handling. No deletion endpoint (deliberate). | **Complete** |
+| 4E | Operational Activity, Notifications & Audit: `AuditLog` generation (append-only, mandatory, targeted old/new values) for Letter/Document/User/Admin/Department/Category/Classification/Authorization events; `Notification` generation for the confirmed "letter registered" trigger, best-effort via a database SAVEPOINT; `GET/PATCH /api/v1/notifications*`. No audit read API (deliberate). | **Complete** |
+| 5 | Dashboards, reporting, additional notification triggers | Not started |
+| 6 | Administration, deployment hardening | Not started |
 
-See `docs/PROJECT_STATUS.md` for what Phase 4D delivered,
-`docs/architecture/document-management.md` for the full design and
-implementation record, and known limitations. The next phase begins only
-when explicitly instructed.
+See `docs/PROJECT_STATUS.md` for what Phase 4E delivered,
+`docs/architecture/audit-notifications.md` for the full design, and known
+limitations. The next phase begins only when explicitly instructed.
 
 ---
 
