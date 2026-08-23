@@ -1,22 +1,20 @@
 /**
- * Application shell.
- *
- * PHASE 1: placeholder only. No routing, authentication, layouts, or
- * feature screens are implemented yet. The router is mounted here in a
- * later phase:
- *
- *   import { RouterProvider } from 'react-router-dom'
- *   import { router } from './routes'
- *   export default function App() { return <RouterProvider router={router} /> }
+ * Application shell (Phase 5A). Provides the single authentication
+ * state mechanism (AuthContext, docs/architecture/frontend.md §22) to
+ * the whole route tree (routes/index.jsx) — no feature screens are
+ * mounted here directly; every real screen lives under /app, guarded by
+ * ProtectedRoute/RoleGuard.
  */
 
-import { APP_NAME, APP_SHORT_NAME } from './constants/app.js'
+import { RouterProvider } from 'react-router-dom'
+
+import { AuthProvider } from './context/AuthContext'
+import { router } from './routes'
 
 export default function App() {
   return (
-    <main>
-      <h1>{APP_NAME} ({APP_SHORT_NAME})</h1>
-      <p>Phase 1 foundation. No functionality is implemented yet.</p>
-    </main>
+    <AuthProvider>
+      <RouterProvider router={router} />
+    </AuthProvider>
   )
 }

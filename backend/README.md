@@ -6,7 +6,11 @@ top. Phase 4C: Registry Operations & Search — implemented. Phase 4D:
 Document Management — implemented, on top of this phase's own
 architecture review. Phase 4E: Operational Activity, Notifications &
 Audit — implemented, on top of this phase's own architecture
-review.** Builds on Phase 4A's architecture review and the
+review.** This backend is now the complete, authoritative V1
+implementation — Phase 5 reviewed the frontend that will eventually
+expose it (no backend file was touched; see
+`docs/architecture/frontend.md`). Builds on Phase 4A's architecture
+review and the
 fully-delivered Phase 3B (Roles & Access Management: authentication,
 RBAC/department isolation, department management, Admin management, User
 management). Full design in `docs/architecture/authentication.md` (auth),

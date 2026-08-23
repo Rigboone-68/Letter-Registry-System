@@ -1,0 +1,64 @@
+/**
+ * Design tokens (Phase 5A foundation).
+ *
+ * Deliberately small — no UI framework, no utility-class system, just a
+ * shared vocabulary every component's own CSS Module references via
+ * var(...). See docs/architecture/frontend.md §26 for why CSS Modules +
+ * a token file was chosen over adding a framework at this scale.
+ */
+
+:root {
+  /* Color — an internal operational registry favors clarity and
+     professionalism over visual flair. */
+  --color-bg: #f4f5f7;
+  --color-surface: #ffffff;
+  --color-border: #d7dbe1;
+  --color-border-strong: #b7bec8;
+  --color-text: #1a1d23;
+  --color-text-muted: #5b6270;
+  --color-primary: #1f4fd8;
+  --color-primary-hover: #1a3fb0;
+  --color-primary-contrast: #ffffff;
+  --color-danger: #b3261e;
+  --color-danger-bg: #fdecea;
+  --color-success: #1e7a34;
+  --color-warning-bg: #fff4e5;
+  --color-warning-text: #8a5a00;
+  --color-focus-ring: #1f4fd8;
+
+  /* Spacing scale */
+  --space-2xs: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+
+  /* Typography — one system font stack, a small set of sizes; data
+     density matters more than a large type scale for this system. */
+  --font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial,
+    sans-serif;
+  --font-size-sm: 0.875rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.25rem;
+  --font-size-xl: 1.5rem;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-bold: 600;
+  --line-height-base: 1.5;
+
+  /* Shape */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+
+  /* Elevation */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.08);
+  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.12);
+
+  /* Breakpoints — referenced in component CSS as literal values (CSS
+     custom properties cannot be used inside @media queries), kept here
+     as the single documented source of truth for those literals. */
+  --breakpoint-tablet: 768px;
+  --breakpoint-desktop: 1024px;
+}

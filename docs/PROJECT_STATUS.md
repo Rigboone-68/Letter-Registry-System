@@ -7,36 +7,142 @@ supervisor as-is.
 
 ## Current Phase
 
-**Phase 4E — Operational Activity, Notifications & Audit: Implementation.**
-Complete. Builds directly on this same phase's own prior architecture
-review: `AuditLog` generation is now wired into every event the review
-recommended — Letter (created/updated/archived/classification-changed/
-category-changed), Document (uploaded), User (approved/deactivated/
-reactivated), Admin (authorized/approved/deactivated/reactivated/
-department-changed), Department (created/activated/deactivated),
-Category/Classification (created/updated/activated/deactivated), and
-Authorization (created/revoked) — append-only (no update/delete
-endpoint exists anywhere), mandatory (a write failure rolls back the
-whole triggering operation, proven by a dedicated test), and using only
-targeted old/new field pairs, never a full row snapshot or a sensitive
-value. `Notification` generation is wired into the one CONFIRMED V1
-trigger — a letter being registered — with the recipient department's
-ACTIVE Admins as an explicit PROVISIONAL recipient strategy, best-effort
-via a real database `SAVEPOINT` (proven against an actual failure inside
-it, not a stand-in), and a deliberately generic message. Four new
-endpoints (`GET/PATCH /api/v1/notifications*`) let a user read and
-mark-read only their own notifications. No schema change was needed. 33
-new tests, full suite **458 passed**, re-run 3 consecutive times, plus a
-live-server verification against `lrs_dev` with real minted JWTs. Full
-design and implementation record in
-`docs/architecture/audit-notifications.md` §31.
+**Phase 5B — Authentication & Account UX: Implementation.** Complete.
+Builds directly on Phase 5A's foundation: `LoginPage`/`SignupPage` are
+now real, production-quality forms — client-side required/email-format
+validation with `aria-invalid`/`aria-describedby` on every field, a
+disabled submit button with a loading label while a request is in
+flight, and the previous submission's error cleared the instant a new
+one begins. A `401` on login always shows the backend's own generic
+"Incorrect email or password." (never distinguishing a nonexistent
+account from a wrong password); a `403` for a pending or deactivated
+account renders one of two new reusable notice components
+(`PendingApprovalNotice`/`DeactivatedAccountNotice`) instead of a
+generic error, stating only what the backend confirms — no invented
+approval timeline, no invented administrator contact, no implication a
+deactivated account was deleted. Session restoration now distinguishes a
+genuine token rejection (clears the stored token) from a network failure
+(keeps the token — it might still be valid — and shows a retry-capable
+banner instead of silently forcing a fresh login). `SignupPage` gained
+the same already-authenticated → redirect-into-app guard `LoginPage` had
+in Phase 5A (a real gap this phase closed). The Phase 5A test suite grew
+from 17 to **44 tests**, covering every scenario the brief listed as a
+minimum (login success/invalid/pending/deactivated/validation/loading/
+network-failure, signup success/validation/duplicate/not-authorized/
+payload-shape, session restoration including its network-failure case,
+routing redirects including an end-to-end logout test, and accessible
+field-error association). No backend file was touched — a design
+tension in the brief (whether `AuthContext.login()` should make a
+separate follow-up `/auth/me` call) was resolved by re-reading
+`auth.py` fresh: the login response's own `user` field is already the
+same backend-authoritative `UserPublic` a follow-up call would return,
+so none was added — documented explicitly in
+`docs/architecture/frontend.md` §35 rather than silently decided either
+way. Frontend production build and test suite both succeed; the backend
+regression suite (458 tests) is unaffected — confirmed by re-running it
+before and after, with zero backend files touched. Full design and
+implementation record in `docs/architecture/frontend.md` §35.
 
-**Not in scope for this phase, and not added:** an audit-viewing/read
-API (deliberately left for a future phase — the access-control question,
-§9, is still PENDING), notification triggers beyond "letter registered,"
-dashboards, WebSockets, background queues, email/push notifications,
-frontend notification UI, or an automatic (event-listener-based) audit
-framework.
+**No business feature screen exists.** Every nav destination under
+`/app` (other than login/signup/session/logout, now complete) renders
+one shared placeholder — Letters, Documents, Notifications, and every
+administrative screen, the dashboard, and the audit UI all remain
+exactly what the architecture review scheduled for later phases.
+
+**Not in scope for this phase, and not added:** Letter pages, Letter
+CRUD, search UI, document UI, notification UI, dashboards,
+administration pages, audit UI, user-management UI beyond the caller's
+own auth state, new backend endpoints, backend business logic, database
+changes, or migrations.
+
+### Phase 5A — Frontend Foundation: Implementation
+
+Complete (prior phase). Builds directly on this same phase's own prior
+architecture/UX review: routing
+(`react-router-dom`, installed since Phase 1 but unwired until now) now
+backs a real route tree; a single `AuthContext` restores a session from
+`GET /auth/me` before any protected route renders (no authentication
+flicker); one centralized Axios client attaches the bearer token,
+normalizes both confirmed backend error-body shapes into one predictable
+form, and clears the session on a `401` — except on the login/signup
+calls themselves, which handle their own failures locally, exactly as
+the review specified; `ProtectedRoute` (authentication only) and
+`RoleGuard` (role-based navigation convenience only) are two separate
+components, not conflated; navigation is derived entirely from the
+authenticated user's role, with the token/role/department never trusted
+from anywhere but the backend's own responses; the `AppShell`/`Sidebar`/
+`Topbar` chrome, a small design-token set (no UI framework added), and
+an accessibility baseline are all in place. A test framework was
+established from nothing (Vitest + React Testing Library, 17 tests
+across authentication state transitions, protected-route behavior,
+role-navigation configuration, and API error normalization — the four
+areas the brief named as the minimum). Frontend production build and
+test suite both succeed; the backend regression suite (458 tests) is
+unaffected — confirmed by re-running it before and after, with zero
+backend files touched. Full design and implementation record in
+`docs/architecture/frontend.md` §34.
+
+### Phase 5 — Frontend & Operational UI: Architecture & UX Requirements Review
+
+Complete (prior phase). Review only — no frontend or backend code,
+migration, or test was written at that stage. Inspected the actual
+frontend (a pure Phase 1 skeleton) and the actual backend API surface
+(42 real business endpoints across 8 resource routers, enumerated from
+the live OpenAPI schema, not from memory), rather than assuming a prior
+report was still accurate. Mapped every endpoint to a screen by role,
+corrected one gap in the task's own suggested System Admin navigation
+(it omitted Letters/Documents, which `SYSTEM_ADMIN` actually has full
+cross-department access to), designed the Letter/document/notification/
+administration UX directly against the *actual* schemas (not the task's
+own illustrative field list — e.g. it omitted `reason`, a real field),
+and worked through 30 analysis topics (§3-§30 of the review) —
+authentication UX, role hierarchy, per-role screens, Letter search/form/
+classified-access handling, department-isolation UX, document/
+notification/audit UX, route/component/API-client architecture, auth
+state, error handling, responsive design, accessibility, a design
+system, a dashboard feasibility assessment, a frontend security review,
+performance, and a test strategy — all using the CONFIRMED/RECOMMENDED/
+PROVISIONAL/PENDING taxonomy the brief specified. Full design in
+`docs/architecture/frontend.md` §1-33.
+
+**The governing CRITICAL finding, restated because Phase 5A's own
+foundation had to preserve it even with no Letter screen yet built**:
+the frontend must never independently filter, label, or infer
+classified-Letter existence — it renders exactly what the API already
+returns (`items`/`total` already exclude inaccessible letters at the
+query level, per Phase 4C) and treats every `404` identically, with zero
+distinguishing language between "doesn't exist" and "exists but
+restricted." A second, more technical finding, already exercised by
+Phase 5A's own error-normalization module: this backend returns two
+different error-body shapes (`{"detail": "<string>"}` for raised
+`HTTPException`s vs. FastAPI's array-shaped `{"detail": [...]}` for
+Pydantic validation failures) that any frontend error-normalization
+layer must handle both of, not just one.
+
+### Phase 4E — Operational Activity, Notifications & Audit: Implementation
+
+Complete (prior phase). Built directly on that same phase's own prior
+architecture review: `AuditLog` generation was wired into every event
+the review recommended — Letter (created/updated/archived/classification-
+changed/category-changed), Document (uploaded), User (approved/
+deactivated/reactivated), Admin (authorized/approved/deactivated/
+reactivated/department-changed), Department (created/activated/
+deactivated), Category/Classification (created/updated/activated/
+deactivated), and Authorization (created/revoked) — append-only (no
+update/delete endpoint exists anywhere), mandatory (a write failure
+rolls back the whole triggering operation, proven by a dedicated test),
+and using only targeted old/new field pairs, never a full row snapshot
+or a sensitive value. `Notification` generation was wired into the one
+CONFIRMED V1 trigger — a letter being registered — with the recipient
+department's ACTIVE Admins as an explicit PROVISIONAL recipient
+strategy, best-effort via a real database `SAVEPOINT` (proven against an
+actual failure inside it, not a stand-in), and a deliberately generic
+message. Four new endpoints (`GET/PATCH /api/v1/notifications*`) let a
+user read and mark-read only their own notifications. No schema change
+was needed. 33 new tests, full suite **458 passed**, re-run 3 consecutive
+times, plus a live-server verification against `lrs_dev` with real
+minted JWTs. Full design and implementation record in
+`docs/architecture/audit-notifications.md` §31.
 
 ### Phase 4E — Operational Activity, Notifications & Audit: Architecture & Requirements Review
 
@@ -117,6 +223,270 @@ until the review's recommendations were approved; see "Completed" below
 for both, in order.
 
 ## Completed
+
+### Phase 5B — Authentication & Account UX implementation
+
+* **`LoginPage`/`SignupPage` rebuilt as production forms**
+  (`frontend/src/pages/LoginPage.jsx`/`SignupPage.jsx`) — client-side
+  required-field and email-format validation
+  (`frontend/src/utils/formValidation.js`, dependency-free), each field
+  wired with `aria-invalid`/`aria-describedby` pointing at its own error
+  text, a disabled submit button with a distinct loading label while a
+  request is in flight, and the previous submission's error cleared the
+  instant a new one begins. Server-side validation (`422`) remains
+  authoritative — client-side checks only stop an obviously incomplete
+  submission from being sent.
+* **Two new reusable account-state notices**
+  (`frontend/src/components/PendingApprovalNotice.jsx`/
+  `DeactivatedAccountNotice.jsx`) — `PendingApprovalNotice` renders after
+  a successful signup and after a login attempt against a
+  `PENDING_APPROVAL` account (same underlying backend fact, two call
+  sites); states only that the account needs administrator approval, no
+  timeline, no email-notification promise, no administrator contact
+  invented. `DeactivatedAccountNotice` renders only after a login attempt
+  against a deactivated account (the backend only distinguishes this at
+  `POST /auth/login`; a mid-session deactivation instead surfaces as a
+  generic `401`, already handled by the existing centralized handler) —
+  states the account is disabled and its record has not been deleted,
+  with no administrative detail exposed and no reactivation control (an
+  administrative, backend-only operation, correctly out of scope).
+* **Session-restoration network-failure handling**
+  (`frontend/src/context/AuthContext.jsx`) — a genuine token rejection
+  (`401`) still clears the stored token, exactly as before; a network
+  failure (the server can't be reached at all) no longer does — the
+  token might still be valid, so it's kept, `status` becomes
+  `'unauthenticated'` (never silently `'authenticated'`), and a new
+  `restoreError` field plus a `retryRestoreSession` function are exposed
+  so `LoginPage` can show a retry-capable banner instead of an
+  unexplained demand to log in again.
+* **A real Phase 5A gap closed**: `SignupPage` gained the same
+  already-authenticated → redirect-into-`/app` guard `LoginPage` already
+  had — before this phase, an authenticated user visiting `/signup`
+  directly would see the signup form instead of being redirected.
+* **Design tension resolved and documented, not silently picked**: the
+  brief's "refresh/load the authoritative user through `/auth/me`" after
+  login was reconciled against Phase 5A's existing behavior (setting
+  `user` directly from the login response) by re-reading `auth.py`
+  fresh — the login endpoint's `TokenResponse.user` is already the same
+  freshly-queried, backend-authoritative `UserPublic` a follow-up
+  `/auth/me` call would return, so no redundant call was added. What the
+  instruction actually protects against — never deriving authorization
+  from decoded JWT claims — was already true and remains true (no
+  JWT-decoding library exists in this codebase). See
+  `docs/architecture/frontend.md` §35.
+* **Accessibility** — every form field has a real `<label htmlFor>`,
+  `aria-invalid` reflecting its active error (client- or
+  server-reported), and `aria-describedby` pointing at that error's own
+  `id` (verified by a test that resolves the id via
+  `document.getElementById` and asserts it contains the visible error
+  text). Submission-level errors use the existing `ErrorState`'s
+  `role="alert"`; the two new notices use `role="status"` (an
+  informational account-state fact, not a user-caused error).
+* **Test suite grown from 17 to 44 tests** across 8 files — new:
+  `utils/formValidation.test.js` (6), `pages/LoginPage.test.jsx` (11),
+  `pages/SignupPage.test.jsx` (7), `routes/routing.test.jsx` (1, an
+  end-to-end logout → `/login` redirect test rendering the real
+  `AuthProvider`/`ProtectedRoute`/`AppShell`/`Topbar` together); expanded:
+  `context/AuthContext.test.jsx` (5 → 7, adding the network-failure and
+  retry-after-network-failure scenarios).
+* **No backend file was touched** — confirmed by `git status` (no
+  `backend/app/`, `backend/alembic/`, or `backend/tests/` file changed)
+  and a full backend regression run before and after (458 passed,
+  unaffected both times).
+* **Validation**: `npm run build` succeeds (117 modules, no errors);
+  `npm run test` — **44 passed**, 0 failed (re-run after the final
+  self-review pass, identical result); `pytest tests/` (backend) —
+  **458 passed**, unaffected.
+* **Documentation**: `docs/architecture/frontend.md` §35 (new
+  implementation record), plus updates to the root README,
+  `frontend/README.md`, `docs/README.md`, and
+  `docs/architecture/overview.md`.
+
+### Phase 5A — Frontend Foundation implementation
+
+* **Routing wired up** (`frontend/src/routes/index.jsx`) —
+  `react-router-dom` (installed since Phase 1, unused until now) now
+  backs `/`, `/login`, `/signup`, and a `/app` subtree gated by
+  `ProtectedRoute`. Placeholder child routes exist only where necessary
+  to prove the routing architecture, all rendering one shared
+  `PlaceholderPage` — no feature logic anywhere in them.
+* **`AuthContext`** (`frontend/src/context/AuthContext.jsx`) — the
+  single authentication state mechanism: `status`
+  (`'loading' | 'authenticated' | 'unauthenticated'`) and `user`, always
+  the `UserPublic` object most recently returned by
+  `POST /auth/login`/`GET /auth/me`, never decoded from the JWT
+  client-side. Session restoration validates any stored token against
+  `/auth/me` before any protected route renders, avoiding an
+  authentication flicker.
+* **One centralized Axios client** (`frontend/src/services/apiClient.js`)
+  — attaches `Authorization: Bearer <token>`; normalizes both confirmed
+  backend error-body shapes (`{"detail": "<string>"}` for raised
+  `HTTPException`s, FastAPI's array-shaped `{"detail": [...]}"` for
+  Pydantic validation failures) into one predictable
+  `{status, message, fieldErrors}`
+  (`frontend/src/services/errorNormalization.js`); a single 401 handler
+  clears the session — except on the login/signup/session-restore calls
+  themselves (`{ skipAuthRedirect: true }`), which handle their own
+  failure locally, matching the review's own explicit finding that a
+  `401` on the login form itself is a wrong-password error, not "your
+  session died."
+* **Token storage isolated to one module**
+  (`frontend/src/services/tokenStorage.js`) — `localStorage` for V1,
+  documented explicitly (in the module itself and in
+  `frontend/README.md`) as the same PROVISIONAL placeholder the
+  architecture review named, with the exact replacement boundary stated.
+  No token is logged anywhere and none appears in any URL.
+* **Login/signup foundations** (`frontend/src/services/authService.js`,
+  `frontend/src/pages/LoginPage.jsx`/`SignupPage.jsx`) — minimal,
+  functional forms (not the final polished pages the review describes)
+  built far enough to prove success, invalid credentials, a pending
+  account, and a deactivated account each render the backend's own
+  distinct real message, verified against the exact strings in
+  `auth.py`. Signup never auto-logs in, matching the review's own
+  finding that a fresh account always starts `PENDING_APPROVAL`. Neither
+  form has a `role`/`department`/`status` field — the backend schemas
+  have none either.
+* **`ProtectedRoute` (authentication only) and `RoleGuard` (role-based
+  navigation convenience only) as two separate components** — matching
+  the review's own explicit instruction not to perform role
+  authorization inside the authentication guard; neither provides real
+  security, which remains entirely backend-enforced.
+* **Role-derived navigation** (`frontend/src/navigation/navigationConfig.js`)
+  — plain, frozen configuration data, matching the brief's three
+  per-role lists exactly (including "Documents," pointed at a
+  placeholder that explains it has no standalone route, per the review's
+  own recommended design, rather than silently dropping the entry or
+  silently building a page the review didn't recommend). No department
+  id appears anywhere in it — verified by a dedicated test.
+* **`AppShell`/`Sidebar`/`Topbar`** (`frontend/src/layouts/`) — current
+  user's display identity, role indicator, logout control, and
+  role-derived nav; no dashboard widget of any kind.
+* **A small design-token set** (`frontend/src/styles/tokens.css`/
+  `global.css`) — CSS Modules for component-scoped styles, no UI
+  framework added.
+* **An accessibility baseline** — semantic nav/buttons, visible focus
+  states, associated form labels, `role="status"`/`role="alert"` on the
+  loading/error primitives.
+* **Test infrastructure established from nothing** — no test framework
+  existed in `package.json` before this phase; Vitest + React Testing
+  Library + jsdom now do, with **17 tests** across the four areas the
+  brief named as the minimum: authentication state transitions (5),
+  protected-route behavior (3), role-navigation configuration (5), and
+  API error normalization (4).
+* **No feature screen was built** — every nav destination renders the
+  one shared placeholder. No Letter pages, Letter CRUD, search UI,
+  document UI, notification UI, dashboard, administration pages, or
+  audit UI.
+* **No backend file was touched** — confirmed by `git status` (only
+  `backend/README.md`, a documentation file, changed) and a full backend
+  regression run before and after (458 passed, unaffected both times).
+* **Validation**: `npm run build` succeeds (113 modules, no errors);
+  `npm run test` — **17 passed**, 0 failed; `pytest tests/` (backend) —
+  **458 passed**, unaffected.
+* **Documentation**: `docs/architecture/frontend.md` §34 (new
+  implementation record), plus updates to the root README,
+  `frontend/README.md`, `docs/README.md`, and
+  `docs/architecture/overview.md`.
+
+### Phase 5 — Frontend & Operational UI architecture & requirements review
+
+* **Inspected the actual current frontend, not assumed** — confirmed
+  `frontend/` is a pure Phase 1 skeleton: `App.jsx` renders a static
+  placeholder, every other `src/*` directory
+  (`components`/`context`/`hooks`/`layouts`/`pages`/`routes`/`services`/
+  `utils`) contains only a one-line placeholder `README.md`, no `.jsx`/
+  `.js` implementation file exists beyond `App.jsx`/`main.jsx`/
+  `constants/app.js`, and `node_modules/` has never been installed.
+* **Confirmed the frontend stack is already chosen, not a decision this
+  review needed to make** — React 18.3.1, Vite 5.3.1,
+  react-router-dom 6.24.0, axios 1.7.2, all already in `package.json`,
+  none of it wired up (no router mounted, no HTTP client instance, no
+  state management, no CSS framework, no test framework configured).
+  Recommended keeping it exactly as-is at V1 — no React Query, no
+  state-management library, no CSS/UI framework — per the review's own
+  repeated instruction not to add complexity without a demonstrated
+  need.
+* **Built an endpoint-to-screen map from the live OpenAPI schema, not
+  memory** — `app.openapi()` enumerated **42 real business endpoints**
+  across 8 resource routers (auth, departments, admins, users,
+  categories, classifications, letters, documents, notifications),
+  explicitly excluding `/health` and the five verification-only
+  `/auth/test/*` routes.
+* **Corrected one real gap in the task's own suggested System Admin
+  navigation** — it omitted Letters/Documents entirely, but
+  `SYSTEM_ADMIN` is confirmed (via `assert_letter_access`'s own bypass)
+  to have full cross-department Letter/Document read/update/archive
+  access, and is the one role for which `GET /letters`'s `department_id`
+  filter is actually meaningful. Recommended adding a System Admin
+  Letters screen rather than silently following an incomplete
+  suggestion.
+* **Mapped the *actual* Letter schema for the create/edit form, not the
+  task's own illustrative field list** — read `app/schemas/letter.py`
+  fresh and found a real field (`reason`) the task's own "known business
+  fields" example omitted; confirmed `recipient_department_id` is
+  server-derived only (no "choose recipient department" control exists
+  on any form) and that `reference_number` has no uniqueness
+  constraint, so no "is this available" UX should be built.
+* **Classified Letter UX (CRITICAL) — the governing rule for the whole
+  review.** The frontend must never independently filter, label, or
+  infer classified-Letter existence — `items`/`total` from `GET /letters`
+  already exclude inaccessible letters at the query level (Phase 4C's
+  own fix), and every `404` on a Letter/Document must be rendered
+  identically regardless of whether the resource doesn't exist or exists
+  but is restricted — collapsing that distinction is exactly what the
+  backend's own enumeration-resistant design already does, and a
+  frontend that re-introduces a "this one's classified" message would
+  silently defeat it.
+* **A real gap identified that no frontend design can close without a
+  backend change**: nothing exposes a caller's own department's
+  `ACTIVE`/`INACTIVE` status to them (`UserPublic` has `department_id`,
+  not the department's own status) — the frontend can only detect its
+  own department going inactive *reactively*, via a `403` on the next
+  action, never proactively. Not proposed as a backend change here —
+  named as an accepted, real V1 limitation.
+* **A precise, previously-undocumented integration detail surfaced by
+  reading the actual endpoint code** — this backend returns two
+  different error-body shapes depending on failure origin: a plain
+  `{"detail": "<string>"}` for every raised `HTTPException` throughout
+  every service in this codebase, versus FastAPI's own array-shaped
+  `{"detail": [{"loc": [...], "msg": ..., "type": ...}]}` for a Pydantic
+  request-validation failure. A frontend error-normalization layer that
+  assumes only one of these shapes will break on whichever it didn't
+  test.
+* **Document download requires the same bearer auth as every other
+  endpoint** — confirmed no plain, unauthenticated, or static URL to a
+  document exists anywhere (no `StaticFiles` mount, Phase 4D). A plain
+  `<a href>` cannot carry the required `Authorization` header;
+  recommended fetch-then-blob-URL, with "open in a shareable new-tab
+  URL" named as a real, accepted V1 limitation rather than silently
+  worked around.
+* **Three distinct backend status enums, not one blended lifecycle** —
+  corrected the task's own loosely-worded lifecycle label set
+  (`AuthorizationStatus`: `ACTIVE`/`USED`/`REVOKED` on
+  `UserAuthorization`; `UserStatus`: `PENDING_APPROVAL`/`ACTIVE`/
+  `DEACTIVATED` on `User`; `ActiveStatus`: `ACTIVE`/`INACTIVE` on
+  Department/Category/Classification — a different enum that happens to
+  share the word "ACTIVE") — recommending one parameterized `StatusBadge`
+  component so the three never visually blend into each other. Verified
+  directly against `app/models/enums.py`, not assumed from the task's
+  own phrasing.
+* **Every one of the 42 confirmed endpoints was mapped to a screen** —
+  no orphaned backend capability was left unmapped, and no screen was
+  proposed for a capability the backend doesn't actually have.
+* **A route/component/API-client architecture, an auth-state design, a
+  consolidated error-handling table, a minimal design-system
+  recommendation (CSS Modules, no framework), an accessibility
+  baseline, a frontend security review (including the token-storage
+  trade-off and every listed risk — role/department spoofing, IDOR,
+  classified/notification leakage, document URL exposure), a dashboard
+  feasibility assessment (what's derivable from existing endpoints with
+  zero new backend work, and what genuinely isn't), and a prioritized
+  test strategy were all designed, not implemented.**
+* **No frontend or backend file was touched** — confirmed by `git
+  status` before/after; this phase produced documentation only.
+* **Documentation**: `docs/architecture/frontend.md` (new), plus updates
+  to the root README, `backend/README.md`, `docs/README.md`, and
+  `docs/architecture/overview.md`.
 
 ### Phase 4E — Operational Activity, Notifications & Audit implementation
 
@@ -972,6 +1342,42 @@ detail behind each:
 | 5 | `letter_documents.uploaded_by` had no index, unlike every other User-referencing FK in the schema | Added (`ix_letter_documents_uploaded_by`) |
 | 6 | The role/department `CHECK` constraint hardcoded role strings, duplicating `UserRole`'s values | Model-side constraint now built from `UserRole.*.value`; the migration's own copy is deliberately still a literal (migrations are frozen snapshots) — see `app/models/user.py` docstring |
 
+### Validation performed — Phase 5B implementation
+
+| Check | Result |
+|---|---|
+| `npm run build` (frontend, `frontend/`) | Succeeds — 117 modules transformed, no errors |
+| `npm run test` (frontend, Vitest) | **44 passed**, 0 failed — run twice (once before, once after the final self-review pass), identical result both times |
+| `pytest tests/` (backend, `backend/`) | **458 passed**, 0 failed, 0 skipped — unaffected by this phase, confirming zero backend impact |
+| `git status` — backend files | No `backend/app/`, `backend/alembic/`, or `backend/tests/` file touched |
+| `git status` — secrets | No `.env`/`.env.local` tracked; no new dependency added (only new first-party source/test files) |
+
+### Validation performed — Phase 5A implementation
+
+| Check | Result |
+|---|---|
+| `npm run build` (frontend, `frontend/`) | Succeeds — 113 modules transformed, no errors |
+| `npm run test` (frontend, Vitest) | **17 passed**, 0 failed |
+| `pytest tests/` (backend, `backend/`) | **458 passed**, 0 failed, 0 skipped — unaffected by this phase, confirming zero backend impact |
+| `git status` — backend files | Only `backend/README.md` (documentation) changed; no `backend/app/`, `backend/alembic/`, model, service, repository, or endpoint file touched |
+| `git status` — secrets | No `.env`/`.env.local` tracked for either `frontend/` or `backend/`; `node_modules/`/`dist/` confirmed git-ignored |
+| `npm audit` | 6 pre-existing advisories (react-router-dom, esbuild/vite toolchain), both already pinned to their current major versions since Phase 1; no non-breaking fix exists for either without violating "use the existing stack" — documented in `frontend/README.md`, not silently upgraded or silently ignored |
+
+### Validation performed — Phase 5 review
+
+An architecture/UX review, not an implementation phase — validation here
+means confirming no code was written and no drift was introduced, not
+running new business-logic or UI tests (the same standard applied to
+every prior review-only pass — Phase 4A, Phase 4D's review, Phase 4E's
+review):
+
+| Check | Result |
+|---|---|
+| `git status` before and after the review | Identical except one new documentation file and five documentation updates — no frontend file (`.jsx`/`.js`/config), backend file, migration, or test file touched |
+| Direct listing of every file under `frontend/` (excluding `node_modules/`, which does not exist) | Confirmed empirically — 18 files total, only `App.jsx`/`main.jsx`/`constants/app.js` contain any code, every other `src/*` entry is a one-line placeholder `README.md` |
+| `app.openapi()` against the live FastAPI app | Enumerated the complete, authoritative 42-endpoint business API surface used to build the endpoint-to-screen map — not reconstructed from prior phase reports |
+| Direct reads of `app/schemas/letter.py`, `auth.py`, `admin.py`, `user.py`, `category.py`, `classification.py`, `notification.py`, `document.py`, `app/models/enums.py`, `app/api/v1/endpoints/auth.py` | Confirmed exact field sets, exact HTTP status codes/error shapes for every auth failure mode, and the three distinct status enums, all fresh this session |
+
 ### Validation performed — Phase 4E implementation
 
 All against the same real, local, disposable PostgreSQL 17 instance
@@ -1255,13 +1661,39 @@ afterward — `lrs_dev` is empty again.
 
 ## In Progress
 
-Nothing — Phase 4E is complete (architecture review and implementation
-both) and the project is paused pending explicit instruction to begin
-the next phase, per the standing project rule that phases are reviewed
-before the next begins.
+Nothing — Phase 5B is complete (Phase 5's architecture review, Phase
+5A's foundation, and Phase 5B's authentication/account UX are all done)
+and the project is paused pending explicit instruction to begin the next
+phase, per the standing project rule that phases are reviewed before the
+next begins.
 
-## Pending (Phase 5 and later)
+## Pending (Phase 5C and later)
 
+* **Every business-feature frontend screen** — Letters (list/search/
+  detail/form/archive), Documents (nested in Letter detail), Notifications
+  (bell/panel), and every administration screen (Departments/Admins/
+  Categories/Classifications/Users) remain unbuilt; Phase 5A/5B built
+  only the foundation and the authentication/account experience
+  (routing, auth state, API client, route guards, navigation, shell,
+  login/signup/pending/deactivated/session/logout) those screens will be
+  built on top of. See `docs/architecture/frontend.md` §32 for the
+  recommended sequence (Letters first, as the highest-value surface).
+* **A unified global search box for Letters** — the backend has no such
+  semantics; a frontend built against per-field filters only would need
+  a new backend capability to support one search box across fields. See
+  `docs/architecture/frontend.md` §11/§31.
+* **A short-lived signed document-download URL** — would enable "open in
+  a shareable new-tab URL" without client-side buffering; not proposed
+  as a change, a future option if ever needed. See
+  `docs/architecture/frontend.md` §14/§31.
+* **A dedicated stats/aggregate endpoint** — would make a richer
+  dashboard status-breakdown efficient (today it would cost one request
+  per bucket); not proposed as a change. See
+  `docs/architecture/frontend.md` §27/§31.
+* **Exposing a caller's own department's `ACTIVE`/`INACTIVE` status** —
+  `UserPublic` currently has no such field, so a frontend cannot detect
+  its own department going inactive except reactively, via a `403`. See
+  `docs/architecture/frontend.md` §13/§31.
 * **An audit-viewing/read API** — `AuditLog` is now populated (Phase
   4E), but nothing exposes it through the API; the access-control
   question is genuinely unconfirmed. Phase 4E's review recommends
@@ -1430,6 +1862,45 @@ behind each.
 
 ## Known Limitations
 
+* **RESOLVED (Phase 5B) — the frontend now has a complete authentication
+  and account UX** (login, signup, pending-approval, deactivated-account,
+  session restoration including a network-failure/retry path, logout,
+  redirects, validation, accessibility), but **no business feature
+  screen exists yet** — every backend capability through Phase 4E is
+  still only reachable via a direct API client (`curl`, `httpx`, the
+  automated test suite) or by signing in through the frontend and
+  landing on placeholder pages; there is no Letter, Document,
+  Notification, or administration UI. See `docs/architecture/frontend.md`
+  §35 for exactly what is and isn't built.
+* **Logout does not revoke an already-issued JWT server-side** (Phase
+  5B, restated from Phase 3A's original design — not a new gap) — the
+  backend has no logout/revocation endpoint; `AuthContext.logout()`
+  removes the locally held token only. A token that has already been
+  issued remains valid, from the backend's perspective, until it
+  naturally expires. Accepted V1 architecture, not a defect. See
+  `docs/architecture/frontend.md` §35, `frontend/README.md`.
+* **A network failure during session restoration requires a manual
+  retry** (Phase 5B) — `AuthContext` does not automatically retry or
+  back off; the user (or a page reload) must trigger the retry. No
+  automatic retry was requested by the brief, and adding one (timers,
+  backoff, cancellation) was judged unnecessary complexity for what this
+  phase actually needed to guarantee: a network failure is never treated
+  as a successful authenticated state, and the stored token is not
+  discarded just because the server was briefly unreachable.
+* **Two pre-existing `npm audit` advisories have no non-breaking fix**
+  (Phase 5A finding, unchanged by Phase 5B) — `react-router-dom`'s only
+  patched release is a `v7` major version; the `esbuild`/`vite`
+  toolchain's fix requires `vite@8`. Both packages were already pinned to
+  their current major versions since Phase 1; upgrading either would
+  replace the existing stack, which these phases were explicitly
+  instructed not to do. Documented in `frontend/README.md`, not silently
+  upgraded or silently ignored.
+* **No way for a frontend to proactively know its own department is
+  `INACTIVE`** (Phase 5 finding) — `UserPublic` exposes `department_id`
+  but not that department's own status; a future frontend can only
+  detect this reactively, via a `403` on the next department-scoped
+  action. Not a bug — a real information gap this review named rather
+  than working around. See `docs/architecture/frontend.md` §13.
 * **RESOLVED (Phase 4C)** — the classified-record count/pagination
   leakage risk identified in this phase's own architecture review
   (a non-recording `USER`'s `total` could have included letters they
@@ -1645,26 +2116,34 @@ behind each.
 
 ## Next Recommended Phase
 
-**Phase 5 — Dashboards and reporting**, reading from the operational
-tables plus the now-populated `AuditLog` (§20 of
-`docs/architecture/audit-notifications.md`), **or** an audit-viewing/
-read API once the access-control question is resolved, **or** resolving
-the outstanding business clarifications first. The registry now has a
-complete, tested, paginated/sortable/searchable, department- and
-classification-isolated system with working document attachments, an
-audit trail for its core lifecycle events, and in-system notifications
-for letter registration — every V1 requirement confirmed so far is
-built. Recommended before or alongside Phase 5: resolve the exact
-classification value list and the exact classified-visibility matrix
-with the product owner (`docs/architecture/letter-registry.md` §12,
-`docs/architecture/registry-search.md` §11) — Phase 4E's audit-access
-and notification-security design both explicitly depend on that same
-policy (`docs/architecture/audit-notifications.md` §9/§14); who should
-receive a "letter registered" notification, since the current "department
-Admins" strategy is still an explicit guess
-(`docs/architecture/audit-notifications.md` §13); whether an audit
-read API is wanted yet, and if so, at what access scope
-(`docs/architecture/audit-notifications.md` §9); and whether document
-deletion or a `checksum_sha256` column is ever actually needed
-(`docs/architecture/document-management.md` §12/§14) before either is
-built speculatively.
+**Phase 5C — Letters feature screens**, the next step in the sequence
+Phase 5's review recommended and Phase 5A/5B already started
+(`docs/architecture/frontend.md` §32: foundation infrastructure — done
+— → Login/Signup/pending-approval/deactivated/session-restore/logout —
+done (Phase 5B) → shared chrome and primitive components — done →
+**Letters list/search/detail/form/archive, the highest-value surface**
+→ Documents nested into Letter detail → Notifications → Administration
+screens (Users, then Departments/Admins/Categories/Classifications) →
+additional test coverage alongside each), **or** dashboards/reporting
+reading from the operational tables plus the now-populated `AuditLog`,
+**or** an audit-viewing/read API once its access-control question is
+resolved, **or** resolving the outstanding business clarifications
+first. The foundation Phase 5C needs already exists and is tested
+(`AuthContext`, the API client, route guards, navigation, the shell,
+and now the full authentication/account UX) — the next phase can go
+directly to building the Letters screens against it rather than needing
+any more scaffolding first. Recommended before or alongside Phase 5C: resolve the exact
+classification value list and classified-visibility matrix with the
+product owner (`docs/architecture/letter-registry.md` §12,
+`docs/architecture/registry-search.md` §11) — the frontend's own
+classified-Letter UX (`docs/architecture/frontend.md` §12), which the
+Letters screen will be the first to actually exercise, depends on that
+same policy remaining stable; who should receive a "letter registered"
+notification, since "department Admins" is still an explicit guess
+(`docs/architecture/audit-notifications.md` §13); which deployment model
+applies (individually-assigned workstations vs. shared machines), since
+it changes the frontend's token-storage recommendation
+(`docs/architecture/frontend.md` §28); and whether a unified global
+search, a signed document-download URL, or a dashboard aggregate
+endpoint are ever actually wanted before any is built speculatively
+(`docs/architecture/frontend.md` §31).

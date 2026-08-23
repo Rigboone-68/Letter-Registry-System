@@ -2,9 +2,10 @@
 
 **A Production of AJ-Labs**
 
-> **Current status: Phase 4E — Operational Activity, Notifications &
-> Audit implemented (Phase 4D Document Management implemented; Phase
-> 3B complete).**
+> **Current status: Phase 5B — Authentication & Account UX implemented
+> (Phase 5A Frontend Foundation implemented; Phase 5 architecture/UX
+> review complete; Phase 4E Operational Activity, Notifications & Audit
+> implemented; Phase 3B complete).**
 > Local email/password login, JWT access tokens, role-based access
 > control, System-Admin-controlled department management,
 > System-Admin-controlled Admin management, and Admin-controlled User
@@ -55,10 +56,41 @@
 > retroactively leak what was already sent.
 > `GET/PATCH /api/v1/notifications*` lets a user read and mark-read only
 > their own notifications. No schema change was needed. See
-> `docs/architecture/audit-notifications.md`. **No dashboard, audit
-> read API, WebSockets, or email/push notifications exist yet** — those
-> remain for later phases. See `docs/PROJECT_STATUS.md` for the full
-> picture.
+> `docs/architecture/audit-notifications.md`. Phase 5 then reviewed (but
+> did **not** implement) the frontend: the existing skeleton
+> (React 18 + Vite + React Router + Axios, none of it wired up yet) was
+> inspected fresh, all 42 real backend endpoints were mapped to screens
+> by role, and the review designed authentication UX, role-aware
+> navigation, the Letter registry/search/document/notification UX, and
+> — critically — how the frontend must render `404` identically for a
+> nonexistent and an inaccessible-classified Letter, never inventing its
+> own filtering on top of what the backend already returns — see
+> `docs/architecture/frontend.md`. Phase 5A then implemented the
+> frontend *foundation* the review designed — not any feature screen:
+> routing (React Router, finally wired up), a single `AuthContext`
+> restoring a session from `GET /auth/me` before any protected route
+> renders (no authentication flicker), one centralized Axios client
+> (auth header, two-shaped error normalization, a 401 handler that
+> never fires on the login call itself), `ProtectedRoute`/`RoleGuard`,
+> role-derived navigation, the `AppShell`/`Sidebar`/`Topbar` chrome, a
+> small design-token set (no UI framework added), an accessibility
+> baseline, and a Vitest + React Testing Library test setup (17 tests —
+> none existed before). Phase 5B then turned that foundation into the
+> complete V1 authentication/account experience: production Login/Signup
+> forms with client-side validation and full `aria-invalid`/
+> `aria-describedby` accessibility wiring; dedicated, reusable
+> pending-approval and deactivated-account notices that state only what
+> the backend confirms (no invented approval timeline or administrator
+> contact); session restoration that now distinguishes a genuine token
+> rejection (clears the token) from a network failure (keeps the token,
+> shows a retry banner, never silently treats an unreachable server as
+> "authenticated"); the same already-authenticated → redirect-into-app
+> guard on both Login and Signup; and a test suite grown from 17 to 44
+> tests. Logout remains purely client-side token removal — there is no
+> server-side revocation endpoint, an accepted V1 limitation, not a
+> defect. **No Letter/Document/Notification/Administration screen exists
+> yet** — every nav destination is a shared placeholder; those remain
+> for later phases. See `docs/PROJECT_STATUS.md` for the full picture.
 
 ---
 
@@ -266,11 +298,14 @@ backend.
 | 4C | Registry Operations & Search: pagination, whitelisted sorting, 7 text-search filters, inclusive date-range filtering — with the classified-access query-level fix applied first | **Complete** |
 | 4D | Document Management: `LetterDocument` upload/list/download — storage-path safety, layered file validation, department/classified-access authorization reuse, write-then-commit failure handling. No deletion endpoint (deliberate). | **Complete** |
 | 4E | Operational Activity, Notifications & Audit: `AuditLog` generation (append-only, mandatory, targeted old/new values) for Letter/Document/User/Admin/Department/Category/Classification/Authorization events; `Notification` generation for the confirmed "letter registered" trigger, best-effort via a database SAVEPOINT; `GET/PATCH /api/v1/notifications*`. No audit read API (deliberate). | **Complete** |
-| 5 | Dashboards, reporting, additional notification triggers | Not started |
-| 6 | Administration, deployment hardening | Not started |
+| 5 | Frontend & Operational UI: architecture/UX review of the React 18 + Vite + React Router + Axios skeleton (unwired since Phase 1) against all 42 real backend endpoints — auth UX, role-aware navigation, Letter/document/notification UX, classified-Letter 404 handling, route/component/API-client architecture, security, test strategy. Review only, no frontend code. | **Complete (review only)** |
+| 5A | Frontend Foundation: routing wired up, `AuthContext` (session restore via `/auth/me`, login, logout), one centralized Axios client (auth header, error normalization, 401 handling), `ProtectedRoute`/`RoleGuard`, role-derived navigation, `AppShell`/`Sidebar`/`Topbar`, design tokens, a11y baseline, Vitest test setup (17 tests). No feature screens. | **Complete** |
+| **5B** | Authentication & Account UX: production Login/Signup forms (client-side validation, full ARIA wiring), reusable pending-approval/deactivated-account notices, session-restoration network-failure handling with retry, logout/redirect verification, test suite grown to 44 tests. No business feature screens. | **Complete** |
+| 5C+ | Frontend feature implementation: Letters, Documents, Notifications, Administration | Not started |
+| 6 | Dashboards, reporting, additional notification triggers, audit read API | Not started |
 
-See `docs/PROJECT_STATUS.md` for what Phase 4E delivered,
-`docs/architecture/audit-notifications.md` for the full design, and known
+See `docs/PROJECT_STATUS.md` for what Phase 5B delivered,
+`docs/architecture/frontend.md` for the full design, and known
 limitations. The next phase begins only when explicitly instructed.
 
 ---

@@ -20,4 +20,12 @@ export default defineConfig({
       },
     },
   },
+  // Vitest config (Phase 5A — docs/architecture/frontend.md §30).
+  // jsdom gives component tests a browser-like DOM; setupFiles wires in
+  // jest-dom's matchers once for every test file.
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.js'],
+    css: true,
+  },
 })

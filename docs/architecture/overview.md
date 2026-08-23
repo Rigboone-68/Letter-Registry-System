@@ -13,7 +13,22 @@ in-system notification generation (best-effort, via a database
 architecture review identified — an audit read API, when eventually
 built, is designed to delegate to that same `assert_letter_access` chain
 a third time, not invent a fourth, but was not itself built this phase.
-This document explains the roles and hierarchy the database schema is
+Phase 5 then reviewed the frontend that will eventually expose all of
+this — role-aware navigation, and, critically, a design discipline
+requiring the frontend to render `404` identically for a nonexistent
+and an inaccessible-classified Letter, never re-implementing
+classified-access filtering client-side — Phase 5A implemented that
+review's *foundation* (routing, a single `AuthContext` sourcing role/
+department/status from `GET /auth/me` or the login response's own
+`UserPublic` only, one centralized API client, protected routes,
+role-derived navigation, the app shell), and Phase 5B then implemented
+the complete authentication/account experience on top of that
+foundation (login, signup, pending-approval, deactivated-account,
+session restoration, logout, redirects) — without building any business
+feature screen yet, so the classified-Letter discipline above still has
+nothing to violate it — there is no Letter screen at
+all until a later phase. This document explains the roles and hierarchy
+the database schema is
 built to support, how a caller's identity is established (Phase 3A), how
 role/department authorization decisions are enforced on top of that
 identity (Phase 3B.1), how departments themselves are managed (Phase
@@ -534,6 +549,159 @@ and §31 for the full implementation record.
   per-Admin notifications; cross-Admin notification denial; mark-read/
   read-all isolation; unauthenticated denial) — all test data removed
   afterward.
+
+### Reviewed (Phase 5 — Frontend & Operational UI)
+
+Full design in [`frontend.md`](frontend.md). At the time of this review,
+no frontend code existed — `frontend/src/App.jsx` still rendered only a
+static Phase 1 placeholder; see "Implemented (Phase 5A)" immediately
+below for what changed since.
+
+* **Inspected the actual current state, not assumed** — confirmed the
+  frontend stack is already chosen (React 18.3.1, Vite 5.3.1,
+  react-router-dom 6.24.0, axios 1.7.2, all in `package.json`) but
+  completely unwired (no router mounted, no HTTP service module, no
+  state management, no CSS framework, no test framework); mapped all 42
+  real backend endpoints (verified via the live OpenAPI schema, not
+  memory) to screens by role.
+* **One gap found in the task's own suggested System Admin nav
+  structure** — it omitted Letters/Documents, but `SYSTEM_ADMIN` is
+  confirmed to have full cross-department Letter/Document read/update/
+  archive access (it just cannot create one); recommended adding a
+  System Admin Letters screen rather than silently following an
+  incomplete suggestion.
+* **Classified Letter UX (CRITICAL)** — the frontend must never
+  independently filter, label, or infer classified-letter existence; it
+  renders exactly what the API returns (`items`/`total` already exclude
+  inaccessible letters at the query level — Phase 4C) and treats every
+  `404` identically, with no distinguishing language.
+* **A real, unresolvable-without-a-backend-change gap identified**: the
+  frontend cannot proactively detect that a caller's own department has
+  gone `INACTIVE` (no field exposes department status to the caller) —
+  only reactively, via a `403` on the next action.
+* **Two error-body shapes exist and must both be handled** — a plain
+  `{"detail": "<string>"}` for raised `HTTPException`s vs. FastAPI's own
+  array-shaped `{"detail": [...]}` for Pydantic validation failures — a
+  precise, previously-undocumented integration detail this review
+  surfaced by reading the actual endpoint code, not assumed.
+* **Document downloads require the same bearer auth as every other
+  endpoint** — no plain `<a href>` can carry it; recommended fetch +
+  blob URL, with "open in a shareable new-tab URL" flagged as a real V1
+  limitation, not silently worked around.
+* Recommended keeping the stack exactly as installed — no React Query,
+  no state-management library, no CSS/UI framework — at V1 scale, per
+  this review's own repeated "don't add complexity without a
+  demonstrated need" instruction. A route/component/API-client
+  architecture and a prioritized test strategy were both designed, not
+  implemented at review time. No frontend or backend file was touched
+  during the review.
+
+### Implemented (Phase 5A — Frontend Foundation)
+
+Built directly on Phase 5's own review, above — no new architecture
+decisions were made, only the ones already recommended were built.
+
+* **Routing wired up** — `react-router-dom` (installed since Phase 1,
+  unused until now) now backs a real route tree
+  (`frontend/src/routes/index.jsx`): `/`, `/login`, `/signup`, and a
+  `/app` subtree gated by `ProtectedRoute`, matching §19's design.
+* **`AuthContext`** — the single authentication state mechanism (§22),
+  `status: 'loading' | 'authenticated' | 'unauthenticated'`, `user`
+  always the `UserPublic` object most recently returned by
+  `POST /auth/login` or `GET /auth/me` — never decoded from the JWT.
+  Session restoration validates any stored token against `/auth/me`
+  before any protected route renders (§9), avoiding an authentication
+  flicker.
+* **One centralized Axios client** (§21) — the auth header, both
+  confirmed backend error-body shapes normalized into one predictable
+  `{status, message, fieldErrors}`, and a single 401 handler that clears
+  the session and lets `ProtectedRoute` redirect — except on the
+  login/signup/session-restore calls themselves, which opt out
+  (`skipAuthRedirect`) and handle their own 401/403 locally, exactly as
+  the review specified.
+* **Token storage isolated to one module** (`services/tokenStorage.js`)
+  — `localStorage` for V1, documented in `frontend/README.md` as the
+  same PROVISIONAL placeholder §28 named, not silently promoted to a
+  final decision.
+* **`ProtectedRoute` (authentication only) and `RoleGuard` (role-based
+  navigation convenience only) as two separate components** — matching
+  §12's explicit instruction not to conflate the two; neither provides
+  real security, which remains entirely backend-enforced.
+* **Role-derived navigation** (`navigation/navigationConfig.js`) — data
+  only, matching §13's per-role lists exactly (including the System
+  Admin Letters/Documents addition §6 identified), never a department id
+  anywhere in it.
+* **`AppShell`/`Sidebar`/`Topbar`** (§14) — current user's identity, role
+  indicator, logout control, and role-derived nav, with every unbuilt
+  destination rendering one shared `PlaceholderPage`, not a one-off stub
+  per screen.
+* **A small design-token set** (§26) — CSS Modules + `styles/tokens.css`,
+  no UI framework added, exactly as recommended.
+* **An accessibility baseline** (§25) — semantic nav/buttons, visible
+  focus states, associated form labels, `role="status"`/`role="alert"`
+  on the loading/error primitives.
+* **Test infrastructure established** (§30) — none existed before;
+  Vitest + React Testing Library now do, with 17 tests covering
+  authentication state transitions, protected-route behavior, role
+  navigation configuration, and API error normalization, exactly the
+  four areas §30/the implementation brief named as the minimum.
+* **No feature screen exists** — Letters, Documents, Notifications, and
+  every administrative screen remain the one shared placeholder; no
+  dashboard, no audit UI. No backend file was touched — confirmed by
+  `git status` and a full backend regression run (458 passed,
+  unaffected) before and after.
+
+### Implemented (Phase 5B — Authentication & Account UX)
+
+Built directly on Phase 5A's foundation, above — turns the minimal
+`LoginPage`/`SignupPage` into the complete V1 authentication/account
+experience; still no business feature screen.
+
+* **Production `LoginPage`/`SignupPage`** — client-side required-field
+  and email-format validation (`utils/formValidation.js`, no form
+  library), `aria-invalid`/`aria-describedby` wiring every field to its
+  own error, a disabled submit button with a loading label while a
+  request is in flight, and the previous error cleared the instant a new
+  submission begins. Server-side validation remains authoritative.
+* **`PendingApprovalNotice`/`DeactivatedAccountNotice`** — two new
+  reusable components rendered in place of the form. Both state only
+  what the backend confirms — no invented approval timeline, no invented
+  administrator contact, no implication a deactivated account was
+  deleted. `DeactivatedAccountNotice` has no "logout" action because
+  there is no scenario where the frontend can show it to an
+  already-authenticated user — the backend's distinct deactivation
+  message is raised only by `POST /auth/login`; a mid-session
+  deactivation surfaces as a generic `401`, already handled centrally.
+* **Session restoration now distinguishes *why* `GET /auth/me` failed**
+  — a definite rejection still clears the stored token; a network
+  failure does not (the credential might still be valid), and instead
+  surfaces a retry-capable banner via a new `restoreError`/
+  `retryRestoreSession` pair on `AuthContext` — a server outage is never
+  silently treated as a successful authenticated state, matching the
+  same discipline §9/§22 already established for the definite-rejection
+  case.
+* **A real Phase 5A gap closed**: `SignupPage` gained the same
+  already-authenticated → redirect guard `LoginPage` already had.
+* **A design tension resolved by re-reading the backend, not guessed**:
+  whether `AuthContext.login()` should make a separate `/auth/me` call
+  after login. It doesn't — `POST /auth/login`'s own `TokenResponse.user`
+  is already the identical, freshly-queried, backend-authoritative
+  `UserPublic` object a follow-up call would return, so no redundant
+  round trip was added. The actual governing rule — never derive
+  authorization from decoded JWT claims — was already satisfied (no
+  JWT-decoding code exists anywhere in this codebase) and remains so.
+* **Test suite grown from 17 to 44 tests** — new coverage for both
+  forms' every UX state (success, invalid credentials, pending,
+  deactivated, validation, loading, network failure), the exact signup
+  payload shape sent to the backend (proving `role`/`department_id`/
+  `status` can never be injected), session-restoration network failure
+  and its retry, and an end-to-end logout → `/login` redirect test.
+* **No backend file was touched** — confirmed by `git status` and a full
+  backend regression run (458 passed, unaffected) before and after.
+* **Logout remains purely client-side** — no server-side revocation
+  endpoint exists or was added; an already-issued JWT stays valid until
+  it naturally expires. Documented as an accepted V1 limitation, not a
+  defect.
 
 ### Explicitly deferred (not yet implemented)
 
