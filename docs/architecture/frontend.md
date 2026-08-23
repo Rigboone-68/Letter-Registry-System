@@ -28,8 +28,16 @@ accurate; the newer document adds the implementation-level detail
 (exact routes/components/services/tests) this one never went into.
 `LetterDetailPage` now has a real Documents section (upload/list/
 download); `Topbar` now has a `NotificationBell`; `/app/notifications`
-is a real paginated page. Dashboard and audit UI still do not exist as
-real screens.
+is a real paginated page. **Dashboard & Operational Overview UI is now
+also implemented** (Phase 5F — architecture/requirements review, then
+implementation, both recorded in [`dashboard.md`](dashboard.md), §32
+has the full implementation record) — `/app/dashboard` now renders a
+role-aware operational overview (Letter/Notification summary cards for
+every role, Department/Admin or User/approval cards for
+SYSTEM_ADMIN/ADMIN, a Recent Letters list, role-scoped Quick Actions),
+built entirely from existing, already-isolated endpoints — no new
+backend endpoint, no chart, no analytics infrastructure. Audit UI
+still does not exist as a real screen.
 
 This document originally inspected the actual current frontend (a Phase
 1 skeleton) and the actual current backend API surface (42 business
@@ -749,7 +757,10 @@ work**:
   V1 scale for a small, fixed bucket count (e.g. two Letter statuses);
   **PENDING/OPTIONAL FUTURE**: a dedicated stats/aggregate endpoint if a
   richer breakdown is ever wanted, not something to build via many
-  small requests without confirming the need first.
+  small requests without confirming the need first. **Phase 5F's own
+  Dashboard review (`dashboard.md`) confirms this exact finding in full
+  detail** — a complete metric-by-metric inventory, not just this one
+  example.
 
 ## 28. Frontend security review
 
@@ -868,6 +879,10 @@ configured during this review.
    proposed as a change here, PENDING/FUTURE if ever needed.
 5. **A dedicated stats/aggregate endpoint** (§27) — would make a richer
    dashboard breakdown efficient; not proposed here, PENDING/FUTURE.
+   **Phase 5F's Dashboard review (`dashboard.md` §12) now has the full
+   design-level treatment of this** — a proposed conceptual shape
+   (separate narrow endpoints, not one combined summary), still not
+   built.
 6. Every PENDING item already carried by the backend's own architecture
    docs still applies unchanged to whatever UI eventually surfaces it:
    the exact classification value list and classified-visibility matrix

@@ -7,6 +7,7 @@ describe('getNavigationForRole', () => {
     const labels = getNavigationForRole('SYSTEM_ADMIN').map((item) => item.label)
 
     expect(labels).toEqual([
+      'Dashboard',
       'Letters',
       'Documents',
       'Notifications',
@@ -20,7 +21,7 @@ describe('getNavigationForRole', () => {
   it('returns the Admin nav set, excluding System-Admin-only items', () => {
     const labels = getNavigationForRole('ADMIN').map((item) => item.label)
 
-    expect(labels).toEqual(['Letters', 'Documents', 'Notifications', 'Users'])
+    expect(labels).toEqual(['Dashboard', 'Letters', 'Documents', 'Notifications', 'Users'])
     expect(labels).not.toContain('Departments')
     expect(labels).not.toContain('Administrators')
   })
@@ -28,7 +29,7 @@ describe('getNavigationForRole', () => {
   it('returns the User nav set, excluding every administrative item', () => {
     const labels = getNavigationForRole('USER').map((item) => item.label)
 
-    expect(labels).toEqual(['Letters', 'Documents', 'Notifications'])
+    expect(labels).toEqual(['Dashboard', 'Letters', 'Documents', 'Notifications'])
   })
 
   it('returns an empty array for an unknown or missing role rather than throwing', () => {

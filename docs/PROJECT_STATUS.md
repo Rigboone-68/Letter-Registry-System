@@ -7,8 +7,86 @@ supervisor as-is.
 
 ## Current Phase
 
-**Phase 5E — Documents & Notifications UI: Implementation.** Complete.
-Frontend only, built directly on this same phase's own prior
+**Phase 5F — Dashboard & Operational Overview UI: Implementation.**
+Complete. Frontend only, built directly on this same phase's own prior
+architecture review — no backend code, migration, or production data
+was touched. Added `/app/dashboard` (a plain child route, available to
+every role — no new authentication/authorization mechanism; the
+existing `RootRedirect`/`/app` index behavior is unchanged) rendering
+one role-aware `DashboardPage`: Total/Active/Archived Letter counts and
+Unread Notifications for every role (each a single, cheap, already
+department/classified-scoped request — no registry pagination, no
+client-side filtering); Active Departments + Pending Admin Approvals
+for SYSTEM_ADMIN; Active Users + Pending User Approvals for ADMIN; a
+5-item Recent Letters list reusing the existing Letter service and
+route; and role-scoped Quick Actions linking to already-existing
+screens only (Create Department/Authorize Admin for SYSTEM_ADMIN,
+Authorize User for ADMIN, Record a Letter for USER). No chart, trend,
+breakdown, filter control, or document metric was built — every one
+remained `PENDING BACKEND API` or `PENDING BUSINESS CLARIFICATION` per
+the review, and none was implemented anyway. The existing
+`NotificationBell` polling is untouched; the dashboard's notification
+figure is one one-time fetch, not a second timer.
+
+Test suite grown from 249 (159 baseline through Phase 5E, plus this
+phase's own additions — see below) — **33 new tests** across
+`SummaryCard`/`RecentLetters`/`QuickActions`/`DashboardPage`, run 3
+consecutive times with identical results. A pre-existing test-
+infrastructure flake (`LetterFormPage.test.jsx` intermittently missing
+Vitest's 5000ms default timeout under full-suite worker contention,
+confirmed non-deterministic and unrelated to any logic defect) was
+fixed by raising `testTimeout` to 10000ms in `vite.config.js` —
+headroom, not a weakened assertion. `npm run build` succeeds. Backend
+regression (`pytest tests/`) — **458 passed**, unaffected, confirming
+zero backend impact. Full implementation record in
+`docs/architecture/dashboard.md` §32.
+
+**Not added, per the brief's own explicit list:** backend dashboard
+endpoints, an audit read API, historical analytics, trend charts, a
+charting library, reporting tables, an analytics warehouse, exports,
+scheduled reports, WebSockets, background workers, Redis/Celery, React
+Query, Redux, Zustand, or any new state-management library.
+
+### Phase 5F — Dashboard & Operational Overview UI: Architecture & Requirements Review
+
+Complete (prior pass, this same phase). Review only — no frontend or
+backend code, migration, or test was written at that stage. Repository
+confirmed clean and at Phase 5E (`edc6649`) before this review began.
+Re-inspected every business endpoint fresh: confirmed **no dashboard,
+summary, aggregate, or reporting endpoint exists anywhere**, that
+`GET /letters` computes its `total` from a real SQL `COUNT` on the same
+department/classified-visibility-scoped statement as the page itself
+(so a Letter count is cheap and already correctly isolated), and that
+`GET /departments`/`/admins`/`/users`/`/categories`/`/classifications`
+have **no pagination at all** — each returns its complete matching
+result set, with `total` computed as `len()` in Python, not a database
+`COUNT`. Confirmed **no audit read API exists** — `AuditLog` is
+written to but nothing exposes it through `/api/v1`, restating
+`audit-notifications.md`'s own unchanged conclusion.
+
+Produced a full metric-by-metric inventory (letters/documents/
+notifications/departments/admins/users/pending-approvals/trends/audit
+activity), classifying each as directly available, derivable-but-
+costly, requiring a new backend endpoint, requiring business
+clarification, or architecturally inappropriate for V1. Found that
+**every current-operational-state metric is available today from an
+existing request**, while **every historical/trend/analytical metric
+requires either a new backend aggregate endpoint or an audit read API
+that doesn't exist** — supporting, without confirming as a business
+requirement, the recommendation that V1 should be operational-only, no
+charts, no trends. Confirmed no charting library is installed and none
+should be added this phase.
+
+Full review in `docs/architecture/dashboard.md`.
+
+**Not in scope for this phase, and not added:** any frontend page,
+component, service, or test; any backend endpoint, schema, service, or
+migration; a dashboard aggregate endpoint; an audit read API; charts;
+exports; scheduled reports.
+
+### Phase 5E — Documents & Notifications UI: Implementation
+
+Complete (prior phase). Frontend only, built directly on this same phase's own prior
 architecture review — no backend code, migration, or production data
 was touched. `LetterDetailPage` now has a real Documents section
 (`DocumentUploadForm` + `DocumentList`, upload with progress feedback,
@@ -1736,6 +1814,37 @@ detail behind each:
 | Grep for a `403`→`404` (or reverse) conversion in the new pages/components | Zero matches |
 | Manual verification against a running backend | Not performed — no backend/dev environment was running at any point this session; reported honestly rather than claimed |
 
+### Validation performed — Phase 5F implementation
+
+| Check | Result |
+|---|---|
+| `npm run build` (frontend, `frontend/`) | Succeeds — 184 modules transformed, no errors |
+| `npm run test` (frontend, Vitest) | **249 passed**, 0 failed — run 3 consecutive times against the final code, identical results |
+| `pytest tests/` (backend, `backend/`) | **458 passed**, 0 failed, 0 skipped — unaffected by this phase, confirming zero backend impact |
+| `git status` — backend files | No `backend/app/`, `backend/alembic/`, or `backend/tests/` file touched |
+| `git status` — dependencies | No `package.json` dependency added — no charting library, no state-management library |
+| Grep for `jwt`/`decode`/`localStorage` in new/changed files | Zero matches |
+| Grep for `department_id` sent as a request parameter | Zero matches representing actual usage — the one match is a doc comment stating it is deliberately never sent |
+| Grep for `recipient_user_id` | Zero matches |
+| Grep for `dangerouslySetInnerHTML` | Zero matches |
+| Grep for hardcoded classified-record filtering logic | Zero matches — the dashboard never fetches a list of Letters larger than needed and applies no classification-based branch anywhere |
+| Test-infrastructure issue found during the 3-run validation | `LetterFormPage.test.jsx` intermittently missed Vitest's 5000ms default timeout under full-suite worker contention once the suite grew past ~30 files — confirmed non-deterministic (same tests failed, then passed, then failed again across identical consecutive runs) and unrelated to any logic defect; fixed by raising `testTimeout` to 10000ms in `vite.config.js`, re-verified with 3 further clean runs |
+| Manual verification against a running backend | Not performed — no backend/dev environment was running at any point this session; reported honestly rather than claimed |
+
+### Validation performed — Phase 5F review
+
+An architecture/requirements review, not an implementation phase —
+validation here means confirming no code was written and no drift was
+introduced, the same standard applied to every prior review-only pass:
+
+| Check | Result |
+|---|---|
+| `git status` before and after the review | Identical except one new documentation file and five documentation updates — no frontend file (`.jsx`/`.js`/`.css`), backend file, migration, or test file touched, no dependency added |
+| Direct reads of all twelve mounted routers (`app/api/v1/router.py`) and their endpoints/services/repositories/schemas | Confirmed exactly which resources support pagination/real `COUNT` (Letters, Notifications) vs. full-list-only `len()` (Departments, Admins, Users, Categories, Classifications); confirmed no dashboard/summary/aggregate/audit-read endpoint exists anywhere |
+| Direct read of `app/services/authorization.py:letter_visibility_filter` | Confirmed the classified-access predicate is query-level (`None` for SYSTEM_ADMIN/ADMIN, a real SQL predicate for USER, joined into both the `COUNT` and the paginated `SELECT`) — a Letter count is already correctly isolated with no frontend filtering needed |
+| Cross-check against `docs/architecture/audit-notifications.md` §23 and `docs/architecture/frontend.md` §27's prior dashboard-adjacent findings | Confirmed both conclusions (current-state metrics need a new aggregate endpoint; audit-derived metrics need the audit read API first; Notification is not a good dashboard data source) still hold — this review extends them with a full metric inventory neither prior document went into |
+| `frontend/package.json` inspection | Confirmed no charting library is installed; none was added this phase |
+
 ### Validation performed — Phase 5E review
 
 An architecture/requirements review, not an implementation phase —
@@ -2105,20 +2214,33 @@ afterward — `lrs_dev` is empty again.
 
 ## In Progress
 
-Nothing — Phase 5E's implementation is complete (Phase 5's own
+Nothing — Phase 5F's implementation is complete (Phase 5's own
 architecture review, Phase 5A's foundation, Phase 5B's
 authentication/account UX, Phase 5C's core Letter registry UI, Phase
 5D's Department/Administrator/User management UI, Phase 5E's own
-Documents/Notifications review, and now Phase 5E's implementation are
-all done) and the project is paused pending explicit instruction to
-begin the next phase, per the standing project rule that phases are
-reviewed before the next begins.
+Documents/Notifications review and implementation, Phase 5F's own
+Dashboard review, and now Phase 5F's implementation are all done) and
+the project is paused pending explicit instruction to begin the next
+phase, per the standing project rule that phases are reviewed before
+the next begins.
 
-## Pending (Phase 5F and later)
+## Pending (Phase 5G and later)
 
+* **A Letter aggregation/breakdown backend endpoint** (by time bucket,
+  category, classification, or department) — no group-by/aggregate
+  query exists today; every trend/historical dashboard metric depends
+  on this not existing yet. `PENDING BACKEND API`, not designed beyond
+  the conceptual shape in `docs/architecture/dashboard.md` §12.
+* **A lighter-weight, count-only path for Departments/Admins/Users/
+  Categories/Classifications** — today, computing any count from these
+  five resources costs a full-object list fetch (no pagination, no
+  database `COUNT`, unlike Letters). Not urgent at current scale;
+  `PENDING BUSINESS CLARIFICATION`, tied to the same pagination
+  question Phase 5D's own review already raised. See
+  `docs/architecture/dashboard.md` §9/§26.
 * **Category/Classification management UI** remains unbuilt — out of
   Phase 5D's own objective list, not an oversight, and out of Phase
-  5E's scope too (Documents/Notifications only). See
+  5E's and Phase 5F's scope too. See
   `docs/architecture/document-notification-ui.md` §24 for how Phase 5E
   itself was sequenced.
 * **No signed/shareable document-download URL** (Phase 5E review,
@@ -2645,47 +2767,50 @@ behind each.
 
 ## Next Recommended Phase
 
-Phase 5E's implementation is now complete — the frontend has a full
-Document management UI (upload/list/download, integrated into
-`LetterDetailPage`) and a full Notification UI (`NotificationBell`/
-`NotificationPanel`/`NotificationsPage`), matching the architecture
-review's design exactly. See
-`docs/architecture/document-notification-ui.md` §27 for the full
-implementation record. No further work is pending from Phase 5E
+Phase 5F's implementation is now complete — the frontend has an
+operational-only Dashboard (`/app/dashboard`, role-aware summary cards,
+Recent Letters, Quick Actions) matching the architecture review's
+design exactly, with no chart, trend, or analytics infrastructure of
+any kind. See `docs/architecture/dashboard.md` §32 for the full
+implementation record. No further work is pending from Phase 5F
 itself; what remains is either the next screen (Category/Classification
 management, out of every phase's scope so far), or resolving one of
-several genuinely open questions before more UI is built on top of
-them:
+several genuinely open questions before more UI or any analytics
+widget is built on top of what exists today:
 
-Resolving the category/classification reference-data access gap Phase
-5C confirmed (a backend change: a read-scoped, non-SYSTEM_ADMIN-only
-variant of `GET /categories`/`/classifications` — not designed or
-proposed by any phase so far), **or** whether
+Resolving the category/classification reference-data
+access gap Phase 5C confirmed (a backend change: a read-scoped,
+non-SYSTEM_ADMIN-only variant of `GET /categories`/`/classifications` —
+not designed or proposed by any phase so far), **or** whether
 Departments/Admins/Users/User-authorizations need pagination at real V1
 data volumes (Phase 5D's review, `docs/architecture/administration-ui.md`
-§11/§22), **or** whether Admin-purpose authorizations should become
-revocable, matching User-purpose ones (same review, §8.1/§22), **or**
-dashboards/reporting reading from the operational tables plus the
-now-populated `AuditLog`, **or** an audit-viewing/read API once its
-access-control question is resolved, **or** resolving the outstanding
-business clarifications first. Recommended before or alongside
-whichever is chosen: resolve the exact classification value list and
-classified-visibility matrix with the product owner
-(`docs/architecture/letter-registry.md` §12,
-`docs/architecture/registry-search.md` §11); the category/classification
-reference-data access gap named above; who should receive a "letter
-registered" notification, since "department Admins" is still an
-explicit guess (`docs/architecture/audit-notifications.md` §13);
-whether mark-read-on-navigate is the desired notification behavior —
-implemented as explicit-only for now, per an explicit override
-documented in `docs/architecture/document-notification-ui.md` §27, but
-the underlying business question remains open — and notification
-polling frequency/retention (still `PROVISIONAL` at 60 seconds,
-`docs/architecture/document-notification-ui.md` §11/§27); which
-deployment model applies (individually-assigned workstations vs. shared
-machines), since it changes the frontend's token-storage recommendation
-(`docs/architecture/frontend.md` §28); and whether a unified global
-search, a signed document-download URL, document previews, or a
-dashboard aggregate endpoint are ever actually wanted before any is
-built speculatively (`docs/architecture/frontend.md` §31,
+§11/§22 — now also directly relevant to dashboard-card cost, per
+`docs/architecture/dashboard.md` §9), **or** whether Admin-purpose
+authorizations should become revocable, matching User-purpose ones
+(same review, §8.1/§22), **or** an audit-viewing/read API once its
+access-control question is resolved (a prerequisite for any historical/
+trend dashboard widget, per `docs/architecture/dashboard.md` §2/§26),
+**or** resolving the outstanding business clarifications first —
+including, newly surfaced this phase, whether the dashboard should be
+operational or analytical, whether USER should have a dashboard at all,
+and which of §27's other open questions in `docs/architecture/dashboard.md`
+matter most. Recommended before or alongside whichever is chosen:
+resolve the exact classification value list and classified-visibility
+matrix with the product owner (`docs/architecture/letter-registry.md`
+§12, `docs/architecture/registry-search.md` §11); the category/
+classification reference-data access gap named above; who should
+receive a "letter registered" notification, since "department Admins"
+is still an explicit guess (`docs/architecture/audit-notifications.md`
+§13); whether mark-read-on-navigate is the desired notification
+behavior — implemented as explicit-only for now, per an explicit
+override documented in `docs/architecture/document-notification-ui.md`
+§27, but the underlying business question remains open — and
+notification polling frequency/retention (still `PROVISIONAL` at 60
+seconds, `docs/architecture/document-notification-ui.md` §11/§27);
+which deployment model applies (individually-assigned workstations vs.
+shared machines), since it changes the frontend's token-storage
+recommendation (`docs/architecture/frontend.md` §28); and whether a
+unified global search, a signed document-download URL, or document
+previews are ever actually wanted before any is built speculatively
+(`docs/architecture/frontend.md` §31,
 `docs/architecture/document-notification-ui.md` §23).

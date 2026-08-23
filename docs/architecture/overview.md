@@ -48,7 +48,21 @@ decisions — a `404` renders identically whether a document is
 nonexistent or its parent Letter is classified-inaccessible, the same
 discipline every prior phase's own frontend work already held to. See
 `document-notification-ui.md` §27 for the full implementation record.
-This document explains the roles and hierarchy
+Phase 5F then reviewed, and implemented, a Dashboard & Operational
+Overview UI — re-reading every business endpoint fresh confirmed no
+dashboard/aggregate/audit-read endpoint exists anywhere, that
+`GET /letters`'s `total` is a real SQL `COUNT` already scoped by the
+same department/classified-visibility rules `assert_letter_access`
+enforces (so a Letter-derived dashboard count needs no additional
+frontend filtering), and that every historical/trend metric would
+depend on backend work — an aggregate endpoint or the still-nonexistent
+audit read API — that does not exist today, so none was built.
+`/app/dashboard` now renders a role-aware operational overview built
+entirely from the same already-isolated endpoints Letters/
+Departments/Admins/Users/Notifications already use, with no new
+frontend authorization rule and no analytics infrastructure of any
+kind. See `dashboard.md` §32 for the full implementation record. This
+document explains the roles and hierarchy
 the database schema is
 built to support, how a caller's identity is established (Phase 3A), how
 role/department authorization decisions are enforced on top of that
@@ -888,6 +902,78 @@ architecture decisions:
   full backend regression run (458 passed, unaffected) before and
   after. Full implementation record: `document-notification-ui.md`
   §27.
+
+### Reviewed, then implemented (Phase 5F — Dashboard & Operational Overview UI)
+
+Full design in [`dashboard.md`](dashboard.md). All twelve mounted
+business routers (`app/api/v1/router.py`) were re-read fresh this
+phase.
+
+* **Confirmed no dashboard/summary/aggregate/reporting endpoint exists
+  anywhere** — nothing in this system returns a count without also
+  returning the matching rows.
+* **Confirmed a real asymmetry in how "total" is computed across
+  resources** — `GET /letters` derives `total` from an actual SQL
+  `COUNT` on the same filtered/visibility-scoped statement as the page
+  itself; `GET /departments`/`/admins`/`/users`/`/categories`/
+  `/classifications` have no pagination at all and compute `total` as
+  `len()` in Python after materializing every matching row's full
+  object.
+* **Confirmed classified-access narrowing is already query-level and
+  role-specific** — `letter_visibility_filter` returns `None` (no
+  restriction) for `SYSTEM_ADMIN`/`ADMIN`, and a real SQL predicate for
+  `USER` only, joined into both the `COUNT` and the page query — a
+  Letter-derived dashboard count is therefore already correct with zero
+  additional frontend logic.
+* **Confirmed no audit read API exists** — `AuditLog` is written to
+  (Phase 4E) but nothing exposes it through `/api/v1`; restates
+  `audit-notifications.md` §9's own unchanged conclusion.
+* A complete metric-by-metric inventory (letters, documents,
+  notifications, departments, admins, users, pending approvals, trends,
+  audit activity) classified each candidate as directly available,
+  costly-but-derivable, requiring new backend work, requiring business
+  clarification, or architecturally wrong for V1 — finding that every
+  current-operational-state metric is available today, while every
+  historical/analytical one is not.
+* **No chart or visualization is recommended for V1** — no charting
+  library is installed (confirmed via `package.json`), and every
+  chart-worthy metric would need backend work not yet authorized.
+* Full role-specific (SYSTEM_ADMIN/ADMIN/USER), department-isolation,
+  classified-handling, layout, performance, accessibility, and a
+  15-item security threat review were all designed during the review.
+  No frontend or backend file was touched during the review itself.
+
+**Then implemented, same phase, second pass** — exactly the operational
+scope the review approved, no new architecture decisions:
+
+* **One dashboard, role-aware content** — `/app/dashboard`, a plain
+  child route needing no `RoleGuard` since `DashboardPage` renders
+  role-appropriate content itself; the existing `/app` index redirect
+  to `letters` is unchanged.
+* **Universal cards (every role)** — Total/Active/Archived Letters
+  (three `page_size: 1` requests reading only `.total`, the real,
+  already-isolated SQL `COUNT`) and Unread Notifications (one one-time
+  fetch, not a second polling interval — `NotificationBell`'s existing
+  60-second poll is untouched).
+* **Role-scoped administration cards** — Active Departments + Pending
+  Admin Approvals (SYSTEM_ADMIN); Active Users + Pending User Approvals
+  (ADMIN, own department, server-derived). A USER triggers zero
+  Department/Admin/User requests.
+* **Recent Letters and Quick Actions** — a 5-item list reusing the
+  existing Letter service/route; role-scoped shortcuts to
+  already-existing screens only, nothing invented.
+* **No chart, trend, breakdown, filter control, or document metric was
+  built** — every one remained class C/D in the review; none was worked
+  around. No charting library was installed.
+* **No frontend authorization rule was added anywhere** — every request
+  the dashboard makes is identical regardless of role except which
+  administration endpoints are called at all; department scoping and
+  classified-access narrowing remain entirely the backend's decision.
+* **Test suite grown from 225 to 249 tests**, run 3 consecutive times
+  with identical results.
+* **No backend file was touched** — confirmed by `git status` and a
+  full backend regression run (458 passed, unaffected) before and
+  after. Full implementation record: `dashboard.md` §32.
 
 ### Explicitly deferred (not yet implemented)
 

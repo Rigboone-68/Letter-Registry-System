@@ -1,22 +1,27 @@
 # LRS Frontend
 
-React + Vite client for the Letter Registry System. **Phase 5E:
-Documents & Notifications UI — implemented**, on top of Phase 5D's
-Administration & Account Management UI, Phase 5C's core Letter
-registry, Phase 5B's authentication/account UX, Phase 5A's foundation,
-and Phase 5's own architecture/UX review
-(`docs/architecture/frontend.md`,
+React + Vite client for the Letter Registry System. **Phase 5F:
+Dashboard & Operational Overview UI — implemented**, on top of Phase
+5E's Documents & Notifications UI, Phase 5D's Administration & Account
+Management UI, Phase 5C's core Letter registry, Phase 5B's
+authentication/account UX, Phase 5A's foundation, and Phase 5's own
+architecture/UX review (`docs/architecture/frontend.md`,
 `docs/architecture/administration-ui.md`,
-`docs/architecture/document-notification-ui.md`). Login, signup,
-session restoration, and logout are all in place; the Letter registry
-— list/search/sort/paginate, create, view, edit, and archive — works
-against the real backend; Department/Administrator/User management —
-list/create/detail, authorization workflows, lifecycle actions, and
-Admin department transfer — works against the real backend; and
-Document upload/list/download (integrated into the Letter detail page)
-and Notifications (a bell in the Topbar, a dropdown panel, and a full
-paginated page) now work against the real backend too. Category/
-Classification management UI is still unbuilt.
+`docs/architecture/document-notification-ui.md`,
+`docs/architecture/dashboard.md`). Login, signup, session restoration,
+and logout are all in place; the Letter registry — list/search/sort/
+paginate, create, view, edit, and archive — works against the real
+backend; Department/Administrator/User management — list/create/
+detail, authorization workflows, lifecycle actions, and Admin
+department transfer — works against the real backend; Document
+upload/list/download (integrated into the Letter detail page) and
+Notifications (a bell in the Topbar, a dropdown panel, and a full
+paginated page) work against the real backend; and `/app/dashboard` now
+renders a role-aware operational overview — Letter/Notification
+summary cards for every role, Department/Admin or User/approval cards
+for SYSTEM_ADMIN/ADMIN, a Recent Letters list, and role-scoped Quick
+Actions — with no chart, trend, or analytics infrastructure of any
+kind. Category/Classification management UI is still unbuilt.
 
 ## Setup
 
@@ -289,6 +294,54 @@ this project has used since Phase 4B, with nothing distinguishing
   exists), `services/notificationService.js` (`list`/`unreadCount`/
   `markRead`/`markAllRead` only).
 
+## Dashboard & Operational Overview (Phase 5F)
+
+`/app/dashboard` — a plain child route inside the existing
+`AppShell`/`ProtectedRoute` tree, available to every role (no
+`RoleGuard`; `pages/DashboardPage.jsx` renders role-appropriate content
+itself). **No `dashboardService.js` exists** — every figure on the page
+is one call to an existing service (`letterService`/
+`notificationService`/`departmentService`/`adminService`/
+`userService`), never a new or fabricated endpoint. The existing
+`/app` index redirect to `letters` is unchanged; the dashboard is
+additive, not the new default landing page.
+
+* **Universal cards (every role)** — Total/Active/Archived Letters
+  (three `letterService.list({ ..., page_size: 1 })` calls, reading
+  only `.total` — a real, already department/classified-visibility-
+  scoped SQL `COUNT`, never a client-side filter) and Unread
+  Notifications (one one-time `notificationService.unreadCount()` call
+  on mount — **not** a second polling interval; `NotificationBell`'s
+  own 60-second poll, Phase 5E, is untouched).
+* **SYSTEM_ADMIN-only cards** — Active Departments, Pending Admin
+  Approvals. **ADMIN-only cards** — Active Users, Pending User
+  Approvals (own department, server-derived — no parameter sent). A
+  USER triggers zero Department/Admin/User requests.
+* **Recent Letters** (`components/RecentLetters.jsx`) — up to 5
+  Letters from one `letterService.list({sort_by: 'received_at', sort_order: 'desc', page_size: 5})`
+  call, the same shape `LetterListPage` already uses, never the full
+  registry. A Letter shown is exactly what the backend returned;
+  clicking through to a Letter that later 404s is handled by
+  `LetterDetailPage`'s existing, unmodified 404 behavior.
+* **Quick Actions** (`components/QuickActions.jsx`) — role-scoped
+  shortcuts to already-existing routes only: Create Department +
+  Authorize Admin (SYSTEM_ADMIN), Authorize User (ADMIN), Record a
+  Letter (USER). No "View Letters" shortcut for any role — the
+  Sidebar's own link is already one click away.
+* **What was deliberately left out** — any chart, trend, monthly
+  comparison, department/category/classification breakdown, audit-
+  derived figure, or document metric. Every one of these remained
+  `PENDING BACKEND API` or `PENDING BUSINESS CLARIFICATION` in the
+  Phase 5F architecture review (`docs/architecture/dashboard.md`), and
+  none was implemented regardless. No filter controls (date range,
+  category, classification) exist on the dashboard for the same reason.
+  No charting library was installed.
+* **Independent widget failure** — the Letters summary, Administration
+  summary, Notifications count, and Recent Letters are four separately-
+  fetched widgets; one failing renders `SummaryCard`'s "Unavailable"
+  text or the existing `ErrorState` for that widget alone — never a
+  fabricated `0`, never a dashboard-wide failure.
+
 ## Source layout
 
 | Path | Responsibility |
@@ -297,11 +350,11 @@ this project has used since Phase 4B, with nothing distinguishing
 | `src/App.jsx` | Provides `AuthProvider` and mounts the router |
 | `src/routes/` | `router` (route tree), `ProtectedRoute` (authentication guard), `RoleGuard` (role-based navigation convenience, not security) |
 | `src/context/` | `AuthContext` — the one authentication state mechanism |
-| `src/services/` | `apiClient.js` (the one Axios instance), `authService.js` (login/signup/me), `letterService.js` (Phase 5C), `categoryService.js`/`classificationService.js` (thin, SYSTEM_ADMIN-only reference-data wrappers, Phase 5C), `departmentService.js` (Phase 5C reference-data + Phase 5D full CRUD/lifecycle), `adminService.js`/`userService.js` (Phase 5D), `documentService.js`/`notificationService.js` (Phase 5E), `tokenStorage.js` (isolated token access), `errorNormalization.js` |
-| `src/navigation/` | `navigationConfig.js` — role → nav item mapping, data only (unchanged since Phase 5A — its Departments/Administrators/Users/Notifications entries already pointed at the eventual routes) |
+| `src/services/` | `apiClient.js` (the one Axios instance), `authService.js` (login/signup/me), `letterService.js` (Phase 5C), `categoryService.js`/`classificationService.js` (thin, SYSTEM_ADMIN-only reference-data wrappers, Phase 5C), `departmentService.js` (Phase 5C reference-data + Phase 5D full CRUD/lifecycle), `adminService.js`/`userService.js` (Phase 5D), `documentService.js`/`notificationService.js` (Phase 5E), `tokenStorage.js` (isolated token access), `errorNormalization.js` — no `dashboardService.js` exists; the Dashboard (Phase 5F) composes these same modules directly |
+| `src/navigation/` | `navigationConfig.js` — role → nav item mapping, data only; `Dashboard` is the first entry for every role since Phase 5F, otherwise unchanged since Phase 5A — its Departments/Administrators/Users/Notifications entries already pointed at the eventual routes |
 | `src/layouts/` | `AppShell`/`Sidebar`/`Topbar` — the authenticated app's chrome; `Topbar` renders `NotificationBell` since Phase 5E |
-| `src/pages/` | `LoginPage`/`SignupPage` (auth/account UX, Phase 5B), `LetterListPage`/`LetterFormPage`/`LetterDetailPage` (Letter registry, Phase 5C; `LetterDetailPage` gained a real Documents section in Phase 5E), `DepartmentListPage`/`DepartmentCreatePage`/`DepartmentDetailPage`/`AdminListPage`/`AdminAuthorizePage`/`AdminDetailPage`/`UserListPage`/`UserAuthorizePage`/`UserAuthorizationsPage`/`UserDetailPage` (administration, Phase 5D), `NotificationsPage` (Phase 5E, at `/app/notifications`), `RootRedirect`, `PlaceholderPage` (every remaining unbuilt business feature screen renders this generic placeholder) |
-| `src/components/` | `LoadingState`/`ErrorState`/`EmptyState` — reusable primitives; `PendingApprovalNotice`/`DeactivatedAccountNotice` — account-state notices; `LetterTable`/`LetterFilters`/`Pagination`/`ArchiveConfirmDialog` — Letter registry components (Phase 5C); `StatusBadge` (Phase 5C, extended in Phase 5D); `ConfirmDialog`/`AdminTransferDialog`/`DepartmentSelector`/`DepartmentForm`/`DepartmentTable`/`AdminTable`/`UserTable`/`AuthorizationTable` — administration components (Phase 5D); `DocumentUploadForm`/`DocumentList`/`NotificationBell`/`NotificationPanel`/`NotificationItem` — documents/notifications components (Phase 5E) |
+| `src/pages/` | `LoginPage`/`SignupPage` (auth/account UX, Phase 5B), `LetterListPage`/`LetterFormPage`/`LetterDetailPage` (Letter registry, Phase 5C; `LetterDetailPage` gained a real Documents section in Phase 5E), `DepartmentListPage`/`DepartmentCreatePage`/`DepartmentDetailPage`/`AdminListPage`/`AdminAuthorizePage`/`AdminDetailPage`/`UserListPage`/`UserAuthorizePage`/`UserAuthorizationsPage`/`UserDetailPage` (administration, Phase 5D), `NotificationsPage` (Phase 5E, at `/app/notifications`), `DashboardPage` (Phase 5F, at `/app/dashboard`), `RootRedirect`, `PlaceholderPage` (every remaining unbuilt business feature screen renders this generic placeholder) |
+| `src/components/` | `LoadingState`/`ErrorState`/`EmptyState` — reusable primitives; `PendingApprovalNotice`/`DeactivatedAccountNotice` — account-state notices; `LetterTable`/`LetterFilters`/`Pagination`/`ArchiveConfirmDialog` — Letter registry components (Phase 5C); `StatusBadge` (Phase 5C, extended in Phase 5D); `ConfirmDialog`/`AdminTransferDialog`/`DepartmentSelector`/`DepartmentForm`/`DepartmentTable`/`AdminTable`/`UserTable`/`AuthorizationTable` — administration components (Phase 5D); `DocumentUploadForm`/`DocumentList`/`NotificationBell`/`NotificationPanel`/`NotificationItem` — documents/notifications components (Phase 5E); `SummaryCard`/`RecentLetters`/`QuickActions` — dashboard components (Phase 5F) |
 | `src/styles/` | `tokens.css` (design tokens), `global.css` (minimal reset, plus a `.sr-only` utility added in Phase 5D) |
 | `src/test/` | `setup.js` — Vitest/Testing-Library wiring, shared by every test file |
 | `src/utils/` | `formValidation.js` — lightweight, dependency-free form validation (auth forms, `validateLetterForm` since Phase 5C, `validateDepartmentForm`/`validateAdminAuthorizeForm`/`validateUserAuthorizeForm` since Phase 5D, `validateDocumentFile` since Phase 5E); `statusLabels.js` (Phase 5D) — human-readable labels for the raw enum values `StatusBadge` renders |
@@ -327,7 +380,7 @@ this project has used since Phase 4B, with nothing distinguishing
 
 ## Testing
 
-Vitest + React Testing Library (`npm run test`). 225 tests across 32
+Vitest + React Testing Library (`npm run test`). 249 tests across 36
 files. Auth/foundation (unchanged since Phase 5B):
 `services/errorNormalization.test.js`, `navigation/navigationConfig.test.js`,
 `routes/ProtectedRoute.test.jsx`, `routes/routing.test.jsx`,
@@ -358,11 +411,41 @@ tests), `components/NotificationPanel.test.jsx`,
 — no such test previously existed) — including coverage that mark-read
 never fires on Letter-link navigation, that no `is_read`/recipient
 parameter is ever sent, and that a notification pointing at an
-inaccessible Letter renders the ordinary generic 404. The API layer is
-mocked in every test; none of these tests requires a running backend.
+inaccessible Letter renders the ordinary generic 404. Dashboard (Phase
+5F, new): `components/SummaryCard.test.jsx`, `components/
+RecentLetters.test.jsx`, `components/QuickActions.test.jsx`,
+`pages/DashboardPage.test.jsx` (11 tests — including per-role card/
+quick-action rendering with explicit assertions that the *wrong* role's
+cards/requests never fire, exact request-parameter shape proving no
+`department_id` or oversized `page_size` is ever sent, independent
+partial-widget failure, and that a failed card shows "Unavailable"
+rather than a fabricated `0`); `navigation/navigationConfig.test.js`
+extended for the new `Dashboard` entry. The API layer is mocked in
+every test; none of these tests requires a running backend.
+
+Vitest's per-test timeout is raised to 10 seconds (`vite.config.js`,
+Phase 5F) — the 5-second default started intermittently missing on
+`LetterFormPage.test.jsx`'s character-by-character `userEvent.type`
+interactions purely from worker-thread contention once the suite grew
+past ~30 files (confirmed non-deterministic in isolation vs. full-suite
+runs, not a logic defect); this raises headroom for every test rather
+than special-casing one file.
 
 ## Known limitations
 
+* **No dashboard chart, trend, or breakdown of any kind** (Phase 5F, a
+  CONFIRMED backend-contract limitation) — no aggregate/group-by
+  endpoint exists for Letters, and no audit read API exists at all;
+  every such metric remained `PENDING BACKEND API` in the review and
+  none was built. See `docs/architecture/dashboard.md` §12/§32.
+* **No dashboard filter controls** (date range, category,
+  classification, department) — left `PENDING BUSINESS CLARIFICATION`
+  in the review as unconfirmed wants; none was built. See
+  `docs/architecture/dashboard.md` §18/§32.
+* **Administration dashboard cards cost a full-object list fetch**
+  (Phase 5F, restating the same Phase 5D limitation) — Departments/
+  Admins/Users have no pagination or database `COUNT`; acceptable at
+  current scale. See `docs/architecture/dashboard.md` §9/§32.
 * **60-second unread-count polling interval** (Phase 5E) —
   `PROVISIONAL`, centralized as `POLL_INTERVAL_MS` in
   `NotificationBell.jsx`; not backed by a confirmed business
@@ -419,9 +502,9 @@ mocked in every test; none of these tests requires a running backend.
   during tests (`v7_startTransition`, `v7_relativeSplatPath`) — informational
   only, not a functional issue; not addressed this phase.
 
-The structure anticipates the remaining feature set (dashboards,
-reporting, an audit read API, Category/Classification management) —
-see `docs/architecture/frontend.md` and
-`docs/architecture/document-notification-ui.md` for the complete
-design and `docs/PROJECT_STATUS.md` for what's built versus still
-pending.
+The structure anticipates the remaining feature set (dashboard
+analytics, reporting, an audit read API, Category/Classification
+management) — see `docs/architecture/frontend.md`,
+`docs/architecture/document-notification-ui.md`, and
+`docs/architecture/dashboard.md` for the complete design and
+`docs/PROJECT_STATUS.md` for what's built versus still pending.

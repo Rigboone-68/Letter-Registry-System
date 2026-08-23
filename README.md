@@ -2,13 +2,13 @@
 
 **A Production of AJ-Labs**
 
-> **Current status: Phase 5E — Documents & Notifications UI
-> implemented (Phase 5D Administration & Account Management UI
-> implemented; Phase 5C Core Registry UI implemented; Phase 5B
-> Authentication & Account UX implemented; Phase 5A Frontend Foundation
-> implemented; Phase 5 architecture/UX review complete; Phase 4E
-> Operational Activity, Notifications & Audit implemented; Phase 3B
-> complete).**
+> **Current status: Phase 5F — Dashboard & Operational Overview UI
+> implemented (Phase 5E Documents & Notifications UI implemented; Phase
+> 5D Administration & Account Management UI implemented; Phase 5C Core
+> Registry UI implemented; Phase 5B Authentication & Account UX
+> implemented; Phase 5A Frontend Foundation implemented; Phase 5
+> architecture/UX review complete; Phase 4E Operational Activity,
+> Notifications & Audit implemented; Phase 3B complete).**
 > Local email/password login, JWT access tokens, role-based access
 > control, System-Admin-controlled department management,
 > System-Admin-controlled Admin management, and Admin-controlled User
@@ -156,8 +156,34 @@
 > parent Letter is classified-inaccessible. Test suite grown from 159
 > to 225 tests, run 3 consecutive times with identical results. See
 > `docs/architecture/document-notification-ui.md` §27 for the full
-> implementation record and `docs/PROJECT_STATUS.md` for the full
-> picture.
+> implementation record. Phase 5F then first reviewed, then
+> implemented, the Dashboard & Operational Overview frontend: every
+> business endpoint (twelve mounted routers) was re-read fresh,
+> confirming no dashboard/summary/aggregate/audit-read endpoint exists
+> anywhere, that `GET /letters`'s `total` is a real, already department/
+> classified-visibility-scoped SQL `COUNT` (so a Letter count is cheap
+> and needs no frontend filtering), and that
+> `GET /departments`/`/admins`/`/users`/`/categories`/`/classifications`
+> have no pagination at all — each returns its complete matching result
+> set, with `total` just `len()` in Python. A full metric inventory
+> found every current-operational-state figure (letter counts, pending
+> approvals, active departments/admins/users, unread notifications)
+> already available from existing, correctly-isolated requests, while
+> every historical/trend/analytical metric requires a new backend
+> aggregate endpoint or the audit read API that doesn't yet exist —
+> supporting, without confirming as a business requirement, an
+> operational-only V1. `/app/dashboard` now renders one role-aware
+> `DashboardPage`: Total/Active/Archived Letters and Unread
+> Notifications for every role, Active Departments + Pending Admin
+> Approvals for SYSTEM_ADMIN, Active Users + Pending User Approvals for
+> ADMIN, a 5-item Recent Letters list, and role-scoped Quick Actions
+> linking only to already-existing screens. No chart, trend, filter
+> control, or document metric was built. No charting library is
+> installed and none was added; the existing `NotificationBell` polling
+> is untouched. Test suite grown to 249 tests, run 3 consecutive times
+> with identical results. See `docs/architecture/dashboard.md` §32 for
+> the full implementation record and `docs/PROJECT_STATUS.md` for the
+> full picture.
 
 ---
 
@@ -371,13 +397,15 @@ backend.
 | 5C | Core Registry UI: Letter list/search/sort/paginate, create/view/edit/archive, driven entirely by the confirmed `GET/POST/PATCH/DELETE /api/v1/letters*` contract; a confirmed category/classification reference-data access gap resolved (not hardcoded around); test suite grown to 84 tests. No Document/Notification/Administration UI. | **Complete** |
 | 5D | Administration & Account Management UI: Department/Administrator/User management screens — list/create/detail, Admin/User authorization workflows, approve/deactivate/reactivate lifecycle, Admin department transfer — driven entirely by the confirmed Department/Admin/User backend contract (no pagination/search/sort exists on any of the four resources, unlike Letters, so none was invented); test suite grown to 159 tests. No Document/Notification/Category/Classification UI. | **Complete** |
 | 5E | Documents & Notifications UI: architecture/requirements review of the Document upload/list/download and Notification frontend against the confirmed `documents.py`/`notifications.py` backend contract — confirms fetch+blob is required for downloads, no document delete/replace endpoint exists, and designs the full component/service/route/security/test architecture. Review only, no frontend code. | **Complete (review only)** |
-| **5E impl.** | Documents & Notifications UI implementation: `DocumentList`/`DocumentUploadForm` wired into `LetterDetailPage` (upload with progress, authenticated blob download, no delete/replace action), `NotificationBell`/`NotificationPanel`/`NotificationItem` wired into `Topbar` and a real paginated `/app/notifications` page, explicit-button-only mark-read, 60-second (`PROVISIONAL`) unread-count polling — driven entirely by the confirmed Document/Notification backend contract; test suite grown to 225 tests. | **Complete** |
-| 6 | Dashboards, reporting, additional notification triggers, audit read API, Category/Classification management UI | Not started |
+| 5E impl. | Documents & Notifications UI implementation: `DocumentList`/`DocumentUploadForm` wired into `LetterDetailPage` (upload with progress, authenticated blob download, no delete/replace action), `NotificationBell`/`NotificationPanel`/`NotificationItem` wired into `Topbar` and a real paginated `/app/notifications` page, explicit-button-only mark-read, 60-second (`PROVISIONAL`) unread-count polling — driven entirely by the confirmed Document/Notification backend contract; test suite grown to 225 tests. | **Complete** |
+| 5F | Dashboard & Operational Overview UI: architecture/requirements review against all twelve mounted business routers — confirms no dashboard/aggregate/audit-read endpoint exists, that Letter counts are cheap and already correctly isolated (real SQL `COUNT`) while Department/Admin/User/Category/Classification counts cost a full-list fetch (no pagination, no DB `COUNT`), and that every historical/trend metric requires new backend work. Full metric inventory, role-specific requirements, and an operational-only V1 recommendation. Review only, no frontend code. | **Complete (review only)** |
+| **5F impl.** | Dashboard & Operational Overview UI implementation: `/app/dashboard` — role-aware summary cards (Letters for every role; Departments/Admins for SYSTEM_ADMIN; Users for ADMIN), a Recent Letters list, and role-scoped Quick Actions to already-existing screens — driven entirely by existing, already-isolated endpoints; no chart, trend, filter control, or new backend endpoint; test suite grown to 249 tests. | **Complete** |
+| 6 | Additional notification triggers, audit read API, Category/Classification management UI, dashboard analytics (if ever confirmed) | Not started |
 
-See `docs/PROJECT_STATUS.md` for what Phase 5E delivered,
-`docs/architecture/document-notification-ui.md` §27 for the full
-implementation record, and known limitations. The next phase begins
-only when explicitly instructed.
+See `docs/PROJECT_STATUS.md` for what Phase 5F delivered,
+`docs/architecture/dashboard.md` §32 for the full implementation
+record, and known limitations. The next phase begins only when
+explicitly instructed.
 
 ---
 

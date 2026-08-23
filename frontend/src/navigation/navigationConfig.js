@@ -17,10 +17,16 @@
  * No department id appears anywhere in this file — department scoping
  * is entirely server-derived (docs/architecture/frontend.md §13); there
  * is nothing here for a route to parameterize on.
+ *
+ * "Dashboard" (Phase 5F, docs/architecture/dashboard.md §4) is the one
+ * entry every role gets first — a single real page, not a placeholder,
+ * that renders role-appropriate content itself rather than needing a
+ * separate nav entry per role's own dashboard variant.
  */
 
 export const NAVIGATION_BY_ROLE = Object.freeze({
   SYSTEM_ADMIN: [
+    { label: 'Dashboard', path: '/app/dashboard' },
     { label: 'Letters', path: '/app/system/letters' },
     { label: 'Documents', path: '/app/documents' },
     { label: 'Notifications', path: '/app/notifications' },
@@ -30,12 +36,14 @@ export const NAVIGATION_BY_ROLE = Object.freeze({
     { label: 'Classifications', path: '/app/system/classifications' },
   ],
   ADMIN: [
+    { label: 'Dashboard', path: '/app/dashboard' },
     { label: 'Letters', path: '/app/letters' },
     { label: 'Documents', path: '/app/documents' },
     { label: 'Notifications', path: '/app/notifications' },
     { label: 'Users', path: '/app/admin/users' },
   ],
   USER: [
+    { label: 'Dashboard', path: '/app/dashboard' },
     { label: 'Letters', path: '/app/letters' },
     { label: 'Documents', path: '/app/documents' },
     { label: 'Notifications', path: '/app/notifications' },

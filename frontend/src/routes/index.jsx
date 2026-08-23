@@ -15,6 +15,14 @@
  * were placeholders through Phase 5C — each as a nested route group
  * behind one `RoleGuard` layout instance, rather than repeating the
  * guard on every child route.
+ *
+ * Phase 5F (docs/architecture/dashboard.md §4) adds `dashboard` as a
+ * plain, unguarded child route — available to every role, since the
+ * page itself renders role-appropriate content rather than needing a
+ * `RoleGuard`. The index redirect intentionally still goes to
+ * `letters`, not `dashboard` — preserving the existing landing
+ * behavior was an explicit implementation-brief instruction, not an
+ * oversight.
  */
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 
@@ -22,6 +30,7 @@ import AppShell from '../layouts/AppShell'
 import AdminAuthorizePage from '../pages/AdminAuthorizePage'
 import AdminDetailPage from '../pages/AdminDetailPage'
 import AdminListPage from '../pages/AdminListPage'
+import DashboardPage from '../pages/DashboardPage'
 import DepartmentCreatePage from '../pages/DepartmentCreatePage'
 import DepartmentDetailPage from '../pages/DepartmentDetailPage'
 import DepartmentListPage from '../pages/DepartmentListPage'
@@ -52,6 +61,7 @@ export const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { index: true, element: <Navigate to="letters" replace /> },
+          { path: 'dashboard', element: <DashboardPage /> },
           { path: 'letters', element: <LetterListPage /> },
           { path: 'letters/new', element: <LetterFormPage /> },
           { path: 'letters/:id', element: <LetterDetailPage /> },
