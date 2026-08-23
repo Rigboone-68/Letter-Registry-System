@@ -24,13 +24,18 @@ department/status from `GET /auth/me` or the login response's own
 role-derived navigation, the app shell), Phase 5B then implemented the
 complete authentication/account experience on top of that foundation
 (login, signup, pending-approval, deactivated-account, session
-restoration, logout, redirects), and Phase 5C then implemented the
-complete Letter registry on top of both — list/search/sort/paginate,
-create/view/edit/archive — rendering `items`/`total` exactly as the
-backend returns them and every Letter `404` identically, verified
-directly against this implementation, not just designed for it. Document/
-Notification/Administration screens still do not exist — this document
-explains the roles and hierarchy
+restoration, logout, redirects), Phase 5C then implemented the complete
+Letter registry on top of both — list/search/sort/paginate, create/
+view/edit/archive — rendering `items`/`total` exactly as the backend
+returns them and every Letter `404` identically, and Phase 5D then
+implemented the Department/Administrator/User management UI — the
+System Admin's authority over Departments and Admins, and an Admin's
+authority over Users within their own department, both now have a real
+frontend exercising exactly the role/department checks
+`app/services/authorization.py` and `app/api/deps.py` already enforce,
+verified directly against this implementation rather than only
+designed for it. Document/Notification screens still do not exist —
+this document explains the roles and hierarchy
 the database schema is
 built to support, how a caller's identity is established (Phase 3A), how
 role/department authorization decisions are enforced on top of that
@@ -755,6 +760,50 @@ are now a complete V1 Letter registry.
   `recipient_department_id`/`recorded_by`/`status` can never be
   injected), archive confirmation and non-permanent wording, and
   role-based UI differences.
+* **No backend file was touched** — confirmed by `git status` and a full
+  backend regression run (458 passed, unaffected) before and after.
+
+### Implemented (Phase 5D — Administration & Account Management UI)
+
+Built directly on Phase 5D's own architecture review
+([`administration-ui.md`](administration-ui.md)) — no new architecture
+decisions, only the ones already recommended, built.
+
+* **Department management** (SYSTEM_ADMIN) — list/create/detail with
+  inline edit, activate (unconfirmed, purely restorative)/deactivate
+  (confirmed, explains the operational impact on every Admin/User in
+  that department).
+* **Administrator management** (SYSTEM_ADMIN) — list (status +
+  department filters), a dedicated Authorize form, and a detail page
+  whose actions are entirely status-gated per the backend's own
+  lifecycle: Approve (confirmed, not idempotent), Deactivate + Transfer
+  (`ACTIVE` only), Reactivate (`DEACTIVATED` only, not confirmed).
+* **Admin department transfer** — states verbatim, using the backend's
+  own confirmed guarantee, that historical Letters are never
+  reassigned; destination limited to `ACTIVE` departments.
+* **User management** (ADMIN, own department only) — list, a
+  single-field Authorize form (`UserAuthorizationCreate` has no
+  `department_id` at all — the strongest possible structural guarantee
+  against department-injection for this form), a separate department-
+  wide Authorizations list with creator-scoped Revoke, and a detail page
+  with the same status-gated action set as Admins, one level down.
+* **The backend's read/lock-down vs. state-elevating asymmetry
+  preserved, not flattened** — a `403` on User Approve/Reactivate is
+  phrased around the *Admin's own* department, never the target
+  account; Deactivate (which can never return that `403`) shows no such
+  warning. Verified by a dedicated test.
+* **System Admin protection and Admin self-targeting prevention are
+  both structural** — confirmed directly in the backend's own
+  role-filtered repository lookups (`find_admin_by_id`/
+  `find_user_by_id`); no endpoint can ever resolve a SYSTEM_ADMIN id or
+  an Admin's own id, so no frontend check exists for either case.
+* **Every confirmed backend gap respected, not routed around** — no
+  pagination/search/sort UI (none exists on any of the four resources);
+  no department field on the User authorization form; no revoke action
+  for Admin-purpose authorizations (no such endpoint exists); no
+  department/admin/user counts anywhere (no such field exists).
+* **Test suite grown from 84 to 159 tests**, run 3 consecutive times
+  with identical results.
 * **No backend file was touched** — confirmed by `git status` and a full
   backend regression run (458 passed, unaffected) before and after.
 

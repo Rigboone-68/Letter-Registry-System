@@ -1,0 +1,262 @@
+/**
+ * Shared layout for every Phase 5D administration page (Departments/
+ * Administrators/Users/User-authorizations — list, create, detail,
+ * authorize) — the same token-driven, CSS-Modules-only approach
+ * `LetterListPage.module.css`/`LetterFormPage.module.css`/
+ * `LetterDetailPage.module.css` (Phase 5C) already established, shared
+ * here across ten smaller pages instead of duplicated ten times, since
+ * their layout needs are far more homogeneous than the three distinct
+ * Letter page types were.
+ */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.header h1 {
+  margin: 0;
+  font-size: var(--font-size-xl);
+}
+
+.count {
+  margin: var(--space-2xs) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.headerActions button {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.createLink {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  font-weight: var(--font-weight-medium);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+}
+
+.filters .field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  min-width: 160px;
+}
+
+.filters label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.filters select,
+.filters input {
+  padding: var(--space-sm);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  font: inherit;
+}
+
+.formCard {
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-xl);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.field label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.field input,
+.field select,
+.field textarea {
+  padding: var(--space-sm);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.field input[aria-invalid='true'],
+.field select[aria-invalid='true'] {
+  border-color: var(--color-danger);
+}
+
+.fieldError {
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.submit {
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cancel {
+  padding: var(--space-sm) var(--space-lg);
+  background: transparent;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.detailCard {
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.backLink {
+  display: inline-block;
+  margin-bottom: var(--space-sm);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  text-decoration: none;
+}
+
+.detailHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.titleRow h1 {
+  margin: 0;
+  font-size: var(--font-size-xl);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-md) var(--space-lg);
+  margin: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+}
+
+.gridField dt {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-2xs);
+}
+
+.gridField dd {
+  margin: 0;
+}
+
+.actionsPanel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.actionsPanel button,
+.actionsPanel a {
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-weight: var(--font-weight-medium);
+  text-decoration: none;
+  background: transparent;
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.actionsPanel button:hover,
+.actionsPanel a:hover {
+  background: var(--color-bg);
+}
+
+.actionsPanel .primary {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border-color: var(--color-primary);
+}
+
+@media (max-width: 767px) {
+  .header,
+  .detailHeader {
+    flex-direction: column;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

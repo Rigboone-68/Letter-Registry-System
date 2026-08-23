@@ -19,3 +19,15 @@
   color: var(--color-text-muted);
   border-color: var(--color-border-strong);
 }
+
+.warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
+  border-color: var(--color-warning-text);
+}
+
+.negative {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}

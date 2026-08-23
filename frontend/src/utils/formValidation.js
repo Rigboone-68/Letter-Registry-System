@@ -92,3 +92,61 @@ export function validateLetterForm({ reference_number, subject, source_name, sen
 
   return errors
 }
+
+/**
+ * Mirrors `DepartmentCreate`/`DepartmentUpdate`'s own required-ness
+ * (backend/app/schemas/department.py): `name` is always required at
+ * creation; `code` is always optional. `DepartmentUpdate`'s own
+ * "at least one of name or code" rule is a server-side edit-mode
+ * concern (nothing to validate client-side for a create form, which
+ * always supplies a name), so it is not duplicated here.
+ */
+export function validateDepartmentForm({ name }) {
+  const errors = {}
+
+  if (isBlank(name)) {
+    errors.name = 'Name is required.'
+  }
+
+  return errors
+}
+
+/**
+ * Mirrors `AdminAuthorizationCreate` (backend/app/schemas/admin.py):
+ * `email` and `department_id` are both required — a System Admin
+ * genuinely chooses a destination department, unlike User
+ * authorization below.
+ */
+export function validateAdminAuthorizeForm({ email, department_id }) {
+  const errors = {}
+
+  if (isBlank(email)) {
+    errors.email = 'Email is required.'
+  } else if (!isValidEmailFormat(email)) {
+    errors.email = 'Enter a valid email address.'
+  }
+
+  if (isBlank(department_id)) {
+    errors.department_id = 'Department is required.'
+  }
+
+  return errors
+}
+
+/**
+ * Mirrors `UserAuthorizationCreate` (backend/app/schemas/user.py):
+ * `email` only — there is no `department_id` field on this schema at
+ * all, since it is always derived from the calling Admin's own
+ * department server-side.
+ */
+export function validateUserAuthorizeForm({ email }) {
+  const errors = {}
+
+  if (isBlank(email)) {
+    errors.email = 'Email is required.'
+  } else if (!isValidEmailFormat(email)) {
+    errors.email = 'Enter a valid email address.'
+  }
+
+  return errors
+}

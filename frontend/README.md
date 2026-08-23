@@ -1,14 +1,17 @@
 # LRS Frontend
 
-React + Vite client for the Letter Registry System. **Phase 5C: Core
-Registry UI — implemented**, on top of Phase 5B's authentication/account
-UX, Phase 5A's foundation, and Phase 5's own architecture/UX review
-(`docs/architecture/frontend.md`). Login, signup, pending-approval and
-deactivated-account states, session restoration, and logout are all in
-place, and the Letter registry — list/search/sort/paginate, create,
-view, edit, and archive — now exists and works against the real
-backend. **Document upload/download, Notifications, and every
-administration screen are still placeholders**; see
+React + Vite client for the Letter Registry System. **Phase 5D:
+Administration & Account Management UI — implemented**, on top of Phase
+5C's core Letter registry, Phase 5B's authentication/account UX, Phase
+5A's foundation, and Phase 5's own architecture/UX review
+(`docs/architecture/frontend.md`, `docs/architecture/administration-ui.md`).
+Login, signup, session restoration, and logout are all in place; the
+Letter registry — list/search/sort/paginate, create, view, edit, and
+archive — works against the real backend; and Department/Administrator/
+User management — list/create/detail, authorization workflows,
+lifecycle actions, and Admin department transfer — now exists and works
+against the real backend too. **Document upload/download and
+Notifications UI are still placeholders**; see
 `docs/architecture/frontend.md` §32 for the recommended build-out
 sequence.
 
@@ -168,6 +171,67 @@ see; it renders exactly what `GET`/`POST`/`PATCH`/`DELETE
   `services/categoryService.js`/`classificationService.js`/
   `departmentService.js`.
 
+## Administration & account management (Phase 5D)
+
+Same UX-conveniences-only boundary as the Letter registry above —
+nothing here decides, filters, or infers what the caller may manage; it
+renders exactly what `GET`/`POST`/`PATCH`/`DELETE
+/api/v1/{departments,admins,users}*` returns.
+
+* **Departments** (`pages/DepartmentListPage.jsx`/`DepartmentCreatePage.jsx`/
+  `DepartmentDetailPage.jsx`, `/app/system/departments*`, SYSTEM_ADMIN
+  only) — list (`status` filter, the only one the backend supports),
+  create, and one detail page with an inline edit mode rather than a
+  separate edit route (the two-field edit surface didn't justify the
+  split, unlike Letters). Activate has no confirmation dialog (purely
+  restorative); Deactivate does, explaining its real operational impact
+  without ever using "delete."
+* **Administrators** (`pages/AdminListPage.jsx`/`AdminAuthorizePage.jsx`/
+  `AdminDetailPage.jsx`, `/app/system/admins*`, SYSTEM_ADMIN only) —
+  list (`status` + `department_id` filters, both real backend
+  parameters here), a dedicated Authorize form (`email` +
+  `department_id`, `ACTIVE`-only options), and a detail page whose
+  actions are entirely status-gated: Approve (confirmed — not
+  idempotent server-side), Deactivate + Transfer (`ACTIVE` only),
+  Reactivate (`DEACTIVATED` only, not confirmed).
+* **Admin transfer** (`components/AdminTransferDialog.jsx`) — states
+  verbatim, using the backend's own confirmed guarantee
+  (`app/services/admin_service.py:change_admin_department`), that
+  historical Letters are never reassigned; a `409` (destination
+  department not active) surfaces inline in the dialog, not as a
+  page-level error.
+* **Users** (`pages/UserListPage.jsx`/`UserAuthorizePage.jsx`/
+  `UserAuthorizationsPage.jsx`/`UserDetailPage.jsx`,
+  `/app/admin/users*`, ADMIN only) — the Authorize form has a single
+  `email` field, matching `UserAuthorizationCreate` exactly (there is
+  no `department_id` field on that schema at all — the target
+  department is always the calling Admin's own). A separate,
+  department-wide Authorizations list (defaults to `status=ACTIVE`)
+  shows a creator-scoped Revoke action on every `ACTIVE` row — the
+  response has no field to pre-filter by creator, so a mismatched
+  attempt simply 404s generically, like any other.
+* **The backend's read/lock-down vs. state-elevating asymmetry is
+  preserved, not flattened** — Deactivate/Revoke/list actions never
+  require the acting Admin's own department to be `ACTIVE`; Authorize/
+  Approve/Reactivate do, and can `403` for a reason that has nothing to
+  do with the target account. `UserDetailPage` phrases that `403`
+  specifically around the Admin's *own* department, never the target
+  User.
+* **System Admin protection and Admin self-targeting prevention are
+  both structural** — no endpoint can ever resolve a SYSTEM_ADMIN id or
+  an Admin's own id (role-filtered repository lookups on the backend),
+  so no frontend check exists or was added for either case; both simply
+  404 like any other unresolvable id.
+* **Three status enums, three visually distinct badge tones, never
+  merged** — `StatusBadge` (extended, not replaced) renders
+  `PENDING_APPROVAL` as a warning tone and `REVOKED` as a negative tone,
+  distinct from a plain `DEACTIVATED`/`USED` neutral, with an optional
+  `domain` prop as an accessible-name prefix.
+* **API service layer** — `services/adminService.js`/`userService.js`
+  (new), plus `services/departmentService.js` (extended from Phase 5C's
+  single `list()` export to the full create/read/update/activate/
+  deactivate set — existing zero-arg callers are unaffected).
+
 ## Source layout
 
 | Path | Responsibility |
@@ -176,14 +240,14 @@ see; it renders exactly what `GET`/`POST`/`PATCH`/`DELETE
 | `src/App.jsx` | Provides `AuthProvider` and mounts the router |
 | `src/routes/` | `router` (route tree), `ProtectedRoute` (authentication guard), `RoleGuard` (role-based navigation convenience, not security) |
 | `src/context/` | `AuthContext` — the one authentication state mechanism |
-| `src/services/` | `apiClient.js` (the one Axios instance), `authService.js` (login/signup/me), `letterService.js` (Phase 5C), `categoryService.js`/`classificationService.js`/`departmentService.js` (thin, SYSTEM_ADMIN-only reference-data wrappers, Phase 5C), `tokenStorage.js` (isolated token access), `errorNormalization.js` |
-| `src/navigation/` | `navigationConfig.js` — role → nav item mapping, data only |
+| `src/services/` | `apiClient.js` (the one Axios instance), `authService.js` (login/signup/me), `letterService.js` (Phase 5C), `categoryService.js`/`classificationService.js` (thin, SYSTEM_ADMIN-only reference-data wrappers, Phase 5C), `departmentService.js` (Phase 5C reference-data + Phase 5D full CRUD/lifecycle), `adminService.js`/`userService.js` (Phase 5D), `tokenStorage.js` (isolated token access), `errorNormalization.js` |
+| `src/navigation/` | `navigationConfig.js` — role → nav item mapping, data only (unchanged since Phase 5A — its Departments/Administrators/Users entries already pointed at the Phase 5D routes) |
 | `src/layouts/` | `AppShell`/`Sidebar`/`Topbar` — the authenticated app's chrome |
-| `src/pages/` | `LoginPage`/`SignupPage` (auth/account UX, Phase 5B), `LetterListPage`/`LetterFormPage`/`LetterDetailPage` (Letter registry, Phase 5C), `RootRedirect`, `PlaceholderPage` (every unbuilt business feature screen renders this generic placeholder for now) |
-| `src/components/` | `LoadingState`/`ErrorState`/`EmptyState` — reusable primitives; `PendingApprovalNotice`/`DeactivatedAccountNotice` — account-state notices; `LetterTable`/`LetterFilters`/`Pagination`/`StatusBadge`/`ArchiveConfirmDialog` — Letter registry components (Phase 5C) |
-| `src/styles/` | `tokens.css` (design tokens — colors/spacing/typography/radius/shadow/breakpoints), `global.css` (minimal reset) |
+| `src/pages/` | `LoginPage`/`SignupPage` (auth/account UX, Phase 5B), `LetterListPage`/`LetterFormPage`/`LetterDetailPage` (Letter registry, Phase 5C), `DepartmentListPage`/`DepartmentCreatePage`/`DepartmentDetailPage`/`AdminListPage`/`AdminAuthorizePage`/`AdminDetailPage`/`UserListPage`/`UserAuthorizePage`/`UserAuthorizationsPage`/`UserDetailPage` (administration, Phase 5D), `RootRedirect`, `PlaceholderPage` (every remaining unbuilt business feature screen renders this generic placeholder) |
+| `src/components/` | `LoadingState`/`ErrorState`/`EmptyState` — reusable primitives; `PendingApprovalNotice`/`DeactivatedAccountNotice` — account-state notices; `LetterTable`/`LetterFilters`/`Pagination`/`ArchiveConfirmDialog` — Letter registry components (Phase 5C); `StatusBadge` (Phase 5C, extended in Phase 5D); `ConfirmDialog`/`AdminTransferDialog`/`DepartmentSelector`/`DepartmentForm`/`DepartmentTable`/`AdminTable`/`UserTable`/`AuthorizationTable` — administration components (Phase 5D) |
+| `src/styles/` | `tokens.css` (design tokens), `global.css` (minimal reset, plus a `.sr-only` utility added in Phase 5D) |
 | `src/test/` | `setup.js` — Vitest/Testing-Library wiring, shared by every test file |
-| `src/utils/` | `formValidation.js` — lightweight, dependency-free form validation (auth forms, and `validateLetterForm` since Phase 5C) |
+| `src/utils/` | `formValidation.js` — lightweight, dependency-free form validation (auth forms, `validateLetterForm` since Phase 5C, `validateDepartmentForm`/`validateAdminAuthorizeForm`/`validateUserAuthorizeForm` since Phase 5D); `statusLabels.js` (Phase 5D) — human-readable labels for the raw enum values `StatusBadge` renders |
 | `src/assets/`, `src/hooks/`, `src/constants/` | Still mostly placeholders (`constants/app.js` has real content); populated as feature work needs them |
 
 ## Conventions
@@ -206,32 +270,45 @@ see; it renders exactly what `GET`/`POST`/`PATCH`/`DELETE
 
 ## Testing
 
-Vitest + React Testing Library (`npm run test`). 84 tests across 17
-files. Auth/foundation (unchanged from Phase 5B):
+Vitest + React Testing Library (`npm run test`). 159 tests across 25
+files. Auth/foundation (unchanged since Phase 5B):
 `services/errorNormalization.test.js`, `navigation/navigationConfig.test.js`,
 `routes/ProtectedRoute.test.jsx`, `routes/routing.test.jsx`,
 `context/AuthContext.test.jsx`, `pages/LoginPage.test.jsx`,
-`pages/SignupPage.test.jsx`. Letter registry (Phase 5C):
-`utils/formValidation.test.js` (extended with `validateLetterForm`),
-`components/LetterTable.test.jsx` (accessible headers, `aria-sort`,
-sort-click behavior, conditional columns, row links),
-`components/Pagination.test.jsx` (single-page collapse, `aria-current`,
-boundary disabling), `pages/LetterListPage.test.jsx` (successful list,
-empty state, API failure with retry, URL-encoded request params,
-filter-resets-page, clear-resets-filters-and-sort, sort toggling,
-role-based Create-link/department-column visibility, no reference-data
-requests for non-SYSTEM_ADMIN), `pages/LetterDetailPage.test.jsx` (field
-rendering, generic 404 with no classified/permission language, retry,
-archive dialog copy, successful/failed archive, hidden action once
-archived), `pages/LetterFormPage.test.jsx` (required-field validation,
-create success, 422 field errors, 403 forbidden, exact payload shape on
-create and edit, no category/classification field on create for any
-role, edit pre-fill, edit 404, category/classification visible only for
-SYSTEM_ADMIN on edit) — the API layer is mocked in every test; none of
-these tests requires a running backend.
+`pages/SignupPage.test.jsx`. Letter registry (Phase 5C, unchanged):
+`components/LetterTable.test.jsx`, `components/Pagination.test.jsx`,
+`pages/LetterListPage.test.jsx`, `pages/LetterDetailPage.test.jsx`,
+`pages/LetterFormPage.test.jsx`. `utils/formValidation.test.js` now
+covers all six validators across Phase 5B/5C/5D. Administration
+(Phase 5D, new): `components/ConfirmDialog.test.jsx` (dialog
+accessibility, focus, Escape, backdrop click, Tab-trap),
+`routes/RoleGuard.test.jsx` (both usage modes, including the new
+`<Outlet/>` layout-route behavior), `pages/DepartmentListPage.test.jsx`/
+`DepartmentCreatePage.test.jsx`/`DepartmentDetailPage.test.jsx`,
+`pages/AdminListPage.test.jsx`/`AdminAuthorizePage.test.jsx`/
+`AdminDetailPage.test.jsx` (including the transfer flow, an
+approval-race 409, and a transfer-destination-not-active 409),
+`pages/UserListPage.test.jsx`/`UserAuthorizePage.test.jsx`/
+`UserAuthorizationsPage.test.jsx`/`UserDetailPage.test.jsx` (including
+the default-`ACTIVE`-filter behavior, a used-authorization 409 race, and
+the 403-department-phrasing test) — the API layer is mocked in every
+test; none of these tests requires a running backend.
 
 ## Known limitations
 
+* **No pagination, search, or sort on Departments/Admins/Users/User-
+  authorizations** (Phase 5D, a CONFIRMED backend-contract limitation)
+  — unlike `GET /letters`, none of the four resources' list endpoints
+  support it; every list page renders the complete matching result set
+  for its active filter. See `docs/architecture/administration-ui.md`
+  §11/§22.
+* **Admin-purpose authorizations cannot be revoked through this
+  frontend** (Phase 5D, a CONFIRMED backend-contract gap) — no
+  equivalent of `DELETE /users/authorizations/{id}` exists for them.
+  See `docs/architecture/administration-ui.md` §8.1/§22.
+* **No department/admin/user counts appear anywhere** (Phase 5D) —
+  `DepartmentResponse` has no such field. See
+  `docs/architecture/administration-ui.md` §7/§22.
 * **USER/ADMIN cannot assign or view a resolved category/classification
   for a Letter** (Phase 5C, a CONFIRMED backend-contract gap) —
   `GET /api/v1/categories`/`/classifications` are
@@ -254,7 +331,7 @@ these tests requires a running backend.
   during tests (`v7_startTransition`, `v7_relativeSplatPath`) — informational
   only, not a functional issue; not addressed this phase.
 
-The structure anticipates the full feature set (Documents, Notifications,
-Administration) — see `docs/architecture/frontend.md` for the complete
+The structure anticipates the remaining feature set (Documents,
+Notifications) — see `docs/architecture/frontend.md` for the complete
 design and `docs/PROJECT_STATUS.md` for what's built versus still
 pending.

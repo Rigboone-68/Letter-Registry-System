@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { validateLetterForm, validateLoginForm, validateSignupForm } from './formValidation'
+import {
+  validateAdminAuthorizeForm,
+  validateDepartmentForm,
+  validateLetterForm,
+  validateLoginForm,
+  validateSignupForm,
+  validateUserAuthorizeForm,
+} from './formValidation'
 
 describe('validateLoginForm', () => {
   it('requires email and password', () => {
@@ -89,5 +96,46 @@ describe('validateLetterForm', () => {
     expect(errors.source_location).toBeUndefined()
     expect(errors.reason).toBeUndefined()
     expect(errors.category_id).toBeUndefined()
+  })
+})
+
+describe('validateDepartmentForm', () => {
+  it('requires name', () => {
+    expect(validateDepartmentForm({ name: '' }).name).toMatch(/required/i)
+  })
+
+  it('does not require code', () => {
+    const errors = validateDepartmentForm({ name: 'Finance' })
+    expect(errors.code).toBeUndefined()
+    expect(errors).toEqual({})
+  })
+})
+
+describe('validateAdminAuthorizeForm', () => {
+  it('requires email and department_id', () => {
+    const errors = validateAdminAuthorizeForm({ email: '', department_id: '' })
+    expect(errors.email).toMatch(/required/i)
+    expect(errors.department_id).toMatch(/required/i)
+  })
+
+  it('rejects a malformed email', () => {
+    const errors = validateAdminAuthorizeForm({ email: 'not-an-email', department_id: 'd1' })
+    expect(errors.email).toMatch(/valid email/i)
+  })
+
+  it('passes for a well-formed submission', () => {
+    expect(validateAdminAuthorizeForm({ email: 'jane@example.gov', department_id: 'd1' })).toEqual({})
+  })
+})
+
+describe('validateUserAuthorizeForm', () => {
+  it('requires email only', () => {
+    const errors = validateUserAuthorizeForm({ email: '' })
+    expect(errors.email).toMatch(/required/i)
+    expect(errors.department_id).toBeUndefined()
+  })
+
+  it('passes for a well-formed submission', () => {
+    expect(validateUserAuthorizeForm({ email: 'jane@example.gov' })).toEqual({})
   })
 })

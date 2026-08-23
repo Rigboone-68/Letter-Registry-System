@@ -9,10 +9,22 @@
  * as a nav entry for every role; its placeholder page says so rather
  * than silently dropping the entry or building a page the architecture
  * review didn't recommend.
+ *
+ * Phase 5D (docs/architecture/administration-ui.md §13) fills in the
+ * `system/departments`, `system/admins`, and `admin/users` slots that
+ * were placeholders through Phase 5C — each as a nested route group
+ * behind one `RoleGuard` layout instance, rather than repeating the
+ * guard on every child route.
  */
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 
 import AppShell from '../layouts/AppShell'
+import AdminAuthorizePage from '../pages/AdminAuthorizePage'
+import AdminDetailPage from '../pages/AdminDetailPage'
+import AdminListPage from '../pages/AdminListPage'
+import DepartmentCreatePage from '../pages/DepartmentCreatePage'
+import DepartmentDetailPage from '../pages/DepartmentDetailPage'
+import DepartmentListPage from '../pages/DepartmentListPage'
 import LetterDetailPage from '../pages/LetterDetailPage'
 import LetterFormPage from '../pages/LetterFormPage'
 import LetterListPage from '../pages/LetterListPage'
@@ -20,6 +32,10 @@ import LoginPage from '../pages/LoginPage'
 import PlaceholderPage from '../pages/PlaceholderPage'
 import RootRedirect from '../pages/RootRedirect'
 import SignupPage from '../pages/SignupPage'
+import UserAuthorizePage from '../pages/UserAuthorizePage'
+import UserAuthorizationsPage from '../pages/UserAuthorizationsPage'
+import UserDetailPage from '../pages/UserDetailPage'
+import UserListPage from '../pages/UserListPage'
 import ProtectedRoute from './ProtectedRoute'
 import RoleGuard from './RoleGuard'
 
@@ -51,11 +67,13 @@ export const router = createBrowserRouter([
           { path: 'notifications', element: <PlaceholderPage title="Notifications" /> },
           {
             path: 'admin/users',
-            element: (
-              <RoleGuard allowedRoles={['ADMIN']}>
-                <PlaceholderPage title="Users" />
-              </RoleGuard>
-            ),
+            element: <RoleGuard allowedRoles={['ADMIN']} />,
+            children: [
+              { index: true, element: <UserListPage /> },
+              { path: 'authorize', element: <UserAuthorizePage /> },
+              { path: 'authorizations', element: <UserAuthorizationsPage /> },
+              { path: ':id', element: <UserDetailPage /> },
+            ],
           },
           {
             path: 'system/letters',
@@ -67,19 +85,21 @@ export const router = createBrowserRouter([
           },
           {
             path: 'system/departments',
-            element: (
-              <RoleGuard allowedRoles={['SYSTEM_ADMIN']}>
-                <PlaceholderPage title="Departments" />
-              </RoleGuard>
-            ),
+            element: <RoleGuard allowedRoles={['SYSTEM_ADMIN']} />,
+            children: [
+              { index: true, element: <DepartmentListPage /> },
+              { path: 'new', element: <DepartmentCreatePage /> },
+              { path: ':id', element: <DepartmentDetailPage /> },
+            ],
           },
           {
             path: 'system/admins',
-            element: (
-              <RoleGuard allowedRoles={['SYSTEM_ADMIN']}>
-                <PlaceholderPage title="Administrators" />
-              </RoleGuard>
-            ),
+            element: <RoleGuard allowedRoles={['SYSTEM_ADMIN']} />,
+            children: [
+              { index: true, element: <AdminListPage /> },
+              { path: 'authorize', element: <AdminAuthorizePage /> },
+              { path: ':id', element: <AdminDetailPage /> },
+            ],
           },
           {
             path: 'system/categories',

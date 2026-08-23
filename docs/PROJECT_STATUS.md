@@ -7,7 +7,73 @@ supervisor as-is.
 
 ## Current Phase
 
-**Phase 5C — Core Registry UI: Implementation.** Complete. Builds
+**Phase 5D — Administration & Account Management UI: Implementation.**
+Complete. Builds directly on this same phase's own prior architecture
+review: `/app/system/departments`, `/app/system/admins`, and
+`/app/admin/users` are now a complete Department/Administrator/User
+management UI — 10 new pages, 4 new list tables, a generalized
+`ConfirmDialog`, a specialized `AdminTransferDialog`, an extended
+`StatusBadge` (two new tones — `PENDING_APPROVAL`/`REVOKED`), and two
+new API service modules (`adminService.js`/`userService.js`) plus an
+extended `departmentService.js`. `routes/RoleGuard.jsx` was extended
+(backward-compatibly) to also work as a layout route, so each new
+route group shares one guard instance rather than repeating it on every
+child route. `navigationConfig.js` needed no change — confirmed its
+three relevant entries already pointed at the right paths since
+Phase 5A.
+
+**The three-way distinction the review insisted on was preserved, not
+flattened**: `UserStatus`/`AuthorizationStatus`/`ActiveStatus` never
+share a badge tone by accident (`PENDING_APPROVAL` renders as a
+warning, `REVOKED` as a negative tone, distinct from a plain
+`DEACTIVATED`/`USED` neutral), and a `403` on Approve/Reactivate is
+phrased specifically around the *Admin's own* department — never the
+target account — while Deactivate (which can never return that `403`)
+shows no such warning. Verified by a dedicated test, not just designed.
+
+**Every confirmed backend-contract gap the review found was respected,
+not silently worked around**: no pagination/search/sort UI was built
+for any of the four resources (none exists on the backend); no
+department field appears on the User authorization form (none exists
+on `UserAuthorizationCreate`); no revoke action was added for
+Admin-purpose authorizations (no such endpoint exists); no department/
+admin/user count is shown anywhere (no such field exists).
+
+Test suite grown from 84 to **159 tests**, run 3 consecutive times with
+identical results. Frontend production build and backend regression
+(458 tests) both succeed, unaffected — confirmed by re-running before
+and after, with zero backend files touched. Full implementation record
+in `docs/architecture/administration-ui.md` §26.
+
+**Not in scope for this phase, and not added:** any backend endpoint,
+schema, service, or migration; Document/Notification/dashboard/audit
+UI; Category/Classification management UI (out of this phase's own
+objective list); any new authorization or business rule.
+
+### Phase 5D — Administration & Account Management UI: Architecture & Requirements Review
+
+Complete (prior pass, this same phase). Review only — no frontend or
+backend code, migration, or test was written at that stage. Re-inspected
+the actual current Department/Admin/User/UserAuthorization backend
+fresh, not from any prior phase's report, and confirmed the actual
+current frontend had no admin/user/department service, page, or
+component of any kind (only three already-slotted `PlaceholderPage`
+routes). Designed the complete System Admin (Departments,
+Administrators, Admin transfer) and Admin (Users, User authorizations)
+UX, navigation, routing, component architecture, service layer,
+error-handling matrix, confirmation matrix, security review, and a
+three-enum state matrix, all against the confirmed backend contract
+only. **Two corrections to the phase brief's own assumptions**: the
+frontend did not already have Document/Notification UI; `AuthorizationStatus`
+is `ACTIVE`/`USED`/`REVOKED`, not `PENDING`/`EXPIRED`, and `expires_at`
+is never actually set by any code path. **A real, confirmed gap**: none
+of the four Department/Admin/User/Authorization resources support
+pagination, sorting, or text search, unlike Letters. Full review in
+`docs/architecture/administration-ui.md` §1-25.
+
+### Phase 5C — Core Registry UI: Implementation
+
+Complete (prior phase). Builds
 directly on Phase 5A's foundation and Phase 5B's authentication UX: the
 `/app/letters` and `/app/system/letters` placeholders are now a complete
 V1 Letter registry — list/search (seven text filters, `status`/
@@ -250,6 +316,123 @@ until the review's recommendations were approved; see "Completed" below
 for both, in order.
 
 ## Completed
+
+### Phase 5D — Administration & Account Management UI implementation
+
+* **Department management** (`frontend/src/pages/DepartmentListPage.jsx`/
+  `DepartmentCreatePage.jsx`/`DepartmentDetailPage.jsx`) — list (status
+  filter), create, and one detail page with an inline edit mode (not a
+  separate route — the two-field edit surface didn't justify the split).
+  Activate has no confirmation (purely restorative); Deactivate does,
+  explaining the operational impact on every Admin/User in that
+  department without using "delete" anywhere.
+* **Administrator management** (`AdminListPage.jsx`/`AdminAuthorizePage.jsx`/
+  `AdminDetailPage.jsx`) — list (status + department filters, resolving
+  department names via a lookup map, no per-row request), a dedicated
+  Authorize form (department required, `ACTIVE`-only options), and a
+  detail page whose actions are entirely status-gated: Approve
+  (confirmed — not idempotent), Deactivate + Transfer (`ACTIVE` only),
+  Reactivate (`DEACTIVATED` only, not confirmed).
+* **Admin transfer** (`components/AdminTransferDialog.jsx`) — states
+  verbatim, using the backend's own confirmed guarantee, that historical
+  Letters are never reassigned; department options limited to `ACTIVE`;
+  a genuine `409` (destination not active) surfaces inline in the
+  dialog, not as a page-level error.
+* **User management** (`UserListPage.jsx`/`UserAuthorizePage.jsx`/
+  `UserAuthorizationsPage.jsx`/`UserDetailPage.jsx`) — the Authorize
+  form has a single `email` field, matching `UserAuthorizationCreate`
+  exactly (no department field exists on that schema to expose even by
+  mistake); a separate Authorizations list (department-wide visibility,
+  defaults to `ACTIVE`) with a creator-scoped Revoke action shown on
+  every `ACTIVE` row (there is no field to pre-filter by creator, so a
+  mismatched attempt 404s generically like any other, per the review's
+  own enumeration-prevention reasoning).
+* **The 403-vs-409 distinction preserved, verified by test** — a `403`
+  on User Approve/Reactivate is phrased around the *Admin's own*
+  department, never the target account; Deactivate (which can never
+  return that `403`) shows no such warning.
+* **Three enums, three visually distinct tones, never merged** —
+  `StatusBadge` extended with `warning` (`PENDING_APPROVAL`) and
+  `negative` (`REVOKED`) tones plus an optional accessible-name
+  `domain` prefix; a new `.sr-only` utility was added to
+  `styles/global.css` to support it.
+* **`RoleGuard` extended, backward-compatibly, to work as a layout
+  route** — renders `<Outlet/>` when used with no `children`, so each
+  new route group (`/app/system/admins/*`, `/app/system/departments/*`,
+  `/app/admin/users/*`) shares one guard instance instead of repeating
+  it per child route. Every existing call site (`system/letters`,
+  `system/categories`, `system/classifications`) is unaffected.
+* **Every confirmed backend gap from the review respected, not routed
+  around**: no pagination/search/sort UI (none exists on any of the
+  four resources); no department field on the User authorization form;
+  no revoke action for Admin-purpose authorizations; no department/
+  admin/user counts anywhere.
+* **No backend file was touched** — confirmed by `git status` and a
+  full backend regression run before and after (458 passed, unaffected
+  both times).
+* **Validation**: `npm run build` succeeds (163 modules, no errors);
+  `npm run test` — **159 passed**, 0 failed, run 3 consecutive times
+  with identical results; `pytest tests/` (backend) — **458 passed**,
+  unaffected.
+* **Documentation**: `docs/architecture/administration-ui.md` §26 (new
+  implementation record), plus updates to the root README,
+  `frontend/README.md`, `docs/README.md`,
+  `docs/architecture/frontend.md`, and `docs/architecture/overview.md`.
+
+### Phase 5D — Administration & Account Management UI architecture & requirements review
+
+* **Inspected the actual current backend state, not assumed** — fresh
+  reads of every Department/Admin/User/UserAuthorization endpoint,
+  schema, service, repository, and model file this session; confirmed
+  the exact status codes, error messages, idempotency behavior, and
+  authorization boundary for every one of the 19 confirmed endpoints
+  across the three resource routers.
+* **Corrected two inaccurate assumptions in the phase brief itself**
+  (verified against source, not accepted at face value): the frontend
+  does not currently have Document or Notification UI (both remain
+  `PlaceholderPage`); `AuthorizationStatus` is `ACTIVE`/`USED`/`REVOKED`,
+  not `PENDING`/`EXPIRED` — and `expires_at`, while present on the
+  schema, is never actually set by any code path in this backend today.
+* **System Admin protection and Admin self-targeting are both
+  structural, not a check to design** — `UserRepository.find_admin_by_id`/
+  `find_user_by_id` filter by role before an id can ever resolve, so no
+  endpoint can target a SYSTEM_ADMIN, and an Admin's own id (role
+  `ADMIN`) 404s on every User-lifecycle endpoint by construction. No
+  frontend logic is needed or recommended to reinforce either.
+* **The read/lock-down vs. state-elevating distinction, preserved, not
+  flattened** — documented the precise backend asymmetry (Deactivate/
+  Revoke/list actions never require the Admin's own department to be
+  ACTIVE; Authorize/Approve/Reactivate do, and can 403 for a reason that
+  has nothing to do with the target account) and designed the error
+  matrix and UI copy around it exactly, rather than one generic "Admin
+  can manage users" treatment.
+* **A confirmed gap distinct from Phase 5C's own**: none of
+  Departments/Admins/Users/Authorizations support pagination, search, or
+  sort — only exact `status`/`department_id` filters exist. Marked
+  `PENDING BACKEND API`; whether that's acceptable at real V1 data
+  volumes marked `PENDING BUSINESS CLARIFICATION` — neither guessed.
+* **Admin transfer (`PATCH /admins/{id}/department`) verified precise**
+  — confirmed directly in `admin_service.py` and its own referenced
+  integration test that a transfer changes only the Admin's current
+  `department_id`; historical Letters they recorded keep their original
+  `recipient_department_id` forever, never reassigned.
+* **Full UX design produced for**: Department list/create/detail-edit/
+  activate/deactivate; Administrators list/detail/authorize/lifecycle/
+  transfer; Users list/detail/authorize/lifecycle; the separate User-
+  authorizations list and creator-scoped revoke. Navigation requires no
+  change — `navigationConfig.js`'s three relevant entries already point
+  at the correct paths. Routing, component architecture (a generalized
+  `ConfirmDialog`, an extended `StatusBadge`, two separate — not merged
+  — authorization forms, a reused `departmentService.js`), service
+  layer (endpoint-by-endpoint method mapping), a full error-handling
+  matrix, a full confirmation matrix (never "Delete" wording, matching
+  Phase 5C's "Archive, never delete" precedent), a security review, and
+  a three-enum state matrix (`UserStatus`/`AuthorizationStatus`/
+  `ActiveStatus`, never merged) were all designed, not implemented.
+* **No frontend or backend file was touched** — confirmed by `git
+  status` before/after; this phase produced documentation only.
+* **Documentation**: `docs/architecture/administration-ui.md` (new),
+  plus updates to the root README and `docs/README.md`.
 
 ### Phase 5C — Core Registry UI implementation
 
@@ -1452,6 +1635,33 @@ detail behind each:
 | 5 | `letter_documents.uploaded_by` had no index, unlike every other User-referencing FK in the schema | Added (`ix_letter_documents_uploaded_by`) |
 | 6 | The role/department `CHECK` constraint hardcoded role strings, duplicating `UserRole`'s values | Model-side constraint now built from `UserRole.*.value`; the migration's own copy is deliberately still a literal (migrations are frozen snapshots) — see `app/models/user.py` docstring |
 
+### Validation performed — Phase 5D implementation
+
+| Check | Result |
+|---|---|
+| `npm run build` (frontend, `frontend/`) | Succeeds — 163 modules transformed, no errors |
+| `npm run test` (frontend, Vitest) | **159 passed**, 0 failed — run 3 consecutive times, identical results |
+| `pytest tests/` (backend, `backend/`) | **458 passed**, 0 failed, 0 skipped — unaffected by this phase, confirming zero backend impact |
+| `git status` — backend files | No `backend/app/`, `backend/alembic/`, or `backend/tests/` file touched |
+| `git status` — secrets | No `.env`/`.env.local` tracked; no new dependency added (only new first-party source/test files) |
+| Grep for `jwt`/`decode`/`localStorage` in new/changed files | Zero matches outside `services/tokenStorage.js` (untouched) |
+| Grep for a `DELETE` request in `adminService.js`/`userService.js`/`departmentService.js` | Exactly one — `revokeAuthorization`, the one confirmed backend `DELETE` endpoint; none for account lifecycle |
+| Grep for a `403`→`404` (or reverse) conversion in the new pages | Zero matches |
+| Grep for "Delete" wording anywhere in the new UI | Zero matches outside test fixtures/regex patterns checking for its absence |
+
+### Validation performed — Phase 5D review
+
+An architecture/requirements review, not an implementation phase —
+validation here means confirming no code was written and no drift was
+introduced, the same standard applied to every prior review-only pass
+(Phase 4A, Phase 4D's review, Phase 4E's review, Phase 5's review):
+
+| Check | Result |
+|---|---|
+| `git status` before and after the review | Identical except one new documentation file and three documentation updates — no frontend file (`.jsx`/`.js`/`.css`), backend file, migration, or test file touched |
+| Direct reads of every Department/Admin/User/UserAuthorization endpoint, schema, service, repository, and model file | Confirmed exact status codes, error messages, idempotency behavior, and the read/lock-down vs. state-elevating asymmetry, all fresh this session |
+| Fresh `glob` of `frontend/src/**/*.{jsx,js}` | Confirmed the brief's own claim of existing Document/Notification UI was inaccurate; confirmed the exact current inventory of pages/components/services this review's design builds on |
+
 ### Validation performed — Phase 5C implementation
 
 | Check | Result |
@@ -1782,21 +1992,47 @@ afterward — `lrs_dev` is empty again.
 
 ## In Progress
 
-Nothing — Phase 5C is complete (Phase 5's architecture review, Phase
-5A's foundation, Phase 5B's authentication/account UX, and Phase 5C's
-core Letter registry UI are all done) and the project is paused pending
-explicit instruction to begin the next phase, per the standing project
-rule that phases are reviewed before the next begins.
+Nothing — Phase 5D's implementation is complete (Phase 5's own
+architecture review, Phase 5A's foundation, Phase 5B's authentication/
+account UX, Phase 5C's core Letter registry UI, and now Phase 5D's
+Department/Administrator/User management UI are all done) and the
+project is paused pending explicit instruction to begin the next phase,
+per the standing project rule that phases are reviewed before the next
+begins.
 
-## Pending (Phase 5D and later)
+## Pending (Phase 5E and later)
 
-* **Document upload/download UI, Notifications UI, and every
-  administration screen** (Departments/Admins/Categories/
-  Classifications/Users) remain unbuilt — Phase 5A/5B/5C built the
-  foundation, the authentication/account experience, and the core Letter
-  registry (list/search/sort/paginate/create/view/edit/archive) those
-  screens will be built on top of. See `docs/architecture/frontend.md`
-  §32 for the recommended sequence.
+* **Document upload/download UI and Notifications UI** remain unbuilt —
+  Phase 5A/5B/5C/5D built the foundation, the authentication/account
+  experience, the core Letter registry, and now Department/Admin/User
+  management those screens will be built on top of. Category/
+  Classification management UI also remains unbuilt (out of Phase 5D's
+  own objective list, not an oversight). See
+  `docs/architecture/frontend.md` §32 for the recommended sequence.
+* **No pagination, search, or sort on Departments/Admins/Users/User-
+  authorizations** (Phase 5D review finding) — unlike `GET /letters`,
+  none of `GET /departments`/`/admins`/`/users`/`/users/authorizations`
+  accept `page`/`page_size`/`sort_by`/any text filter; only exact
+  `status` (all four) and `department_id` (Admins list only) filters
+  exist. Each returns its complete result set in one response. Whether
+  this is acceptable at real V1 data volumes is marked `PENDING
+  BUSINESS CLARIFICATION` in that review, not resolved. See
+  `docs/architecture/administration-ui.md` §11/§22.
+* **Department-scoped user/admin counts** (Phase 5D review finding) —
+  `DepartmentResponse` has no such field, and no endpoint computes one;
+  a Department detail page cannot show "N users, M admins" without a
+  new backend capability. See `docs/architecture/administration-ui.md`
+  §7/§22.
+* **Admin-purpose authorizations cannot be revoked** (Phase 5D review
+  finding) — unlike User-purpose authorizations
+  (`DELETE /users/authorizations/{id}`), no equivalent endpoint exists
+  for Admin-purpose ones; a real asymmetry between the two lifecycles,
+  flagged as a business decision, not silently assumed to need matching.
+  See `docs/architecture/administration-ui.md` §8.1/§22.
+* **A System-Admin-facing audit view** — `AuditLog` is populated (Phase
+  4E) but has no read endpoint; restated as still open by the Phase 5D
+  review, not a new finding. See
+  `docs/architecture/audit-notifications.md` §9/§28.
 * **USER/ADMIN cannot assign or view a resolved category/classification
   when creating or editing a Letter** (Phase 5C finding) —
   `GET /api/v1/categories`/`/classifications` are `require_system_admin`-
@@ -1995,14 +2231,36 @@ behind each.
 
 ## Known Limitations
 
-* **RESOLVED (Phase 5C) — the frontend now has a complete core Letter
-  registry** (list/search/sort/paginate/create/view/edit/archive), on top
-  of Phase 5B's complete authentication/account UX, but **no other
-  business feature screen exists yet** — Document upload/download,
-  Notifications, and every administration screen are still only
-  reachable via a direct API client (`curl`, `httpx`, the automated test
-  suite), not the frontend. See `docs/architecture/frontend.md` §36 for
-  exactly what is and isn't built.
+* **RESOLVED (Phase 5D) — the frontend now has a complete Department/
+  Administrator/User management UI** (list/create/detail/lifecycle
+  actions/authorization workflows/Admin transfer), on top of Phase 5C's
+  complete core Letter registry and Phase 5B's complete authentication/
+  account UX, but **Document upload/download and Notifications UI still
+  do not exist** — both are still only reachable via a direct API
+  client (`curl`, `httpx`, the automated test suite), not the frontend.
+  See `docs/architecture/administration-ui.md` §26 for exactly what is
+  and isn't built.
+* **No pagination, search, or sort on Departments/Admins/Users/User-
+  authorizations** (Phase 5D, a CONFIRMED backend-contract limitation) —
+  unlike `GET /letters`, none of the four resources' list endpoints
+  accept `page`/`page_size`/`sort_by`/any text filter; only exact
+  `status` (all four) and `department_id` (Admins list only) filters
+  exist, and every list page renders the complete matching result set.
+  Whether this needs to change at real V1 data volumes is `PENDING
+  BUSINESS CLARIFICATION`, not resolved by this phase. See
+  `docs/architecture/administration-ui.md` §11/§22.
+* **Admin-purpose authorizations cannot be revoked through this or any
+  frontend** (Phase 5D, a CONFIRMED backend-contract gap) — no
+  `DELETE`-equivalent endpoint exists for them, unlike User-purpose
+  authorizations; `AdminAuthorizePage` has no revoke-adjacent
+  affordance, matching the gap exactly rather than implying a capability
+  that doesn't exist. See `docs/architecture/administration-ui.md`
+  §8.1/§22.
+* **No department/admin/user counts appear anywhere** (Phase 5D) —
+  `DepartmentResponse` has no such field; none is computed client-side
+  from other endpoints, since no combination of the current API surface
+  can compute it correctly for a SYSTEM_ADMIN viewer. See
+  `docs/architecture/administration-ui.md` §7/§22.
 * **USER/ADMIN cannot assign or view a resolved category/classification
   name for a Letter** (Phase 5C, a CONFIRMED backend-contract gap, not a
   frontend oversight) — `GET /api/v1/categories`/`/classifications` are
@@ -2270,38 +2528,39 @@ behind each.
 
 ## Next Recommended Phase
 
-**Phase 5D — Document management UI**, the next step in the sequence
-Phase 5's review recommended and Phase 5A/5B/5C already started
-(`docs/architecture/frontend.md` §32: foundation infrastructure — done
-→ Login/Signup/pending-approval/deactivated/session-restore/logout —
-done (Phase 5B) → shared chrome and primitive components — done →
-Letters list/search/detail/form/archive — done (Phase 5C) →
-**Documents nested into Letter detail** → Notifications →
-Administration screens (Users, then Departments/Admins/Categories/
-Classifications) → additional test coverage alongside each), **or**
-resolving the category/classification reference-data access gap Phase
-5C confirmed (a backend change: a read-scoped, non-SYSTEM_ADMIN-only
-variant of `GET /categories`/`/classifications` — not designed or
-proposed by this phase), **or** dashboards/reporting reading from the
-operational tables plus the now-populated `AuditLog`, **or** an
-audit-viewing/read API once its access-control question is resolved,
-**or** resolving the outstanding business clarifications first. The
-foundation Phase 5D needs already exists and is tested (`AuthContext`,
-the API client, route guards, navigation, the shell, the full
-authentication/account UX, and now the Letter registry the document
-upload/download UI will nest into) — the next phase can go directly to
-building it rather than needing any more scaffolding first. Recommended
-before or alongside Phase 5D: resolve the exact classification value
+**Phase 5E — Document management UI**, the next step in the *original*
+Phase 5 sequence, now that Phase 5D has filled in the administration
+detour (`docs/architecture/frontend.md` §32: foundation — done →
+auth/account UX — done (Phase 5B) → Letters — done (Phase 5C) →
+Administration — done (Phase 5D) → **Documents nested into Letter
+detail** → Notifications → additional test coverage alongside each).
+**Or** resolving the category/classification reference-data access gap
+Phase 5C confirmed (a backend change: a read-scoped,
+non-SYSTEM_ADMIN-only variant of `GET /categories`/`/classifications` —
+not designed or proposed by any phase so far), **or** whether
+Departments/Admins/Users/User-authorizations need pagination at real V1
+data volumes (Phase 5D's review, `docs/architecture/administration-ui.md`
+§11/§22), **or** whether Admin-purpose authorizations should become
+revocable, matching User-purpose ones (same review, §8.1/§22), **or**
+dashboards/reporting reading from the operational tables plus the
+now-populated `AuditLog`, **or** an audit-viewing/read API once its
+access-control question is resolved, **or** resolving the outstanding
+business clarifications first. The foundation Phase 5E needs already
+exists and is tested (`AuthContext`, the API client, route guards,
+navigation, the shell, the full authentication/account UX, the Letter
+registry Documents will nest into, and the `ConfirmDialog`/`StatusBadge`
+primitives Phase 5D built, ready to reuse for upload/delete-adjacent
+confirmations if needed) — the next phase can go directly to building
+rather than needing any more scaffolding first. Recommended before or
+alongside whichever is chosen: resolve the exact classification value
 list and classified-visibility matrix with the product owner
 (`docs/architecture/letter-registry.md` §12,
 `docs/architecture/registry-search.md` §11); the category/classification
-reference-data access gap named above, since it affects Phase 5D's own
-document-metadata screens the same way it affected Phase 5C's Letter
-forms; who should receive a "letter registered" notification, since
-"department Admins" is still an explicit guess
-(`docs/architecture/audit-notifications.md` §13); which deployment model
-applies (individually-assigned workstations vs. shared machines), since
-it changes the frontend's token-storage recommendation
+reference-data access gap named above; who should receive a "letter
+registered" notification, since "department Admins" is still an
+explicit guess (`docs/architecture/audit-notifications.md` §13); which
+deployment model applies (individually-assigned workstations vs. shared
+machines), since it changes the frontend's token-storage recommendation
 (`docs/architecture/frontend.md` §28); and whether a unified global
 search, a signed document-download URL, or a dashboard aggregate
 endpoint are ever actually wanted before any is built speculatively

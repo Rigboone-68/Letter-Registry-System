@@ -2,7 +2,8 @@
 
 **A Production of AJ-Labs**
 
-> **Current status: Phase 5C — Core Registry UI implemented (Phase 5B
+> **Current status: Phase 5D — Administration & Account Management UI
+> implemented (Phase 5C Core Registry UI implemented; Phase 5B
 > Authentication & Account UX implemented; Phase 5A Frontend Foundation
 > implemented; Phase 5 architecture/UX review complete; Phase 4E
 > Operational Activity, Notifications & Audit implemented; Phase 3B
@@ -104,9 +105,32 @@
 > classified-Letter discipline Phase 5's review established — render
 > `items`/`total` exactly as returned, treat every `404` identically —
 > was verified directly against this implementation. Test suite grown
-> from 44 to 84 tests. **No Document/Notification/Administration screen
-> exists yet** — every other nav destination is a shared placeholder;
-> those remain for later phases. See `docs/PROJECT_STATUS.md` for the
+> from 44 to 84 tests. Phase 5D then first reviewed, then implemented,
+> the Department/Admin/User management frontend: every Department/
+> Admin/User/UserAuthorization endpoint, schema, service, repository,
+> and model was re-read fresh, correcting two inaccurate assumptions in
+> the phase's own brief along the way (the frontend did not already have
+> Document/Notification UI; `AuthorizationStatus` is `ACTIVE`/`USED`/
+> `REVOKED`, not `PENDING`/`EXPIRED`, and its `expires_at` field is
+> never actually set by any code path). `/app/system/departments`,
+> `/app/system/admins`, and `/app/admin/users` are now a complete
+> Department/Administrator/User management UI — list/create/detail,
+> Admin/User authorization workflows, approve/deactivate/reactivate
+> lifecycle actions (System Admin protection and Admin self-targeting
+> prevention are both structural — no endpoint can ever resolve a
+> SYSTEM_ADMIN id or an Admin's own id, so no frontend check was needed),
+> and Admin department transfer, which states verbatim that historical
+> Letters are never reassigned. The backend's own read/lock-down vs.
+> state-elevating asymmetry is preserved, not flattened into one generic
+> "Admin manages Users" treatment — a `403` on User Approve/Reactivate is
+> phrased around the *Admin's own* department, never the target account.
+> Unlike Letters, none of Departments/Admins/Users/User-authorizations
+> support pagination, search, or sort — every list renders the complete
+> backend result set for its filter, exactly as confirmed, nothing
+> invented. Test suite grown from 84 to 159 tests. See
+> `docs/architecture/administration-ui.md`. **No Document/Notification
+> screen exists yet** — those nav destinations remain shared
+> placeholders for a later phase. See `docs/PROJECT_STATUS.md` for the
 > full picture.
 
 ---
@@ -318,12 +342,13 @@ backend.
 | 5 | Frontend & Operational UI: architecture/UX review of the React 18 + Vite + React Router + Axios skeleton (unwired since Phase 1) against all 42 real backend endpoints — auth UX, role-aware navigation, Letter/document/notification UX, classified-Letter 404 handling, route/component/API-client architecture, security, test strategy. Review only, no frontend code. | **Complete (review only)** |
 | 5A | Frontend Foundation: routing wired up, `AuthContext` (session restore via `/auth/me`, login, logout), one centralized Axios client (auth header, error normalization, 401 handling), `ProtectedRoute`/`RoleGuard`, role-derived navigation, `AppShell`/`Sidebar`/`Topbar`, design tokens, a11y baseline, Vitest test setup (17 tests). No feature screens. | **Complete** |
 | 5B | Authentication & Account UX: production Login/Signup forms (client-side validation, full ARIA wiring), reusable pending-approval/deactivated-account notices, session-restoration network-failure handling with retry, logout/redirect verification, test suite grown to 44 tests. No business feature screens. | **Complete** |
-| **5C** | Core Registry UI: Letter list/search/sort/paginate, create/view/edit/archive, driven entirely by the confirmed `GET/POST/PATCH/DELETE /api/v1/letters*` contract; a confirmed category/classification reference-data access gap resolved (not hardcoded around); test suite grown to 84 tests. No Document/Notification/Administration UI. | **Complete** |
-| 5D+ | Frontend feature implementation: Documents, Notifications, Administration | Not started |
+| 5C | Core Registry UI: Letter list/search/sort/paginate, create/view/edit/archive, driven entirely by the confirmed `GET/POST/PATCH/DELETE /api/v1/letters*` contract; a confirmed category/classification reference-data access gap resolved (not hardcoded around); test suite grown to 84 tests. No Document/Notification/Administration UI. | **Complete** |
+| **5D** | Administration & Account Management UI: Department/Administrator/User management screens — list/create/detail, Admin/User authorization workflows, approve/deactivate/reactivate lifecycle, Admin department transfer — driven entirely by the confirmed Department/Admin/User backend contract (no pagination/search/sort exists on any of the four resources, unlike Letters, so none was invented); test suite grown to 159 tests. No Document/Notification/Category/Classification UI. | **Complete** |
+| 5E+ | Frontend feature implementation: Documents, Notifications | Not started |
 | 6 | Dashboards, reporting, additional notification triggers, audit read API | Not started |
 
-See `docs/PROJECT_STATUS.md` for what Phase 5C delivered,
-`docs/architecture/frontend.md` for the full design, and known
+See `docs/PROJECT_STATUS.md` for what Phase 5D delivered,
+`docs/architecture/administration-ui.md` for the full design, and known
 limitations. The next phase begins only when explicitly instructed.
 
 ---

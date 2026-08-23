@@ -1,19 +1,24 @@
 # Frontend & Operational UI — Architecture Review & Foundation (Phase 5 / 5A / 5B / 5C)
 
-**Status: CORE REGISTRY UI IMPLEMENTED (Phase 5C).** §1-33 below are the
-original architecture/UX review (Phase 5) — kept unchanged as the design
-rationale. **See §34, "Phase 5A implementation record"** for the
-foundation built on top of it (routing, authentication state, the API
-client, protected routes, role-derived navigation, the application
-shell, a design-token foundation, an accessibility baseline, and test
-infrastructure), **§35, "Phase 5B implementation record"** for the
-complete login/signup/pending-approval/deactivated-account/
-session-restoration/logout experience built on top of that foundation,
-and **§36, "Phase 5C implementation record"** for the complete Letter
-registry (list/search/sort/paginate/create/view/edit/archive) built on
-top of both. Documents, Notifications, Administration, dashboard, and
-audit UI still do not exist — §36 is explicit about
-that boundary.
+**Status: CORE REGISTRY UI IMPLEMENTED (Phase 5C); Administration &
+Account Management UI also now implemented, recorded separately in
+[`administration-ui.md`](administration-ui.md) (Phase 5D).** §1-33
+below are the original architecture/UX review (Phase 5) — kept
+unchanged as the design rationale. **See §34, "Phase 5A implementation
+record"** for the foundation built on top of it (routing, authentication
+state, the API client, protected routes, role-derived navigation, the
+application shell, a design-token foundation, an accessibility
+baseline, and test infrastructure), **§35, "Phase 5B implementation
+record"** for the complete login/signup/pending-approval/deactivated-
+account/session-restoration/logout experience built on top of that
+foundation, and **§36, "Phase 5C implementation record"** for the
+complete Letter registry (list/search/sort/paginate/create/view/edit/
+archive) built on top of both. Phase 5D's Department/Administrator/User
+management UI is now also implemented — its full design and
+implementation record live in `administration-ui.md` rather than as a
+further section here, since that phase's own review was already a
+substantial standalone document. Documents, Notifications, dashboard,
+and audit UI still do not exist.
 
 This document originally inspected the actual current frontend (a Phase
 1 skeleton) and the actual current backend API surface (42 business
