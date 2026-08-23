@@ -2,13 +2,15 @@
 
 **A Production of AJ-Labs**
 
-> **Current status: Phase 5F — Dashboard & Operational Overview UI
-> implemented (Phase 5E Documents & Notifications UI implemented; Phase
-> 5D Administration & Account Management UI implemented; Phase 5C Core
-> Registry UI implemented; Phase 5B Authentication & Account UX
-> implemented; Phase 5A Frontend Foundation implemented; Phase 5
-> architecture/UX review complete; Phase 4E Operational Activity,
-> Notifications & Audit implemented; Phase 3B complete).**
+> **Current status: Phase 5G — Backend Dashboard Aggregation &
+> Analytics API architecture/requirements review complete (Phase 5F
+> Dashboard & Operational Overview UI implemented; Phase 5E Documents &
+> Notifications UI implemented; Phase 5D Administration & Account
+> Management UI implemented; Phase 5C Core Registry UI implemented;
+> Phase 5B Authentication & Account UX implemented; Phase 5A Frontend
+> Foundation implemented; Phase 5 architecture/UX review complete;
+> Phase 4E Operational Activity, Notifications & Audit implemented;
+> Phase 3B complete).**
 > Local email/password login, JWT access tokens, role-based access
 > control, System-Admin-controlled department management,
 > System-Admin-controlled Admin management, and Admin-controlled User
@@ -182,8 +184,25 @@
 > installed and none was added; the existing `NotificationBell` polling
 > is untouched. Test suite grown to 249 tests, run 3 consecutive times
 > with identical results. See `docs/architecture/dashboard.md` §32 for
-> the full implementation record and `docs/PROJECT_STATUS.md` for the
-> full picture.
+> the full implementation record. Phase 5G then reviewed (but did
+> **not** implement) whether the backend should provide additional
+> aggregate/analytics APIs: the full backend layering, database
+> indexes, and `list_letters`'s exact query construction were re-read
+> fresh, confirming the existing `letter_visibility_filter`/department-
+> derivation authorization logic can be reused directly for any future
+> Letter aggregate (no new predicate needed), that every column a
+> plausible aggregate would group or filter by is already indexed (zero
+> new indexes recommended), and that `AuditLog` has no department
+> column at all (audit analytics deferred entirely to a future, separate
+> phase). A full metric inventory found **no metric that both needs a
+> new backend endpoint and has confirmed business value** — every
+> current-operational figure is already served by Phase 5F's own
+> dashboard, and every analytical one is gated behind an unconfirmed
+> want. A complete, ready-to-build design
+> (`GET /api/v1/letters/aggregate`) is documented but explicitly not
+> implemented or authorized. See
+> `docs/architecture/dashboard-analytics-api.md` and
+> `docs/PROJECT_STATUS.md` for the full picture.
 
 ---
 
@@ -399,13 +418,14 @@ backend.
 | 5E | Documents & Notifications UI: architecture/requirements review of the Document upload/list/download and Notification frontend against the confirmed `documents.py`/`notifications.py` backend contract — confirms fetch+blob is required for downloads, no document delete/replace endpoint exists, and designs the full component/service/route/security/test architecture. Review only, no frontend code. | **Complete (review only)** |
 | 5E impl. | Documents & Notifications UI implementation: `DocumentList`/`DocumentUploadForm` wired into `LetterDetailPage` (upload with progress, authenticated blob download, no delete/replace action), `NotificationBell`/`NotificationPanel`/`NotificationItem` wired into `Topbar` and a real paginated `/app/notifications` page, explicit-button-only mark-read, 60-second (`PROVISIONAL`) unread-count polling — driven entirely by the confirmed Document/Notification backend contract; test suite grown to 225 tests. | **Complete** |
 | 5F | Dashboard & Operational Overview UI: architecture/requirements review against all twelve mounted business routers — confirms no dashboard/aggregate/audit-read endpoint exists, that Letter counts are cheap and already correctly isolated (real SQL `COUNT`) while Department/Admin/User/Category/Classification counts cost a full-list fetch (no pagination, no DB `COUNT`), and that every historical/trend metric requires new backend work. Full metric inventory, role-specific requirements, and an operational-only V1 recommendation. Review only, no frontend code. | **Complete (review only)** |
-| **5F impl.** | Dashboard & Operational Overview UI implementation: `/app/dashboard` — role-aware summary cards (Letters for every role; Departments/Admins for SYSTEM_ADMIN; Users for ADMIN), a Recent Letters list, and role-scoped Quick Actions to already-existing screens — driven entirely by existing, already-isolated endpoints; no chart, trend, filter control, or new backend endpoint; test suite grown to 249 tests. | **Complete** |
-| 6 | Additional notification triggers, audit read API, Category/Classification management UI, dashboard analytics (if ever confirmed) | Not started |
+| 5F impl. | Dashboard & Operational Overview UI implementation: `/app/dashboard` — role-aware summary cards (Letters for every role; Departments/Admins for SYSTEM_ADMIN; Users for ADMIN), a Recent Letters list, and role-scoped Quick Actions to already-existing screens — driven entirely by existing, already-isolated endpoints; no chart, trend, filter control, or new backend endpoint; test suite grown to 249 tests. | **Complete** |
+| **5G** | Backend Dashboard Aggregation & Analytics API: architecture/requirements review of whether new backend aggregate endpoints are justified — confirms the existing `letter_visibility_filter`/department-derivation authorization logic is directly reusable for any future aggregate, that every plausible aggregate dimension is already indexed (zero new indexes recommended), and that `AuditLog` has no department column (audit analytics deferred to a future, separate phase). Full metric inventory found no metric with both confirmed value and no existing sufficient API — recommends deferring backend aggregation entirely for V1, with a complete, ready-to-build `GET /api/v1/letters/aggregate` design documented but not implemented. Review only, no backend or frontend code. | **Complete (review only)** |
+| 6 | Additional notification triggers, audit read API, Category/Classification management UI, dashboard analytics (if a specific breakdown/trend is ever confirmed wanted) | Not started |
 
-See `docs/PROJECT_STATUS.md` for what Phase 5F delivered,
-`docs/architecture/dashboard.md` §32 for the full implementation
-record, and known limitations. The next phase begins only when
-explicitly instructed.
+See `docs/PROJECT_STATUS.md` for what Phase 5G found,
+`docs/architecture/dashboard-analytics-api.md` for the full design, and
+known limitations. The next phase begins only when explicitly
+instructed.
 
 ---
 

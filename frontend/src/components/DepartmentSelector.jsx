@@ -21,6 +21,22 @@ import { forwardRef } from 'react'
  * Wrapped in `forwardRef` only so `AdminTransferDialog` can manage
  * initial focus/Tab-trapping on the underlying `<select>` — every other
  * call site ignores the ref.
+ *
+ * A placeholder `<option value="">` is always rendered when
+ * `includeAllOption` is false — including when `required` is true.
+ * Omitting it for `required` selects was a real bug, not a valid
+ * optimization: a controlled `<select value="">` with no matching
+ * `<option value="">` silently desyncs from the DOM — the browser
+ * falls back to visually selecting the first real option while React's
+ * own tracked value (and the parent's form state) stays `''`, with no
+ * `onChange` ever firing to reconcile the two. A caller who then clicks
+ * the already-visually-selected option triggers no native `change`
+ * event at all (the browser only fires one when the selection actually
+ * changes), so the parent's state — and therefore validation — never
+ * sees a selection the user can plainly see on screen. `required`-ness
+ * is already enforced by the parent's own validation
+ * (`utils/formValidation.js`'s `isBlank(department_id)` check), not by
+ * withholding the placeholder option.
  */
 const DepartmentSelector = forwardRef(function DepartmentSelector(
   { id, name, departments, value, onChange, activeOnly = true, includeAllOption = false, required, ...rest },
@@ -41,7 +57,7 @@ const DepartmentSelector = forwardRef(function DepartmentSelector(
       {...rest}
     >
       {includeAllOption && <option value="">All departments</option>}
-      {!includeAllOption && !required && <option value="">Select a department</option>}
+      {!includeAllOption && <option value="">Select a department</option>}
       {options.map((department) => (
         <option key={department.id} value={department.id}>
           {department.name}

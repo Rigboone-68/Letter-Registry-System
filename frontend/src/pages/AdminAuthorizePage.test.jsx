@@ -84,4 +84,66 @@ describe('AdminAuthorizePage', () => {
     const payload = adminService.authorize.mock.calls[0][0]
     expect(Object.keys(payload).sort()).toEqual(['department_id', 'email'])
   })
+
+  describe('department selection (manual E2E regression)', () => {
+    // Reproduces the exact reported real-world bug: with Finance as the
+    // only ACTIVE department, a controlled `<select value="">` with no
+    // matching `<option value="">` desynced from the DOM — the browser
+    // defaulted to visually showing Finance selected while the form's
+    // own `department_id` state stayed empty, so a genuine selection
+    // never actually changed anything from the DOM's own point of view.
+    beforeEach(() => {
+      departmentService.list.mockResolvedValue({
+        items: [{ id: 'finance-uuid', name: 'Finance', code: 'FIN', status: 'ACTIVE' }],
+        total: 1,
+      })
+    })
+
+    it('does not silently pre-select Finance before the user chooses anything', async () => {
+      renderPage()
+      const select = await screen.findByLabelText(/department/i)
+      expect(select).toHaveValue('')
+      expect(screen.getByRole('option', { name: /select a department/i })).toBeInTheDocument()
+    })
+
+    it('selecting the sole Finance department is accepted — no "Department is required." error, and adminService receives the real department_id', async () => {
+      adminService.authorize.mockResolvedValue({
+        id: 'auth1',
+        email: 'new@example.gov',
+        department_id: 'finance-uuid',
+        status: 'ACTIVE',
+      })
+      renderPage()
+
+      await userEvent.type(await screen.findByLabelText(/email/i), 'new@example.gov')
+      await userEvent.selectOptions(screen.getByLabelText(/department/i), 'finance-uuid')
+      expect(screen.getByLabelText(/department/i)).toHaveValue('finance-uuid')
+
+      await userEvent.click(screen.getByRole('button', { name: /authorize admin/i }))
+
+      await waitFor(() => expect(adminService.authorize).toHaveBeenCalled())
+      expect(screen.queryByText(/department is required/i)).not.toBeInTheDocument()
+      expect(adminService.authorize).toHaveBeenCalledWith({
+        email: 'new@example.gov',
+        department_id: 'finance-uuid',
+      })
+    })
+
+    it('still rejects submission with no department selected', async () => {
+      renderPage()
+      await userEvent.type(await screen.findByLabelText(/email/i), 'new@example.gov')
+      await userEvent.click(screen.getByRole('button', { name: /authorize admin/i }))
+
+      expect(await screen.findByText(/department is required/i)).toBeInTheDocument()
+      expect(adminService.authorize).not.toHaveBeenCalled()
+    })
+
+    it('keeps the selected department across an unrelated re-render (email field edits)', async () => {
+      renderPage()
+      await userEvent.selectOptions(await screen.findByLabelText(/department/i), 'finance-uuid')
+      await userEvent.type(screen.getByLabelText(/email/i), 'new@example.gov')
+
+      expect(screen.getByLabelText(/department/i)).toHaveValue('finance-uuid')
+    })
+  })
 })

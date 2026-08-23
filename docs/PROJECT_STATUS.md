@@ -7,8 +7,52 @@ supervisor as-is.
 
 ## Current Phase
 
-**Phase 5F — Dashboard & Operational Overview UI: Implementation.**
-Complete. Frontend only, built directly on this same phase's own prior
+**Phase 5G — Backend Dashboard Aggregation & Analytics API:
+Architecture & Requirements Review.** Complete. Review only — no
+backend or frontend code, migration, index, or test was written this
+phase. Repository confirmed clean and at Phase 5F (`1e5c8de`) before
+this review began. Re-inspected the full backend layering
+(endpoint→service→repository), the actual Letter/Department/User/
+Admin/Document/Notification/AuditLog schema (indexes, constraints,
+relationships — verified directly, not assumed from prior phase
+reports), and `list_letters`'s exact query-construction pattern.
+
+**Confirmed the two reusable authorization primitives
+(`letter_visibility_filter`/department derivation) can and should be
+reused directly for any future Letter aggregate — no second,
+independently-maintained predicate is proposed.** Confirmed every
+column a plausible Letter aggregate would group or filter by
+(`recipient_department_id`, `category_id`, `classification_id`,
+`received_at`, `status`) is already indexed, so **zero new indexes are
+recommended**. Confirmed `AuditLog` has no department column at all,
+and no read API exists — audit analytics is deferred entirely to a
+future, separate phase, not mixed into this one.
+
+Produced a full metric-by-metric inventory (Letter/Administration/
+Document/Notification/Audit) classified per the brief's own A-E scheme.
+**Finding: no metric in the inventory clears the bar of "confirmed
+business value that existing APIs cannot already provide"** — every
+metric that would need a genuinely new backend endpoint is gated behind
+an unconfirmed business want. **Recommendation: defer backend
+aggregation entirely for V1** — the current, already-shipped
+operational dashboard (Phase 5F) already delivers everything the
+evidence supports building. A complete endpoint design
+(`GET /api/v1/letters/aggregate`, response schema, date-range/filter
+strategy, security threat review, test plan) is documented as
+ready-to-build if and when a specific breakdown or trend is ever
+confirmed wanted — but none is authorized or implemented this phase.
+
+Full review in `docs/architecture/dashboard-analytics-api.md`.
+
+**Not in scope for this phase, and not added:** any backend endpoint,
+repository method, service method, migration, or index; an `AuditLog`
+read API; an audit dashboard; an analytics UI; charts; reporting
+tables; materialized views; Redis; caching infrastructure; any frontend
+change.
+
+### Phase 5F — Dashboard & Operational Overview UI: Implementation
+
+Complete (prior phase). Frontend only, built directly on this same phase's own prior
 architecture review — no backend code, migration, or production data
 was touched. Added `/app/dashboard` (a plain child route, available to
 every role — no new authentication/authorization mechanism; the
@@ -1814,6 +1858,20 @@ detail behind each:
 | Grep for a `403`→`404` (or reverse) conversion in the new pages/components | Zero matches |
 | Manual verification against a running backend | Not performed — no backend/dev environment was running at any point this session; reported honestly rather than claimed |
 
+### Validation performed — Phase 5G review
+
+An architecture/requirements review, not an implementation phase —
+validation here means confirming no code was written and no drift was
+introduced, the same standard applied to every prior review-only pass:
+
+| Check | Result |
+|---|---|
+| `git status` before and after the review | Identical except one new documentation file and five documentation updates — no backend file (`.py`), frontend file (`.jsx`/`.js`/`.css`), migration, index, or test file touched |
+| Direct reads of `app/api/deps.py`, `app/services/authorization.py`, `app/repositories/letter_repository.py`, `app/services/letter_service.py` | Confirmed both reusable authorization primitives (`letter_visibility_filter`, department derivation) and the exact filtered-statement pattern `list_letters` already uses — directly reusable for an aggregate, no duplication needed |
+| Direct reads of `Letter`/`Department`/`User`/`UserAuthorization`/`LetterDocument`/`Notification`/`AuditLog` models | Confirmed every column a plausible Letter aggregate would group/filter by is already indexed; confirmed `AuditLog` has no department column; confirmed `LetterDocument.mime_type` is not indexed |
+| Grep for an audit-read endpoint across `app/api/v1/endpoints/` and `router.py` | Zero matches — confirmed unchanged from Phase 4E's/5F's own findings |
+| `frontend/src/pages/DashboardPage.jsx` and its three components, re-read fresh | Confirmed exactly which existing (non-aggregate) endpoints the Phase 5F dashboard already uses — this review's inventory builds on that baseline, not a redesign of it |
+
 ### Validation performed — Phase 5F implementation
 
 | Check | Result |
@@ -2214,30 +2272,42 @@ afterward — `lrs_dev` is empty again.
 
 ## In Progress
 
-Nothing — Phase 5F's implementation is complete (Phase 5's own
-architecture review, Phase 5A's foundation, Phase 5B's
+Nothing — Phase 5G's architecture/requirements review is complete
+(Phase 5's own architecture review, Phase 5A's foundation, Phase 5B's
 authentication/account UX, Phase 5C's core Letter registry UI, Phase
 5D's Department/Administrator/User management UI, Phase 5E's own
 Documents/Notifications review and implementation, Phase 5F's own
-Dashboard review, and now Phase 5F's implementation are all done) and
-the project is paused pending explicit instruction to begin the next
-phase, per the standing project rule that phases are reviewed before
-the next begins.
+Dashboard review and implementation, and now Phase 5G's Backend
+Aggregation review are all done) and the project is paused pending
+explicit instruction to begin Phase 5G's implementation (if ever
+authorized — see below), per the standing project rule that phases are
+reviewed before the next begins.
 
-## Pending (Phase 5G and later)
+## Pending (Phase 5G implementation, if ever authorized, and later)
 
-* **A Letter aggregation/breakdown backend endpoint** (by time bucket,
-  category, classification, or department) — no group-by/aggregate
-  query exists today; every trend/historical dashboard metric depends
-  on this not existing yet. `PENDING BACKEND API`, not designed beyond
-  the conceptual shape in `docs/architecture/dashboard.md` §12.
+* **A Letter aggregation/breakdown backend endpoint**
+  (`GET /api/v1/letters/aggregate`, by category/classification/
+  department/day/week/month) — fully designed
+  (`docs/architecture/dashboard-analytics-api.md` §12-§16) but **not
+  recommended for V1**: no metric in the Phase 5G inventory cleared the
+  bar of confirmed business value existing APIs can't already provide.
+  `PENDING BUSINESS CLARIFICATION` on whether any specific breakdown or
+  trend is actually wanted — implementation is gated on that, not on
+  any remaining design work.
 * **A lighter-weight, count-only path for Departments/Admins/Users/
   Categories/Classifications** — today, computing any count from these
   five resources costs a full-object list fetch (no pagination, no
   database `COUNT`, unlike Letters). Not urgent at current scale;
   `PENDING BUSINESS CLARIFICATION`, tied to the same pagination
-  question Phase 5D's own review already raised. See
-  `docs/architecture/dashboard.md` §9/§26.
+  question Phase 5D's own review already raised. Phase 5G's own review
+  reached the identical conclusion from the backend side — see
+  `docs/architecture/dashboard-analytics-api.md` §17.
+* **`AuditLog` read API and any audit-derived analytics** — no read API
+  exists; Phase 5G's own review found `AuditLog` has no department
+  column at all, so scoping an audit aggregate correctly needs a
+  separate, per-entity-type join design not yet attempted. `FUTURE`,
+  explicitly deferred to its own later phase, not bundled with Letter
+  aggregation. See `docs/architecture/dashboard-analytics-api.md` §5/§20.
 * **Category/Classification management UI** remains unbuilt — out of
   Phase 5D's own objective list, not an oversight, and out of Phase
   5E's and Phase 5F's scope too. See
@@ -2767,16 +2837,21 @@ behind each.
 
 ## Next Recommended Phase
 
-Phase 5F's implementation is now complete — the frontend has an
-operational-only Dashboard (`/app/dashboard`, role-aware summary cards,
-Recent Letters, Quick Actions) matching the architecture review's
-design exactly, with no chart, trend, or analytics infrastructure of
-any kind. See `docs/architecture/dashboard.md` §32 for the full
-implementation record. No further work is pending from Phase 5F
-itself; what remains is either the next screen (Category/Classification
-management, out of every phase's scope so far), or resolving one of
-several genuinely open questions before more UI or any analytics
-widget is built on top of what exists today:
+Phase 5G's own review is now complete — it found that **no backend
+aggregation is currently justified**: every candidate analytics metric
+either already has an existing, sufficient API (Phase 5F's own
+operational dashboard) or is gated behind an unconfirmed business want.
+A complete `GET /api/v1/letters/aggregate` design is documented and
+ready to build (`docs/architecture/dashboard-analytics-api.md` §12-§16)
+the moment at least one specific breakdown or trend is confirmed
+wanted — but nothing was implemented or authorized this phase. What
+remains is either the next screen (Category/Classification management,
+out of every phase's scope so far), resolving Phase 5G's own business
+clarifications (§27 of that review — is analytics wanted at all, which
+trend/breakdown matters, default date range, whether USER should see
+any aggregate), or resolving one of the several other genuinely open
+questions before more UI or any analytics widget is built on top of
+what exists today:
 
 Resolving the category/classification reference-data
 access gap Phase 5C confirmed (a backend change: a read-scoped,

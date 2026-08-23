@@ -1149,3 +1149,23 @@ instruction.
   backend limitation, acceptable at current scale per §9 of the review.
 * **No manual QA against a running backend** — automated verification
   only, this session.
+
+---
+
+## 33. Phase 5G — Backend Dashboard Aggregation & Analytics API (cross-reference)
+
+A dedicated follow-up review,
+[`dashboard-analytics-api.md`](dashboard-analytics-api.md), assessed
+whether the backend should provide additional aggregate/analytics
+endpoints beyond what this document's own §14/§26 already flagged as
+`PENDING BACKEND API`/`PENDING/FUTURE`. **Finding: no metric it
+inventoried both needs a new backend endpoint and has confirmed
+business value** — the operational dashboard this document describes
+already covers everything the evidence supports building, restated and
+now doubly confirmed from the backend side. That review documents a
+complete, ready-to-build `GET /api/v1/letters/aggregate` design
+(reusing this project's existing `letter_visibility_filter`/
+department-derivation authorization logic directly, no new predicate)
+for if and when a specific breakdown or trend is ever confirmed
+wanted — nothing was implemented. See that document's own §27-§28 for
+the exact open business questions and its V1 recommendation.

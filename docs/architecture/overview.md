@@ -61,8 +61,25 @@ audit read API — that does not exist today, so none was built.
 entirely from the same already-isolated endpoints Letters/
 Departments/Admins/Users/Notifications already use, with no new
 frontend authorization rule and no analytics infrastructure of any
-kind. See `dashboard.md` §32 for the full implementation record. This
-document explains the roles and hierarchy
+kind. See `dashboard.md` §32 for the full implementation record.
+Phase 5G then reviewed (but did not implement) whether the backend
+should provide additional aggregate/analytics APIs beyond that —
+re-reading the full endpoint→service→repository layering, the actual
+Letter/Department/User/Admin/Document/Notification/AuditLog schema, and
+`list_letters`'s own query construction confirmed that
+`letter_visibility_filter` and the existing department-derivation logic
+are directly reusable for any future Letter aggregate (no second,
+independently-maintained authorization predicate), that every column a
+plausible aggregate would group or filter by is already indexed (zero
+new indexes recommended), and that `AuditLog` has no department column
+at all — a real design problem that defers any audit-derived analytics
+to its own future phase, never mixed with Letter aggregation. A full
+metric inventory found no metric that both needs a new backend endpoint
+and has confirmed business value, so backend aggregation is recommended
+deferred entirely for V1; a complete `GET /api/v1/letters/aggregate`
+design is documented as ready-to-build if that ever changes. See
+`dashboard-analytics-api.md` for the full review. This document
+explains the roles and hierarchy
 the database schema is
 built to support, how a caller's identity is established (Phase 3A), how
 role/department authorization decisions are enforced on top of that
@@ -974,6 +991,40 @@ scope the review approved, no new architecture decisions:
 * **No backend file was touched** — confirmed by `git status` and a
   full backend regression run (458 passed, unaffected) before and
   after. Full implementation record: `dashboard.md` §32.
+
+### Reviewed (Phase 5G — Backend Dashboard Aggregation & Analytics API)
+
+Full design in [`dashboard-analytics-api.md`](dashboard-analytics-api.md).
+The full endpoint→service→repository layering and the actual Letter/
+Department/User/Admin/Document/Notification/`AuditLog` schema were
+re-read fresh this phase.
+
+* **Confirmed the existing `letter_visibility_filter`/department-
+  derivation authorization logic is directly reusable, unmodified, for
+  any future Letter aggregate** — the single authoritative
+  classified-access expression in this system gains no second,
+  independently-maintained copy.
+* **Confirmed every column a plausible Letter aggregate would `GROUP
+  BY` or filter on is already indexed** (`recipient_department_id`,
+  `category_id`, `classification_id`, `received_at`, `status`) — zero
+  new indexes recommended.
+* **Confirmed `AuditLog` has no department column of any kind** —
+  scoping an audit-derived aggregate correctly would need a different
+  join strategy per `entity_type`, a materially harder problem this
+  review does not attempt to solve; audit analytics is deferred to its
+  own future phase, never mixed with Letter aggregation.
+* A complete metric-by-metric inventory (Letter/Administration/
+  Document/Notification/Audit) found **no metric that both needs a new
+  backend endpoint and has confirmed business value** — every current-
+  operational figure is already served by Phase 5F's own dashboard,
+  and every analytical one is gated behind an unconfirmed want.
+* **Recommends deferring backend aggregation entirely for V1** — a
+  complete, ready-to-build `GET /api/v1/letters/aggregate` design
+  (response schema, date-range/filter strategy, a 12-item security
+  threat review, and a test plan) is documented for if and when a
+  specific breakdown or trend is ever confirmed wanted. Nothing was
+  implemented. No backend or frontend file was touched during the
+  review.
 
 ### Explicitly deferred (not yet implemented)
 
