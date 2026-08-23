@@ -1,0 +1,56 @@
+.scroller {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+  min-width: 640px;
+}
+
+.table th,
+.table td {
+  padding: var(--space-sm) var(--space-md);
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.table thead th {
+  background: var(--color-bg);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-muted);
+}
+
+.table tbody tr:hover {
+  background: var(--color-bg);
+}
+
+.referenceCell {
+  font-weight: var(--font-weight-medium);
+}
+
+.referenceCell a {
+  color: var(--color-primary);
+}
+
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: var(--font-weight-medium);
+  color: inherit;
+  cursor: pointer;
+}
+
+.sortIndicator {
+  font-size: 0.7em;
+}

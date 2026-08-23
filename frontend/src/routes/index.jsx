@@ -13,6 +13,9 @@
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 
 import AppShell from '../layouts/AppShell'
+import LetterDetailPage from '../pages/LetterDetailPage'
+import LetterFormPage from '../pages/LetterFormPage'
+import LetterListPage from '../pages/LetterListPage'
 import LoginPage from '../pages/LoginPage'
 import PlaceholderPage from '../pages/PlaceholderPage'
 import RootRedirect from '../pages/RootRedirect'
@@ -32,7 +35,10 @@ export const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { index: true, element: <Navigate to="letters" replace /> },
-          { path: 'letters', element: <PlaceholderPage title="Letters" /> },
+          { path: 'letters', element: <LetterListPage /> },
+          { path: 'letters/new', element: <LetterFormPage /> },
+          { path: 'letters/:id', element: <LetterDetailPage /> },
+          { path: 'letters/:id/edit', element: <LetterFormPage /> },
           {
             path: 'documents',
             element: (
@@ -55,7 +61,7 @@ export const router = createBrowserRouter([
             path: 'system/letters',
             element: (
               <RoleGuard allowedRoles={['SYSTEM_ADMIN']}>
-                <PlaceholderPage title="Letters (all departments)" />
+                <LetterListPage />
               </RoleGuard>
             ),
           },

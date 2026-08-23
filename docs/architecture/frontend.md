@@ -1,16 +1,18 @@
-# Frontend & Operational UI — Architecture Review & Foundation (Phase 5 / 5A / 5B)
+# Frontend & Operational UI — Architecture Review & Foundation (Phase 5 / 5A / 5B / 5C)
 
-**Status: AUTHENTICATION & ACCOUNT UX IMPLEMENTED (Phase 5B).** §1-33
-below are the original architecture/UX review (Phase 5) — kept unchanged
-as the design rationale. **See §34, "Phase 5A implementation record"**
-for the foundation built on top of it (routing, authentication state,
-the API client, protected routes, role-derived navigation, the
-application shell, a design-token foundation, an accessibility baseline,
-and test infrastructure), and **§35, "Phase 5B implementation record"**
-for the complete login/signup/pending-approval/deactivated-account/
-session-restoration/logout experience built on top of that foundation.
-No business feature screen (Letters, Documents, Notifications,
-Administration, dashboard, audit) exists yet — §35 is explicit about
+**Status: CORE REGISTRY UI IMPLEMENTED (Phase 5C).** §1-33 below are the
+original architecture/UX review (Phase 5) — kept unchanged as the design
+rationale. **See §34, "Phase 5A implementation record"** for the
+foundation built on top of it (routing, authentication state, the API
+client, protected routes, role-derived navigation, the application
+shell, a design-token foundation, an accessibility baseline, and test
+infrastructure), **§35, "Phase 5B implementation record"** for the
+complete login/signup/pending-approval/deactivated-account/
+session-restoration/logout experience built on top of that foundation,
+and **§36, "Phase 5C implementation record"** for the complete Letter
+registry (list/search/sort/paginate/create/view/edit/archive) built on
+top of both. Documents, Notifications, Administration, dashboard, and
+audit UI still do not exist — §36 is explicit about
 that boundary.
 
 This document originally inspected the actual current frontend (a Phase
@@ -1253,3 +1255,223 @@ touched.
   not be discarded; automatic retry was not requested and would add
   complexity (timers, backoff, cancellation) this phase has no clear
   requirement for yet.
+
+## 36. Phase 5C implementation record — Core Registry UI
+
+Turns the `/app/letters` and `/app/system/letters` placeholders into a
+complete V1 Letter registry: list/search/sort/paginate, create, view,
+edit, and archive. No backend file was touched; every behavior below is
+driven by the exact confirmed contract in
+`backend/app/api/v1/endpoints/letters.py`,
+`app/services/letter_service.py`, `app/services/authorization.py`, and
+`app/schemas/letter.py`, all re-read fresh this phase — not the §10
+summary table above, which predates this implementation and is kept
+only as historical review context.
+
+### CONFIRMED backend-contract gap, not silently worked around
+
+`GET /api/v1/categories`, `GET /api/v1/classifications`, and
+`GET /api/v1/departments` are all `require_system_admin`-only
+(`app/api/v1/endpoints/{categories,classifications,departments}.py`) —
+a fact this phase confirmed by reading the endpoint dependencies
+directly, not previously called out this precisely anywhere in this
+document. `POST /api/v1/letters` (create) is `require_user_or_admin`,
+which structurally *excludes* SYSTEM_ADMIN (no department to record a
+letter against). The intersection is empty: **no role that can create
+or edit a Letter can ever legitimately load the category/classification/
+department reference-data lists**, and the one role that can load them
+(SYSTEM_ADMIN) can never create a Letter.
+
+Resolved, not routed around: `category_id`/`classification_id` never
+appear on the Create form for any role (no caller of that form could
+populate them regardless of role). On Edit, they appear only for a
+SYSTEM_ADMIN caller — the only role for which both the reference-data
+load and `assert_letter_access`'s edit permission actually succeed. A
+USER/ADMIN editing a letter never touches those two fields; the
+backend's own "omitted field means unchanged" `LetterUpdate` semantics
+leave whatever value was already there untouched. `source_department_id`
+is a separate, deliberate *simplification* (not a backend blocker) —
+omitted from both forms for all roles because `source_name` (always
+required, always shown) already conveys the source in human-readable
+form, and resolving the optional structured cross-reference would need
+the same SYSTEM_ADMIN-only department list for comparatively little
+value. Neither omission invents a workaround (no hardcoded category/
+classification/department names anywhere — grepped, confirmed zero
+matches outside test fixtures) — both are documented, honest scope
+narrowings in response to a real, confirmed contract fact.
+
+A related, already-known backend limitation this phase had to design
+around rather than paper over: `LetterUpdate` cannot currently clear a
+nullable field back to `null` (§10 above) — sending an explicit `null`
+for `category_id`/`classification_id` on edit would silently no-op, not
+unassign. The SYSTEM_ADMIN edit form therefore never sends a `null` for
+either field; it only ever sends a value when one is actually chosen,
+and says so directly in the form's own hint text rather than implying
+"Unassigned" works when it doesn't.
+
+### Services (§30 of the brief)
+
+`services/letterService.js` — `list`/`get`/`create`/`update`/`archive`,
+matching the five confirmed endpoints exactly. `create`/`update` route
+every payload through an explicit field allowlist
+(`CREATE_FIELDS`) mirroring `LetterCreate`'s own field set — there is no
+code path by which `recipient_department_id`/`recorded_by`/`status`/`id`
+could reach the request body, verified by a dedicated payload-shape test
+on both the create and edit forms. `services/categoryService.js`/
+`classificationService.js`/`departmentService.js` — thin wrappers around
+their respective `GET` endpoints, each documented in its own header as
+SYSTEM_ADMIN-only, called only from SYSTEM_ADMIN-gated code paths.
+
+### List/search/sort/pagination (§3-§5, §8-§13)
+
+`pages/LetterListPage.jsx` — one component mounted at both
+`/app/letters` (USER/ADMIN) and `/app/system/letters` (SYSTEM_ADMIN,
+`RoleGuard`-wrapped), adapting to `user.role` the same way
+`RoleGuard`/`navigationConfig.js` already do, rather than two
+near-duplicate pages. All list/filter/sort/pagination state lives in the
+URL via `useSearchParams` (already part of `react-router-dom` — no new
+dependency), so refresh, back/forward, and bookmarking all preserve
+registry state (§11). The seven confirmed text filters, the `status`
+exact filter, and the inclusive date range are available to every role;
+`category_id`/`classification_id`/`department_id` filters are rendered
+only when the corresponding reference-data list loaded successfully —
+in practice, SYSTEM_ADMIN only, per the gap above. Sorting exposes all
+four whitelisted fields (`received_at`/`created_at`/`reference_number`/
+`subject`, `LetterSortField`) via an explicit dropdown plus clickable,
+`aria-sort`-labeled column headers for the three that have a matching
+table column. Pagination renders exactly the backend's own
+`page`/`page_size`/`total`/`total_pages` — `total_pages` is never
+recomputed client-side. A response whose `page` exceeds its own
+`total_pages` (e.g., a filter narrowed the result set out from under an
+already-paginated view) is corrected by re-requesting the corrected
+page, not left showing an empty page silently.
+
+### Classified-record safety (§7, §12 — CRITICAL)
+
+`items`/`total` are rendered exactly as the backend returns them — no
+client-side re-filtering, no post-fetch row removal, no distinguishing
+label for a restricted-but-existing record. A `404` on
+`GET /api/v1/letters/{id}` — whether the letter doesn't exist, belongs
+to another department, or is classified and inaccessible to this caller
+(all three collapsed by `LetterNotFoundError`,
+`app/services/letter_service.py:_get_for_access`) — renders the
+identical generic "Letter not found," verified by a dedicated test
+asserting the rendered text contains neither "classif" nor "permission."
+
+### Create / edit / archive (§14-§19)
+
+`pages/LetterFormPage.jsx` — one component for both
+`/app/letters/new` (create) and `/app/letters/:id/edit` (edit), per
+§31's own reuse recommendation. Field set matches `LetterCreate`/
+`LetterUpdate` exactly, minus the two documented omissions above.
+Client-side validation (`utils/formValidation.js:validateLetterForm`) is
+lightweight and checks only the fields the backend itself requires at
+creation (`reference_number`/`subject`/`source_name`/`sender_name`/
+`sender_designation`/`sender_department`/`received_at`) — never a
+replacement for the backend's own authoritative validation, whose `422`
+field errors render through the same mechanism. `pages/
+LetterDetailPage.jsx` renders every `LetterResponse` field except
+`recorded_by` (no cross-role name-resolution endpoint is in this
+phase's scope — only Category/Classification reference-data consumption
+was authorized, per the brief's own §40) — `created_at` conveys "when
+this was recorded" without needing one. Archive
+(`components/ArchiveConfirmDialog.jsx`) never says "delete" or
+"permanent" — `DELETE /api/v1/letters/{id}` is confirmed, from the
+endpoint's own summary string, to be a soft status transition, never a
+physical row deletion; the dialog's copy states this directly ("It
+remains fully visible in the registry... archiving does not delete or
+hide its record"), and the archive action itself disappears once a
+letter is already `ARCHIVED` (idempotent on the backend, but showing an
+already-fired action as available is misleading).
+
+### Role-aware UX (§20-§21)
+
+USER and ADMIN are treated identically throughout — not a shortcut, but
+a direct match to `LetterService`'s own docstring: "USER and ADMIN share
+identical access within their own `recipient_department_id`." SYSTEM_ADMIN
+gets a resolved Department column (from the SYSTEM_ADMIN-only reference
+load above) and no "Record New Letter" action, matching
+`POST /letters`'s `require_user_or_admin` dependency exactly — derived
+from the documented backend contract, not an invented frontend rule
+(§20's own explicit preference). No department selector is ever shown to
+USER/ADMIN (§21) — `department_id` is silently ignored for them
+server-side regardless, so there is nothing for a frontend control to do
+even if one existed.
+
+### Accessibility (§27) and responsive design (§28)
+
+Semantic `<table>` markup with `scope="col"`/`scope="row"`, `aria-sort`
+on the three clickable sort headers, `aria-current="page"` on the active
+pagination control, labelled filter/form inputs with `aria-invalid`/
+`aria-describedby` field errors, and a dependency-free but
+keyboard-trapped, `Escape`-dismissible `role="dialog"` confirmation for
+archive. The table scrolls horizontally inside its own container on
+narrow viewports (`overflow-x: auto`, a fixed `min-width` on the table
+itself) rather than letting the page itself overflow; the filter grid
+and create/edit form collapse to a single column below the existing
+tablet breakpoint. No CSS framework was added.
+
+### Performance (§29)
+
+One request per registry page load — category/classification/department
+names come from lookup maps loaded once (SYSTEM_ADMIN only), never
+per-row. No caching library was added; the reference-data effect simply
+runs once per page mount, matching the brief's own "do not introduce a
+caching library unless genuinely required" instruction.
+
+### Tests (§34 of the brief)
+
+84 tests total (was 44 after Phase 5B) across 17 files. New this phase:
+`utils/formValidation.test.js` extended with `validateLetterForm` (3),
+`components/LetterTable.test.jsx` (5 — accessible headers, `aria-sort`,
+sort-click behavior, conditional columns, row links),
+`components/Pagination.test.jsx` (4 — single-page collapse,
+`aria-current`, boundary disabling, page-change callback),
+`pages/LetterListPage.test.jsx` (10 — successful list, empty state, API
+failure with retry, URL-encoded request params, filter-resets-page,
+clear-resets-filters-and-sort, sort toggling, role-based Create-link/
+department-column visibility, no reference-data requests for
+non-SYSTEM_ADMIN), `pages/LetterDetailPage.test.jsx` (7 — field
+rendering, generic 404 with no classified/permission language, retry on
+non-404 failure, archive dialog copy, successful archive, failed
+archive, hidden archive action once already archived),
+`pages/LetterFormPage.test.jsx` (11 — required-field validation, create
+success, 422 field errors, 403 forbidden, exact payload shape on both
+create and edit, no category/classification field on create for any
+role, edit pre-fill, edit 404, category/classification visible only for
+SYSTEM_ADMIN on edit).
+
+### Validation
+
+`npm run build` succeeds (139 modules, no errors). `npm run test` —
+**84 passed**, 0 failed. Backend regression: `pytest tests/` — **458
+passed**, unaffected, confirming zero backend impact. `git status`
+confirms no file under `backend/app/`, `backend/alembic/`, or
+`backend/tests/` was touched.
+
+### Known limitations (post-implementation)
+
+* **USER/ADMIN cannot assign or view a resolved category/classification
+  name when creating or editing a Letter** — the confirmed backend
+  contract gap above. A letter can still carry a category/classification
+  (assigned by a SYSTEM_ADMIN via edit), but the two roles that do the
+  actual day-to-day recording have no UI path to set or see one in V1.
+* **A category/classification, once set by SYSTEM_ADMIN, cannot be
+  cleared back to unassigned through this UI** — the pre-existing
+  `LetterUpdate` "omitted means unchanged" limitation (§10); the form
+  never attempts it and says so in its own hint text.
+* **`source_department_id` has no UI at all** — a deliberate
+  simplification (not a backend blocker); `source_name` already conveys
+  the source in every screen this phase builds.
+* **`recorded_by` is never resolved to a user's name** — no cross-role
+  user-lookup endpoint was in this phase's authorized scope (only
+  Category/Classification reference-data consumption was, per the
+  brief's own §40); the detail page shows when a letter was recorded
+  (`created_at`) without who, by id or name.
+* Everything listed in §34/§35's own "Known limitations" still applies
+  unchanged (the `npm audit` advisories, the two React Router
+  future-flag warnings, no server-side logout revocation) — none is
+  affected by this phase's work.
+* **No document or notification UI** — explicitly out of scope for this
+  phase (Phase 5D); the Letter detail page has a labeled placeholder
+  section for documents rather than a fake feature.

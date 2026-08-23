@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { validateLoginForm, validateSignupForm } from './formValidation'
+import { validateLetterForm, validateLoginForm, validateSignupForm } from './formValidation'
 
 describe('validateLoginForm', () => {
   it('requires email and password', () => {
@@ -47,5 +47,47 @@ describe('validateSignupForm', () => {
       password_confirm: 'password123',
     })
     expect(errors).toEqual({})
+  })
+})
+
+describe('validateLetterForm', () => {
+  const VALID = {
+    reference_number: 'REF-001',
+    subject: 'Budget approval',
+    source_name: 'Ministry of Finance',
+    sender_name: 'Jane Sender',
+    sender_designation: 'Director',
+    sender_department: 'Finance',
+    received_at: '2026-01-01T09:00',
+  }
+
+  it('requires every mandatory field', () => {
+    const errors = validateLetterForm({
+      reference_number: '',
+      subject: '',
+      source_name: '',
+      sender_name: '',
+      sender_designation: '',
+      sender_department: '',
+      received_at: '',
+    })
+    expect(errors.reference_number).toMatch(/required/i)
+    expect(errors.subject).toMatch(/required/i)
+    expect(errors.source_name).toMatch(/required/i)
+    expect(errors.sender_name).toMatch(/required/i)
+    expect(errors.sender_designation).toMatch(/required/i)
+    expect(errors.sender_department).toMatch(/required/i)
+    expect(errors.received_at).toMatch(/required/i)
+  })
+
+  it('passes for a well-formed submission', () => {
+    expect(validateLetterForm(VALID)).toEqual({})
+  })
+
+  it('does not require optional fields', () => {
+    const errors = validateLetterForm(VALID)
+    expect(errors.source_location).toBeUndefined()
+    expect(errors.reason).toBeUndefined()
+    expect(errors.category_id).toBeUndefined()
   })
 })

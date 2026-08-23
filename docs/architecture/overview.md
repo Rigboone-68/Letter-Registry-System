@@ -21,13 +21,16 @@ classified-access filtering client-side — Phase 5A implemented that
 review's *foundation* (routing, a single `AuthContext` sourcing role/
 department/status from `GET /auth/me` or the login response's own
 `UserPublic` only, one centralized API client, protected routes,
-role-derived navigation, the app shell), and Phase 5B then implemented
-the complete authentication/account experience on top of that
-foundation (login, signup, pending-approval, deactivated-account,
-session restoration, logout, redirects) — without building any business
-feature screen yet, so the classified-Letter discipline above still has
-nothing to violate it — there is no Letter screen at
-all until a later phase. This document explains the roles and hierarchy
+role-derived navigation, the app shell), Phase 5B then implemented the
+complete authentication/account experience on top of that foundation
+(login, signup, pending-approval, deactivated-account, session
+restoration, logout, redirects), and Phase 5C then implemented the
+complete Letter registry on top of both — list/search/sort/paginate,
+create/view/edit/archive — rendering `items`/`total` exactly as the
+backend returns them and every Letter `404` identically, verified
+directly against this implementation, not just designed for it. Document/
+Notification/Administration screens still do not exist — this document
+explains the roles and hierarchy
 the database schema is
 built to support, how a caller's identity is established (Phase 3A), how
 role/department authorization decisions are enforced on top of that
@@ -702,6 +705,58 @@ experience; still no business feature screen.
   endpoint exists or was added; an already-issued JWT stays valid until
   it naturally expires. Documented as an accepted V1 limitation, not a
   defect.
+
+### Implemented (Phase 5C — Core Registry UI)
+
+Built directly on Phase 5A's foundation and Phase 5B's authentication
+UX, above — the `/app/letters` and `/app/system/letters` placeholders
+are now a complete V1 Letter registry.
+
+* **List/search/sort/pagination** — one `LetterListPage` mounted at both
+  routes, adapting to `user.role` rather than duplicating pages. The
+  seven confirmed text filters, `status`, and an inclusive received-date
+  range are available to every role; sorting covers all four
+  backend-whitelisted fields. Filter/sort/page state lives in the URL
+  (`useSearchParams`), so refresh, back/forward, and bookmarking all
+  preserve registry state. Pagination renders the backend's own
+  `page`/`page_size`/`total`/`total_pages` — never recomputed
+  client-side.
+* **CONFIRMED backend-contract gap found and resolved, not routed
+  around**: `GET /api/v1/categories`/`/classifications`/`/departments`
+  are all `require_system_admin`-only, but `POST /api/v1/letters`
+  structurally excludes SYSTEM_ADMIN — no role that can create/edit a
+  Letter can ever load those reference-data lists. `category_id`/
+  `classification_id` never appear on Create (any role); on Edit they
+  appear only for SYSTEM_ADMIN. Nothing was hardcoded as a workaround —
+  confirmed by grep, zero category/classification/department names
+  appear anywhere outside test fixtures.
+* **Classified-record safety, re-verified against this implementation
+  (CRITICAL)** — `items`/`total` render exactly as the backend returns
+  them; a `404` on a Letter — nonexistent, wrong-department, or
+  classified-and-inaccessible, all three collapsed identically by the
+  backend — renders the same generic "Letter not found," verified by a
+  test asserting the rendered text contains neither "classif" nor
+  "permission."
+* **Create/edit/archive** — one `LetterFormPage` for both create and
+  edit, field set matching `LetterCreate`/`LetterUpdate` minus the
+  documented category/classification gap and a deliberate
+  `source_department_id` scope simplification. Archive
+  (`ArchiveConfirmDialog`) never says "delete" or "permanent" —
+  `DELETE /api/v1/letters/{id}` is confirmed, from the endpoint's own
+  summary, to be a soft status transition, never physical deletion.
+* **Role-aware UX** — USER and ADMIN treated identically, matching
+  `LetterService`'s own docstring ("USER and ADMIN share identical
+  access within their own `recipient_department_id`"); SYSTEM_ADMIN gets
+  a resolved Department column and no create action, matching
+  `POST /letters`'s own `require_user_or_admin` dependency.
+* **Test suite grown from 44 to 84 tests** — new coverage for list
+  success/empty/error/pagination/filter-reset/clear/sort, classified-404
+  safety, create/edit validation and exact payload shape (proving
+  `recipient_department_id`/`recorded_by`/`status` can never be
+  injected), archive confirmation and non-permanent wording, and
+  role-based UI differences.
+* **No backend file was touched** — confirmed by `git status` and a full
+  backend regression run (458 passed, unaffected) before and after.
 
 ### Explicitly deferred (not yet implemented)
 

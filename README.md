@@ -2,10 +2,11 @@
 
 **A Production of AJ-Labs**
 
-> **Current status: Phase 5B — Authentication & Account UX implemented
-> (Phase 5A Frontend Foundation implemented; Phase 5 architecture/UX
-> review complete; Phase 4E Operational Activity, Notifications & Audit
-> implemented; Phase 3B complete).**
+> **Current status: Phase 5C — Core Registry UI implemented (Phase 5B
+> Authentication & Account UX implemented; Phase 5A Frontend Foundation
+> implemented; Phase 5 architecture/UX review complete; Phase 4E
+> Operational Activity, Notifications & Audit implemented; Phase 3B
+> complete).**
 > Local email/password login, JWT access tokens, role-based access
 > control, System-Admin-controlled department management,
 > System-Admin-controlled Admin management, and Admin-controlled User
@@ -88,9 +89,25 @@
 > guard on both Login and Signup; and a test suite grown from 17 to 44
 > tests. Logout remains purely client-side token removal — there is no
 > server-side revocation endpoint, an accepted V1 limitation, not a
-> defect. **No Letter/Document/Notification/Administration screen exists
-> yet** — every nav destination is a shared placeholder; those remain
-> for later phases. See `docs/PROJECT_STATUS.md` for the full picture.
+> defect. Phase 5C then turned the `/app/letters` placeholder into the
+> complete V1 Letter registry: list/search (seven text filters, exact
+> filters, an inclusive date range), sort (all four backend-whitelisted
+> fields, accessible headers), pagination driven entirely by the
+> backend's own totals, create, view, edit, and archive (a non-
+> destructive status transition, worded and confirmed accordingly). A
+> real, confirmed backend-contract gap was found and resolved rather
+> than routed around: `GET /api/v1/categories`/`/classifications`/
+> `/departments` are all SYSTEM_ADMIN-only, but `POST /api/v1/letters`
+> structurally excludes SYSTEM_ADMIN — so category/classification
+> selection is unavailable on Create for any role, and available on Edit
+> only for SYSTEM_ADMIN, with nothing hardcoded as a workaround. The
+> classified-Letter discipline Phase 5's review established — render
+> `items`/`total` exactly as returned, treat every `404` identically —
+> was verified directly against this implementation. Test suite grown
+> from 44 to 84 tests. **No Document/Notification/Administration screen
+> exists yet** — every other nav destination is a shared placeholder;
+> those remain for later phases. See `docs/PROJECT_STATUS.md` for the
+> full picture.
 
 ---
 
@@ -300,11 +317,12 @@ backend.
 | 4E | Operational Activity, Notifications & Audit: `AuditLog` generation (append-only, mandatory, targeted old/new values) for Letter/Document/User/Admin/Department/Category/Classification/Authorization events; `Notification` generation for the confirmed "letter registered" trigger, best-effort via a database SAVEPOINT; `GET/PATCH /api/v1/notifications*`. No audit read API (deliberate). | **Complete** |
 | 5 | Frontend & Operational UI: architecture/UX review of the React 18 + Vite + React Router + Axios skeleton (unwired since Phase 1) against all 42 real backend endpoints — auth UX, role-aware navigation, Letter/document/notification UX, classified-Letter 404 handling, route/component/API-client architecture, security, test strategy. Review only, no frontend code. | **Complete (review only)** |
 | 5A | Frontend Foundation: routing wired up, `AuthContext` (session restore via `/auth/me`, login, logout), one centralized Axios client (auth header, error normalization, 401 handling), `ProtectedRoute`/`RoleGuard`, role-derived navigation, `AppShell`/`Sidebar`/`Topbar`, design tokens, a11y baseline, Vitest test setup (17 tests). No feature screens. | **Complete** |
-| **5B** | Authentication & Account UX: production Login/Signup forms (client-side validation, full ARIA wiring), reusable pending-approval/deactivated-account notices, session-restoration network-failure handling with retry, logout/redirect verification, test suite grown to 44 tests. No business feature screens. | **Complete** |
-| 5C+ | Frontend feature implementation: Letters, Documents, Notifications, Administration | Not started |
+| 5B | Authentication & Account UX: production Login/Signup forms (client-side validation, full ARIA wiring), reusable pending-approval/deactivated-account notices, session-restoration network-failure handling with retry, logout/redirect verification, test suite grown to 44 tests. No business feature screens. | **Complete** |
+| **5C** | Core Registry UI: Letter list/search/sort/paginate, create/view/edit/archive, driven entirely by the confirmed `GET/POST/PATCH/DELETE /api/v1/letters*` contract; a confirmed category/classification reference-data access gap resolved (not hardcoded around); test suite grown to 84 tests. No Document/Notification/Administration UI. | **Complete** |
+| 5D+ | Frontend feature implementation: Documents, Notifications, Administration | Not started |
 | 6 | Dashboards, reporting, additional notification triggers, audit read API | Not started |
 
-See `docs/PROJECT_STATUS.md` for what Phase 5B delivered,
+See `docs/PROJECT_STATUS.md` for what Phase 5C delivered,
 `docs/architecture/frontend.md` for the full design, and known
 limitations. The next phase begins only when explicitly instructed.
 

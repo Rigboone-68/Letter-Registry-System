@@ -7,53 +7,80 @@ supervisor as-is.
 
 ## Current Phase
 
-**Phase 5B — Authentication & Account UX: Implementation.** Complete.
-Builds directly on Phase 5A's foundation: `LoginPage`/`SignupPage` are
-now real, production-quality forms — client-side required/email-format
-validation with `aria-invalid`/`aria-describedby` on every field, a
-disabled submit button with a loading label while a request is in
-flight, and the previous submission's error cleared the instant a new
-one begins. A `401` on login always shows the backend's own generic
-"Incorrect email or password." (never distinguishing a nonexistent
-account from a wrong password); a `403` for a pending or deactivated
-account renders one of two new reusable notice components
+**Phase 5C — Core Registry UI: Implementation.** Complete. Builds
+directly on Phase 5A's foundation and Phase 5B's authentication UX: the
+`/app/letters` and `/app/system/letters` placeholders are now a complete
+V1 Letter registry — list/search (seven text filters, `status`/
+`category`/`classification` exact filters, an inclusive received-date
+range), sort (all four backend-whitelisted fields, accessible
+`aria-sort` column headers), pagination (driven entirely by the
+backend's own `page`/`page_size`/`total`/`total_pages`), create, view,
+edit, and archive (a non-destructive status transition, worded and
+confirmed accordingly — never "delete"). List/filter/sort/pagination
+state lives in the URL, so refresh, back/forward, and bookmarking all
+preserve registry state. One `LetterListPage`/`LetterFormPage` component
+each adapt to the caller's role (USER/ADMIN vs. SYSTEM_ADMIN) rather
+than duplicating pages, matching how `RoleGuard`/`navigationConfig.js`
+already derive UI behavior from the documented backend contract.
+
+**A real, confirmed backend-contract gap was found and resolved, not
+routed around**: `GET /api/v1/categories`, `/classifications`, and
+`/departments` are all `require_system_admin`-only, but
+`POST /api/v1/letters` structurally excludes SYSTEM_ADMIN (no department
+to record a letter against) — so no role that can create or edit a
+Letter can ever load the category/classification/department reference
+lists. Resolution: `category_id`/`classification_id` never appear on
+Create (for any role); on Edit they appear only for SYSTEM_ADMIN, the
+only role for which the reference-data load actually succeeds. Nothing
+was hardcoded as a workaround — confirmed by grep, zero category/
+classification/department names appear anywhere outside test fixtures.
+Full reasoning in `docs/architecture/frontend.md` §36.
+
+**Classified-record safety (CRITICAL, re-verified against this
+implementation)**: `items`/`total` are rendered exactly as the backend
+returns them, with zero client-side re-filtering; a `404` on a Letter —
+whether nonexistent, wrong-department, or classified-and-inaccessible —
+renders the identical generic "Letter not found," verified by a test
+asserting the rendered text contains neither "classif" nor "permission."
+
+The test suite grew from 44 to **84 tests**, covering every scenario the
+brief listed as a minimum. Frontend production build and test suite both
+succeed; the backend regression suite (458 tests) is unaffected —
+confirmed by re-running it before and after, with zero backend files
+touched. Full design and implementation record in
+`docs/architecture/frontend.md` §36.
+
+**No other business feature screen exists.** Documents, Notifications,
+and every administrative screen, the dashboard, and the audit UI all
+remain exactly what the architecture review scheduled for later phases;
+the Letter detail page has a labeled placeholder section for documents
+rather than a fake feature.
+
+**Not in scope for this phase, and not added:** document upload/download
+UI, notifications UI, dashboards, Departments/Admins/Users/Categories/
+Classifications management UI, audit UI, OCR, exports, a global search
+box, new backend endpoints, backend business logic, database changes, or
+migrations.
+
+### Phase 5B — Authentication & Account UX: Implementation
+
+Complete (prior phase). Builds directly on Phase 5A's foundation:
+`LoginPage`/`SignupPage` became real, production-quality forms —
+client-side required/email-format validation with `aria-invalid`/
+`aria-describedby` on every field, a disabled submit button with a
+loading label while a request is in flight, and the previous
+submission's error cleared the instant a new one begins. A `401` on
+login always shows the backend's own generic "Incorrect email or
+password." (never distinguishing a nonexistent account from a wrong
+password); a `403` for a pending or deactivated account renders one of
+two new reusable notice components
 (`PendingApprovalNotice`/`DeactivatedAccountNotice`) instead of a
-generic error, stating only what the backend confirms — no invented
-approval timeline, no invented administrator contact, no implication a
-deactivated account was deleted. Session restoration now distinguishes a
-genuine token rejection (clears the stored token) from a network failure
-(keeps the token — it might still be valid — and shows a retry-capable
-banner instead of silently forcing a fresh login). `SignupPage` gained
-the same already-authenticated → redirect-into-app guard `LoginPage` had
-in Phase 5A (a real gap this phase closed). The Phase 5A test suite grew
-from 17 to **44 tests**, covering every scenario the brief listed as a
-minimum (login success/invalid/pending/deactivated/validation/loading/
-network-failure, signup success/validation/duplicate/not-authorized/
-payload-shape, session restoration including its network-failure case,
-routing redirects including an end-to-end logout test, and accessible
-field-error association). No backend file was touched — a design
-tension in the brief (whether `AuthContext.login()` should make a
-separate follow-up `/auth/me` call) was resolved by re-reading
-`auth.py` fresh: the login response's own `user` field is already the
-same backend-authoritative `UserPublic` a follow-up call would return,
-so none was added — documented explicitly in
-`docs/architecture/frontend.md` §35 rather than silently decided either
-way. Frontend production build and test suite both succeed; the backend
-regression suite (458 tests) is unaffected — confirmed by re-running it
-before and after, with zero backend files touched. Full design and
-implementation record in `docs/architecture/frontend.md` §35.
-
-**No business feature screen exists.** Every nav destination under
-`/app` (other than login/signup/session/logout, now complete) renders
-one shared placeholder — Letters, Documents, Notifications, and every
-administrative screen, the dashboard, and the audit UI all remain
-exactly what the architecture review scheduled for later phases.
-
-**Not in scope for this phase, and not added:** Letter pages, Letter
-CRUD, search UI, document UI, notification UI, dashboards,
-administration pages, audit UI, user-management UI beyond the caller's
-own auth state, new backend endpoints, backend business logic, database
-changes, or migrations.
+generic error, stating only what the backend confirms. Session
+restoration distinguishes a genuine token rejection (clears the stored
+token) from a network failure (keeps the token, shows a retry-capable
+banner). The test suite grew from 17 to 44 tests. No backend file was
+touched. Full design and implementation record in
+`docs/architecture/frontend.md` §35.
 
 ### Phase 5A — Frontend Foundation: Implementation
 
@@ -223,6 +250,89 @@ until the review's recommendations were approved; see "Completed" below
 for both, in order.
 
 ## Completed
+
+### Phase 5C — Core Registry UI implementation
+
+* **`LetterListPage`** (`frontend/src/pages/LetterListPage.jsx`) — one
+  component mounted at both `/app/letters` (USER/ADMIN) and
+  `/app/system/letters` (SYSTEM_ADMIN, `RoleGuard`-wrapped), adapting to
+  `user.role` rather than duplicating pages. List/filter/sort/pagination
+  state lives in the URL (`useSearchParams`, no new dependency) so
+  refresh, back/forward, and bookmarking all preserve registry state.
+  Filters: all seven confirmed text filters, `status` (every role),
+  `category_id`/`classification_id`/`department_id` (SYSTEM_ADMIN only —
+  see the reference-data gap below), inclusive received-date range.
+  Sorting: all four whitelisted fields via an explicit selector plus
+  `aria-sort`-labeled clickable column headers. Pagination: driven
+  entirely by the backend's own `page`/`page_size`/`total`/`total_pages`,
+  self-correcting when a filter narrows the result set out from under an
+  already-paginated page.
+* **CONFIRMED backend-contract gap found and resolved, not routed
+  around**: `GET /api/v1/categories`/`/classifications`/`/departments`
+  are all `require_system_admin`-only, but `POST /api/v1/letters`
+  structurally excludes SYSTEM_ADMIN — no role that can create/edit a
+  Letter can load those reference-data lists. `category_id`/
+  `classification_id` never appear on Create (for any role); on Edit
+  they appear only for SYSTEM_ADMIN. Nothing hardcoded as a workaround —
+  confirmed by grep. Full reasoning:
+  `docs/architecture/frontend.md` §36.
+* **`LetterFormPage`** (`frontend/src/pages/LetterFormPage.jsx`) — one
+  component for both `/app/letters/new` (create) and
+  `/app/letters/:id/edit` (edit). Field set matches `LetterCreate`/
+  `LetterUpdate` exactly minus the two documented, deliberate omissions
+  (`source_department_id` — a scope simplification; category/
+  classification — the confirmed gap above). Client-side validation
+  (`frontend/src/utils/formValidation.js:validateLetterForm`) checks only
+  the fields the backend itself requires at creation; server `422` field
+  errors render through the same mechanism. Never sends an explicit
+  `null` for category/classification on edit (would silently no-op
+  against the pre-existing "omitted means unchanged" `LetterUpdate`
+  limitation) — the form's own hint text says so directly.
+* **`LetterDetailPage`** (`frontend/src/pages/LetterDetailPage.jsx`) —
+  renders every `LetterResponse` field except `recorded_by` (no
+  cross-role user-lookup endpoint was in this phase's authorized scope).
+  A `404` — nonexistent, wrong-department, or classified-and-inaccessible,
+  all three collapsed identically by the backend — renders the same
+  generic "Letter not found," verified by a test asserting the rendered
+  text contains neither "classif" nor "permission."
+* **Archive, never "delete"** (`frontend/src/components/
+  ArchiveConfirmDialog.jsx`) — `DELETE /api/v1/letters/{id}` is a soft
+  status transition, confirmed from the endpoint's own summary string,
+  never a physical row deletion; the confirmation dialog says so
+  directly and never uses "delete" or "permanent." The archive action
+  disappears once a letter is already `ARCHIVED`.
+* **Reusable components**: `LetterTable` (semantic table, `aria-sort`,
+  conditional columns driven by which lookup maps the caller supplied —
+  never a raw id when a name can't be resolved), `LetterFilters`
+  (explicit Apply/Clear, no request-per-keystroke), `Pagination`
+  (`aria-current`, boundary-disabled Previous/Next), `StatusBadge`
+  (never color alone), `ArchiveConfirmDialog` (dependency-free but
+  keyboard-trapped, `Escape`-dismissible).
+* **API service layer**: `letterService.js` (`list`/`get`/`create`/
+  `update`/`archive`, an explicit field allowlist on write so
+  `recipient_department_id`/`recorded_by`/`status`/`id` can never reach
+  a request body — verified by a payload-shape test on both create and
+  edit), `categoryService.js`/`classificationService.js`/
+  `departmentService.js` (thin SYSTEM_ADMIN-only wrappers).
+* **No N+1** — one request per registry page load; category/
+  classification/department names come from lookup maps loaded once
+  (SYSTEM_ADMIN only), never per row.
+* **Test suite grown from 44 to 84 tests** across 17 files — new:
+  `utils/formValidation.test.js` extended (3),
+  `components/LetterTable.test.jsx` (5), `components/Pagination.test.jsx`
+  (4), `pages/LetterListPage.test.jsx` (10),
+  `pages/LetterDetailPage.test.jsx` (7), `pages/LetterFormPage.test.jsx`
+  (11).
+* **No backend file was touched** — confirmed by `git status` and a full
+  backend regression run before and after (458 passed, unaffected both
+  times).
+* **Validation**: `npm run build` succeeds (139 modules, no errors);
+  `npm run test` — **84 passed**, 0 failed; `pytest tests/` (backend) —
+  **458 passed**, unaffected.
+* **Documentation**: `docs/architecture/frontend.md` §36 (new
+  implementation record), plus updates to the root README,
+  `frontend/README.md`, `docs/README.md`, and
+  `docs/architecture/overview.md`.
 
 ### Phase 5B — Authentication & Account UX implementation
 
@@ -1342,6 +1452,17 @@ detail behind each:
 | 5 | `letter_documents.uploaded_by` had no index, unlike every other User-referencing FK in the schema | Added (`ix_letter_documents_uploaded_by`) |
 | 6 | The role/department `CHECK` constraint hardcoded role strings, duplicating `UserRole`'s values | Model-side constraint now built from `UserRole.*.value`; the migration's own copy is deliberately still a literal (migrations are frozen snapshots) — see `app/models/user.py` docstring |
 
+### Validation performed — Phase 5C implementation
+
+| Check | Result |
+|---|---|
+| `npm run build` (frontend, `frontend/`) | Succeeds — 139 modules transformed, no errors |
+| `npm run test` (frontend, Vitest) | **84 passed**, 0 failed |
+| `pytest tests/` (backend, `backend/`) | **458 passed**, 0 failed, 0 skipped — unaffected by this phase, confirming zero backend impact |
+| `git status` — backend files | No `backend/app/`, `backend/alembic/`, or `backend/tests/` file touched |
+| `git status` — secrets | No `.env`/`.env.local` tracked; no new dependency added (only new first-party source/test files) |
+| Grep for hardcoded category/classification/department names | Zero matches outside test fixtures |
+
 ### Validation performed — Phase 5B implementation
 
 | Check | Result |
@@ -1661,23 +1782,35 @@ afterward — `lrs_dev` is empty again.
 
 ## In Progress
 
-Nothing — Phase 5B is complete (Phase 5's architecture review, Phase
-5A's foundation, and Phase 5B's authentication/account UX are all done)
-and the project is paused pending explicit instruction to begin the next
-phase, per the standing project rule that phases are reviewed before the
-next begins.
+Nothing — Phase 5C is complete (Phase 5's architecture review, Phase
+5A's foundation, Phase 5B's authentication/account UX, and Phase 5C's
+core Letter registry UI are all done) and the project is paused pending
+explicit instruction to begin the next phase, per the standing project
+rule that phases are reviewed before the next begins.
 
-## Pending (Phase 5C and later)
+## Pending (Phase 5D and later)
 
-* **Every business-feature frontend screen** — Letters (list/search/
-  detail/form/archive), Documents (nested in Letter detail), Notifications
-  (bell/panel), and every administration screen (Departments/Admins/
-  Categories/Classifications/Users) remain unbuilt; Phase 5A/5B built
-  only the foundation and the authentication/account experience
-  (routing, auth state, API client, route guards, navigation, shell,
-  login/signup/pending/deactivated/session/logout) those screens will be
-  built on top of. See `docs/architecture/frontend.md` §32 for the
-  recommended sequence (Letters first, as the highest-value surface).
+* **Document upload/download UI, Notifications UI, and every
+  administration screen** (Departments/Admins/Categories/
+  Classifications/Users) remain unbuilt — Phase 5A/5B/5C built the
+  foundation, the authentication/account experience, and the core Letter
+  registry (list/search/sort/paginate/create/view/edit/archive) those
+  screens will be built on top of. See `docs/architecture/frontend.md`
+  §32 for the recommended sequence.
+* **USER/ADMIN cannot assign or view a resolved category/classification
+  when creating or editing a Letter** (Phase 5C finding) —
+  `GET /api/v1/categories`/`/classifications` are `require_system_admin`-
+  only, but `POST /api/v1/letters` structurally excludes SYSTEM_ADMIN; no
+  role that can create/edit a Letter can load those reference lists. A
+  future backend change (e.g., a read-scoped, non-SYSTEM_ADMIN-only
+  variant of these list endpoints) would be needed to close this gap;
+  not proposed here. See `docs/architecture/frontend.md` §36.
+* **A category/classification cannot be cleared back to unassigned once
+  set** — the pre-existing `LetterUpdate` "omitted field means
+  unchanged" limitation (§10) means there is currently no way, through
+  the API, to explicitly null out a field that was already set. A future
+  backend change (an explicit "clear" signal distinct from "omit") would
+  be needed; not proposed here.
 * **A unified global search box for Letters** — the backend has no such
   semantics; a frontend built against per-field filters only would need
   a new backend capability to support one search box across fields. See
@@ -1862,16 +1995,37 @@ behind each.
 
 ## Known Limitations
 
-* **RESOLVED (Phase 5B) — the frontend now has a complete authentication
-  and account UX** (login, signup, pending-approval, deactivated-account,
-  session restoration including a network-failure/retry path, logout,
-  redirects, validation, accessibility), but **no business feature
-  screen exists yet** — every backend capability through Phase 4E is
-  still only reachable via a direct API client (`curl`, `httpx`, the
-  automated test suite) or by signing in through the frontend and
-  landing on placeholder pages; there is no Letter, Document,
-  Notification, or administration UI. See `docs/architecture/frontend.md`
-  §35 for exactly what is and isn't built.
+* **RESOLVED (Phase 5C) — the frontend now has a complete core Letter
+  registry** (list/search/sort/paginate/create/view/edit/archive), on top
+  of Phase 5B's complete authentication/account UX, but **no other
+  business feature screen exists yet** — Document upload/download,
+  Notifications, and every administration screen are still only
+  reachable via a direct API client (`curl`, `httpx`, the automated test
+  suite), not the frontend. See `docs/architecture/frontend.md` §36 for
+  exactly what is and isn't built.
+* **USER/ADMIN cannot assign or view a resolved category/classification
+  name for a Letter** (Phase 5C, a CONFIRMED backend-contract gap, not a
+  frontend oversight) — `GET /api/v1/categories`/`/classifications` are
+  `require_system_admin`-only, while `POST /api/v1/letters` structurally
+  excludes SYSTEM_ADMIN (no department to record a letter against). The
+  two roles that actually record/edit letters day-to-day have no
+  legitimate way to load the option lists; only SYSTEM_ADMIN (via Edit)
+  can set either field. Nothing was hardcoded as a workaround. See
+  `docs/architecture/frontend.md` §36.
+* **A category/classification cannot be cleared back to unassigned once
+  set, through this or any frontend** (Phase 5C, restates a pre-existing
+  backend limitation from `docs/architecture/frontend.md` §10) — sending
+  an explicit `null` is indistinguishable from omitting the field
+  entirely (`LetterUpdate`'s "omitted means unchanged" semantics), so the
+  SYSTEM_ADMIN edit form never attempts it and says so in its own hint
+  text rather than implying the capability exists.
+* **`source_department_id` and `recorded_by` have no UI** (Phase 5C,
+  deliberate scope simplifications, not backend blockers) —
+  `source_name` already conveys the letter's source in every screen this
+  phase builds; resolving `recorded_by` to a user's name would need a
+  cross-role user-lookup endpoint this phase was not authorized to
+  consume (only Category/Classification reference data was, per that
+  phase's own scope limit).
 * **Logout does not revoke an already-issued JWT server-side** (Phase
   5B, restated from Phase 3A's original design — not a new gap) — the
   backend has no logout/revocation endpoint; `AuthContext.logout()`
@@ -2116,30 +2270,35 @@ behind each.
 
 ## Next Recommended Phase
 
-**Phase 5C — Letters feature screens**, the next step in the sequence
-Phase 5's review recommended and Phase 5A/5B already started
+**Phase 5D — Document management UI**, the next step in the sequence
+Phase 5's review recommended and Phase 5A/5B/5C already started
 (`docs/architecture/frontend.md` §32: foundation infrastructure — done
-— → Login/Signup/pending-approval/deactivated/session-restore/logout —
+→ Login/Signup/pending-approval/deactivated/session-restore/logout —
 done (Phase 5B) → shared chrome and primitive components — done →
-**Letters list/search/detail/form/archive, the highest-value surface**
-→ Documents nested into Letter detail → Notifications → Administration
-screens (Users, then Departments/Admins/Categories/Classifications) →
-additional test coverage alongside each), **or** dashboards/reporting
-reading from the operational tables plus the now-populated `AuditLog`,
-**or** an audit-viewing/read API once its access-control question is
-resolved, **or** resolving the outstanding business clarifications
-first. The foundation Phase 5C needs already exists and is tested
-(`AuthContext`, the API client, route guards, navigation, the shell,
-and now the full authentication/account UX) — the next phase can go
-directly to building the Letters screens against it rather than needing
-any more scaffolding first. Recommended before or alongside Phase 5C: resolve the exact
-classification value list and classified-visibility matrix with the
-product owner (`docs/architecture/letter-registry.md` §12,
-`docs/architecture/registry-search.md` §11) — the frontend's own
-classified-Letter UX (`docs/architecture/frontend.md` §12), which the
-Letters screen will be the first to actually exercise, depends on that
-same policy remaining stable; who should receive a "letter registered"
-notification, since "department Admins" is still an explicit guess
+Letters list/search/detail/form/archive — done (Phase 5C) →
+**Documents nested into Letter detail** → Notifications →
+Administration screens (Users, then Departments/Admins/Categories/
+Classifications) → additional test coverage alongside each), **or**
+resolving the category/classification reference-data access gap Phase
+5C confirmed (a backend change: a read-scoped, non-SYSTEM_ADMIN-only
+variant of `GET /categories`/`/classifications` — not designed or
+proposed by this phase), **or** dashboards/reporting reading from the
+operational tables plus the now-populated `AuditLog`, **or** an
+audit-viewing/read API once its access-control question is resolved,
+**or** resolving the outstanding business clarifications first. The
+foundation Phase 5D needs already exists and is tested (`AuthContext`,
+the API client, route guards, navigation, the shell, the full
+authentication/account UX, and now the Letter registry the document
+upload/download UI will nest into) — the next phase can go directly to
+building it rather than needing any more scaffolding first. Recommended
+before or alongside Phase 5D: resolve the exact classification value
+list and classified-visibility matrix with the product owner
+(`docs/architecture/letter-registry.md` §12,
+`docs/architecture/registry-search.md` §11); the category/classification
+reference-data access gap named above, since it affects Phase 5D's own
+document-metadata screens the same way it affected Phase 5C's Letter
+forms; who should receive a "letter registered" notification, since
+"department Admins" is still an explicit guess
 (`docs/architecture/audit-notifications.md` §13); which deployment model
 applies (individually-assigned workstations vs. shared machines), since
 it changes the frontend's token-storage recommendation

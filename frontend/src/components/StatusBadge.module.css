@@ -1,0 +1,21 @@
+.root {
+  display: inline-block;
+  padding: var(--space-2xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.positive {
+  background: var(--color-warning-bg);
+  color: var(--color-success);
+  border-color: var(--color-success);
+}
+
+.neutral {
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  border-color: var(--color-border-strong);
+}

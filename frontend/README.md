@@ -1,14 +1,14 @@
 # LRS Frontend
 
-React + Vite client for the Letter Registry System. **Phase 5B:
-Authentication & Account UX — implemented**, on top of Phase 5A's
-foundation and Phase 5's own architecture/UX review
+React + Vite client for the Letter Registry System. **Phase 5C: Core
+Registry UI — implemented**, on top of Phase 5B's authentication/account
+UX, Phase 5A's foundation, and Phase 5's own architecture/UX review
 (`docs/architecture/frontend.md`). Login, signup, pending-approval and
-deactivated-account states, session restoration, logout, and every
-supporting redirect/validation/accessibility/error-handling behavior
-around them now exist and work against the real backend. **No business
-feature screens exist yet** — Letters, Documents, Notifications, and
-every administrative screen are still placeholders; see
+deactivated-account states, session restoration, and logout are all in
+place, and the Letter registry — list/search/sort/paginate, create,
+view, edit, and archive — now exists and works against the real
+backend. **Document upload/download, Notifications, and every
+administration screen are still placeholders**; see
 `docs/architecture/frontend.md` §32 for the recommended build-out
 sequence.
 
@@ -123,6 +123,51 @@ fresh login.
   `422` field error from the backend is displayed the same way a
   client-side one is.
 
+## Letter registry (Phase 5C)
+
+**Frontend visibility and action controls here are UX conveniences
+only. Backend authorization remains the security boundary** — nothing
+in this section ever decides, filters, or infers what the caller may
+see; it renders exactly what `GET`/`POST`/`PATCH`/`DELETE
+/api/v1/letters*` returns.
+
+* **List/search** (`pages/LetterListPage.jsx`, mounted at both
+  `/app/letters` and `/app/system/letters`) — the seven confirmed text
+  filters, `status`, an inclusive received-date range, and sorting on
+  all four backend-whitelisted fields (`received_at`/`created_at`/
+  `reference_number`/`subject`). Filter/sort/page state lives in the URL
+  (`useSearchParams`), so refresh, back/forward, and bookmarking all
+  preserve registry state. Pagination renders the backend's own
+  `page`/`page_size`/`total`/`total_pages` — never recomputed
+  client-side.
+* **Classified-record safety (CRITICAL)** — `items`/`total` are rendered
+  exactly as returned, with zero client-side re-filtering; a `404` on a
+  Letter (nonexistent, wrong-department, or classified-and-inaccessible
+  — the backend collapses all three into one response) always renders
+  the identical generic "Letter not found."
+* **Create/edit** (`pages/LetterFormPage.jsx`, one component for both)
+  — field set matches `LetterCreate`/`LetterUpdate` exactly, with two
+  documented exceptions: `source_department_id` is omitted (a scope
+  simplification — `source_name` already conveys the source), and
+  `category_id`/`classification_id` are omitted from Create entirely and
+  shown on Edit only for SYSTEM_ADMIN — see "Known limitations" below,
+  a **confirmed backend-contract gap**, not a frontend choice.
+* **Archive, never "delete"** (`components/ArchiveConfirmDialog.jsx`) —
+  `DELETE /api/v1/letters/{id}` is a soft status transition, never a
+  physical row deletion; the confirmation dialog says so directly and
+  never uses "delete" or "permanent." The action disappears once a
+  letter is already archived.
+* **Role-aware UX** — USER and ADMIN are treated identically (matching
+  the backend's own `LetterService` docstring: they share identical
+  access within their own department); SYSTEM_ADMIN sees a resolved
+  Department column and no "Record New Letter" action, matching
+  `POST /letters`'s own `require_user_or_admin` dependency.
+* **API service layer** — `services/letterService.js`
+  (`list`/`get`/`create`/`update`/`archive`, an explicit field allowlist
+  on write) plus thin, SYSTEM_ADMIN-only reference-data wrappers:
+  `services/categoryService.js`/`classificationService.js`/
+  `departmentService.js`.
+
 ## Source layout
 
 | Path | Responsibility |
@@ -131,14 +176,14 @@ fresh login.
 | `src/App.jsx` | Provides `AuthProvider` and mounts the router |
 | `src/routes/` | `router` (route tree), `ProtectedRoute` (authentication guard), `RoleGuard` (role-based navigation convenience, not security) |
 | `src/context/` | `AuthContext` — the one authentication state mechanism |
-| `src/services/` | `apiClient.js` (the one Axios instance), `authService.js` (login/signup/me), `tokenStorage.js` (isolated token access), `errorNormalization.js` |
+| `src/services/` | `apiClient.js` (the one Axios instance), `authService.js` (login/signup/me), `letterService.js` (Phase 5C), `categoryService.js`/`classificationService.js`/`departmentService.js` (thin, SYSTEM_ADMIN-only reference-data wrappers, Phase 5C), `tokenStorage.js` (isolated token access), `errorNormalization.js` |
 | `src/navigation/` | `navigationConfig.js` — role → nav item mapping, data only |
 | `src/layouts/` | `AppShell`/`Sidebar`/`Topbar` — the authenticated app's chrome |
-| `src/pages/` | `LoginPage`, `SignupPage` (full auth/account UX, Phase 5B), `RootRedirect`, `PlaceholderPage` (every unbuilt business feature screen renders this generic placeholder for now) |
-| `src/components/` | `LoadingState`/`ErrorState`/`EmptyState` — reusable primitives; `PendingApprovalNotice`/`DeactivatedAccountNotice` — reusable account-state notices used by `LoginPage`/`SignupPage` |
+| `src/pages/` | `LoginPage`/`SignupPage` (auth/account UX, Phase 5B), `LetterListPage`/`LetterFormPage`/`LetterDetailPage` (Letter registry, Phase 5C), `RootRedirect`, `PlaceholderPage` (every unbuilt business feature screen renders this generic placeholder for now) |
+| `src/components/` | `LoadingState`/`ErrorState`/`EmptyState` — reusable primitives; `PendingApprovalNotice`/`DeactivatedAccountNotice` — account-state notices; `LetterTable`/`LetterFilters`/`Pagination`/`StatusBadge`/`ArchiveConfirmDialog` — Letter registry components (Phase 5C) |
 | `src/styles/` | `tokens.css` (design tokens — colors/spacing/typography/radius/shadow/breakpoints), `global.css` (minimal reset) |
 | `src/test/` | `setup.js` — Vitest/Testing-Library wiring, shared by every test file |
-| `src/utils/` | `formValidation.js` — lightweight, dependency-free auth-form validation |
+| `src/utils/` | `formValidation.js` — lightweight, dependency-free form validation (auth forms, and `validateLetterForm` since Phase 5C) |
 | `src/assets/`, `src/hooks/`, `src/constants/` | Still mostly placeholders (`constants/app.js` has real content); populated as feature work needs them |
 
 ## Conventions
@@ -161,25 +206,44 @@ fresh login.
 
 ## Testing
 
-Vitest + React Testing Library (`npm run test`). 44 tests across 8
-files: `services/errorNormalization.test.js` (both backend error-body
-shapes, network failure, unexpected shape), `navigation/navigationConfig.test.js`
-(per-role nav sets), `utils/formValidation.test.js` (client-side field
-validation), `routes/ProtectedRoute.test.jsx` (the three auth states),
-`routes/routing.test.jsx` (logout → redirect to `/login`, end to end),
-`context/AuthContext.test.jsx` (session restore including a network
-failure and its retry, login, logout, an invalid stored token),
-`pages/LoginPage.test.jsx` (success, invalid credentials, pending
-account, deactivated account, validation, loading state, network
-failure, accessible field errors, already-authenticated redirect),
-`pages/SignupPage.test.jsx` (success/pending-approval state, validation,
-password mismatch, duplicate/not-authorized backend errors, the exact
-payload shape sent to the backend, already-authenticated redirect) — the
-API layer (`authService`/`tokenStorage`) is mocked in every test; none
-of these tests requires a running backend.
+Vitest + React Testing Library (`npm run test`). 84 tests across 17
+files. Auth/foundation (unchanged from Phase 5B):
+`services/errorNormalization.test.js`, `navigation/navigationConfig.test.js`,
+`routes/ProtectedRoute.test.jsx`, `routes/routing.test.jsx`,
+`context/AuthContext.test.jsx`, `pages/LoginPage.test.jsx`,
+`pages/SignupPage.test.jsx`. Letter registry (Phase 5C):
+`utils/formValidation.test.js` (extended with `validateLetterForm`),
+`components/LetterTable.test.jsx` (accessible headers, `aria-sort`,
+sort-click behavior, conditional columns, row links),
+`components/Pagination.test.jsx` (single-page collapse, `aria-current`,
+boundary disabling), `pages/LetterListPage.test.jsx` (successful list,
+empty state, API failure with retry, URL-encoded request params,
+filter-resets-page, clear-resets-filters-and-sort, sort toggling,
+role-based Create-link/department-column visibility, no reference-data
+requests for non-SYSTEM_ADMIN), `pages/LetterDetailPage.test.jsx` (field
+rendering, generic 404 with no classified/permission language, retry,
+archive dialog copy, successful/failed archive, hidden action once
+archived), `pages/LetterFormPage.test.jsx` (required-field validation,
+create success, 422 field errors, 403 forbidden, exact payload shape on
+create and edit, no category/classification field on create for any
+role, edit pre-fill, edit 404, category/classification visible only for
+SYSTEM_ADMIN on edit) — the API layer is mocked in every test; none of
+these tests requires a running backend.
 
 ## Known limitations
 
+* **USER/ADMIN cannot assign or view a resolved category/classification
+  for a Letter** (Phase 5C, a CONFIRMED backend-contract gap) —
+  `GET /api/v1/categories`/`/classifications` are
+  `require_system_admin`-only, but `POST /api/v1/letters` structurally
+  excludes SYSTEM_ADMIN. The two roles that actually record/edit letters
+  have no legitimate way to load the option lists; only SYSTEM_ADMIN
+  (via Edit) can set either field. See
+  `docs/architecture/frontend.md` §36.
+* **A category/classification cannot be cleared back to unassigned once
+  set** — `LetterUpdate`'s "omitted field means unchanged" semantics
+  make an explicit `null` indistinguishable from omitting the field;
+  this form never attempts it.
 * `react-router-dom@^6.24.0` and the `esbuild`/`vite` toolchain both have
   `npm audit`-reported advisories with no non-breaking fix available in
   their currently pinned major versions (a v7 React Router upgrade and a
@@ -190,7 +254,7 @@ of these tests requires a running backend.
   during tests (`v7_startTransition`, `v7_relativeSplatPath`) — informational
   only, not a functional issue; not addressed this phase.
 
-The structure anticipates the full feature set (Letters, Documents,
-Notifications, Administration) — see `docs/architecture/frontend.md` for
-the complete design and `docs/PROJECT_STATUS.md` for what's built versus
-still pending.
+The structure anticipates the full feature set (Documents, Notifications,
+Administration) — see `docs/architecture/frontend.md` for the complete
+design and `docs/PROJECT_STATUS.md` for what's built versus still
+pending.

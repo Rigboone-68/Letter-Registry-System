@@ -59,3 +59,36 @@ export function validateSignupForm({ full_name, email, password, password_confir
 
   return errors
 }
+
+const LETTER_REQUIRED_FIELDS = [
+  ['reference_number', 'Reference number is required.'],
+  ['subject', 'Subject is required.'],
+  ['source_name', 'Source is required.'],
+  ['sender_name', 'Sender name is required.'],
+  ['sender_designation', 'Sender designation is required.'],
+  ['sender_department', "Sender's department is required."],
+]
+
+/**
+ * Mirrors `LetterCreate`'s own required-field set
+ * (backend/app/schemas/letter.py) — every field here is required at
+ * creation per the finalized Phase 4B business decisions; everything
+ * else on the schema is optional. `received_at` is validated separately
+ * since it's a datetime, not a blank-checked string.
+ */
+export function validateLetterForm({ reference_number, subject, source_name, sender_name, sender_designation, sender_department, received_at }) {
+  const values = { reference_number, subject, source_name, sender_name, sender_designation, sender_department }
+  const errors = {}
+
+  for (const [field, message] of LETTER_REQUIRED_FIELDS) {
+    if (isBlank(values[field])) {
+      errors[field] = message
+    }
+  }
+
+  if (isBlank(received_at)) {
+    errors.received_at = 'Received date is required.'
+  }
+
+  return errors
+}
