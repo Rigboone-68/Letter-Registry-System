@@ -29,6 +29,7 @@ import LetterDetailPage from '../pages/LetterDetailPage'
 import LetterFormPage from '../pages/LetterFormPage'
 import LetterListPage from '../pages/LetterListPage'
 import LoginPage from '../pages/LoginPage'
+import NotificationsPage from '../pages/NotificationsPage'
 import PlaceholderPage from '../pages/PlaceholderPage'
 import RootRedirect from '../pages/RootRedirect'
 import SignupPage from '../pages/SignupPage'
@@ -64,7 +65,7 @@ export const router = createBrowserRouter([
               />
             ),
           },
-          { path: 'notifications', element: <PlaceholderPage title="Notifications" /> },
+          { path: 'notifications', element: <NotificationsPage /> },
           {
             path: 'admin/users',
             element: <RoleGuard allowedRoles={['ADMIN']} />,

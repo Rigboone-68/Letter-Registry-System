@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   validateAdminAuthorizeForm,
   validateDepartmentForm,
+  validateDocumentFile,
   validateLetterForm,
   validateLoginForm,
   validateSignupForm,
@@ -137,5 +138,36 @@ describe('validateUserAuthorizeForm', () => {
 
   it('passes for a well-formed submission', () => {
     expect(validateUserAuthorizeForm({ email: 'jane@example.gov' })).toEqual({})
+  })
+})
+
+describe('validateDocumentFile', () => {
+  const OPTIONS = { allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'txt'], maxSizeBytes: 10 * 1024 * 1024 }
+
+  function makeFile({ name = 'letter.pdf', size = 1024 } = {}) {
+    const file = new File([new Uint8Array(size)], name)
+    return file
+  }
+
+  it('requires a file to be selected', () => {
+    expect(validateDocumentFile(null, OPTIONS)).toMatch(/select a file/i)
+  })
+
+  it('rejects an unsupported extension', () => {
+    expect(validateDocumentFile(makeFile({ name: 'archive.zip' }), OPTIONS)).toMatch(/unsupported file type/i)
+  })
+
+  it('rejects an oversized file', () => {
+    expect(validateDocumentFile(makeFile({ size: OPTIONS.maxSizeBytes + 1 }), OPTIONS)).toMatch(
+      /exceeds the maximum allowed size/i
+    )
+  })
+
+  it('rejects an empty file', () => {
+    expect(validateDocumentFile(makeFile({ size: 0 }), OPTIONS)).toMatch(/empty/i)
+  })
+
+  it('passes for a well-formed file', () => {
+    expect(validateDocumentFile(makeFile(), OPTIONS)).toBeNull()
   })
 })

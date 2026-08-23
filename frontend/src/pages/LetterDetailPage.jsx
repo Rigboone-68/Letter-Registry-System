@@ -2,9 +2,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import ArchiveConfirmDialog from '../components/ArchiveConfirmDialog'
+import DocumentList from '../components/DocumentList'
+import DocumentUploadForm from '../components/DocumentUploadForm'
+import EmptyState from '../components/EmptyState'
 import ErrorState from '../components/ErrorState'
 import LoadingState from '../components/LoadingState'
 import StatusBadge from '../components/StatusBadge'
+import * as documentService from '../services/documentService'
 import * as letterService from '../services/letterService'
 import { LETTER_STATUS_OPTIONS } from '../services/letterService'
 import styles from './LetterDetailPage.module.css'
@@ -61,13 +65,35 @@ export default function LetterDetailPage() {
   const [archiving, setArchiving] = useState(false)
   const [archiveError, setArchiveError] = useState(null)
 
+  const [documents, setDocuments] = useState(null)
+  const [documentsLoading, setDocumentsLoading] = useState(true)
+  const [documentsError, setDocumentsError] = useState(null)
+
+  const fetchDocuments = useCallback(() => {
+    setDocumentsLoading(true)
+    setDocumentsError(null)
+    documentService
+      .list(id)
+      .then((response) => setDocuments(response.items))
+      .catch((normalizedError) => setDocumentsError(normalizedError))
+      .finally(() => setDocumentsLoading(false))
+  }, [id])
+
   const fetchLetter = useCallback(() => {
     setLoading(true)
     setError(null)
     setNotFound(false)
     letterService
       .get(id)
-      .then((response) => setLetter(response))
+      .then((response) => {
+        setLetter(response)
+        // Documents are only ever fetched once the Letter itself is
+        // confirmed accessible — an inaccessible Letter never reaches
+        // this branch, so there is no wasted/leaking document request
+        // for a Letter this caller can't see (docs/architecture/
+        // document-notification-ui.md §10.1).
+        fetchDocuments()
+      })
       .catch((normalizedError) => {
         if (normalizedError.status === 404) {
           setNotFound(true)
@@ -76,11 +102,20 @@ export default function LetterDetailPage() {
         }
       })
       .finally(() => setLoading(false))
-  }, [id])
+  }, [id, fetchDocuments])
 
   useEffect(() => {
     fetchLetter()
   }, [fetchLetter])
+
+  function handleUploadSuccess(document) {
+    // Appended directly from the upload's own response, matching every
+    // other Phase 5C/5D mutation's "refresh from the response, not a
+    // second fetch" convention — the backend lists documents oldest
+    // first (`uploaded_at asc`), so a newly uploaded document correctly
+    // belongs at the end.
+    setDocuments((previous) => [...(previous ?? []), document])
+  }
 
   function handleConfirmArchive() {
     setArchiving(true)
@@ -148,12 +183,19 @@ export default function LetterDetailPage() {
         </div>
       )}
 
-      <div className={styles.documentsPlaceholder}>
+      <div className={styles.documentsSection}>
         <h2>Documents</h2>
-        <p>
-          Document upload/download is not part of this phase — see Phase 5D. This
-          section is a placeholder, not a functioning document feature.
-        </p>
+        <DocumentUploadForm letterId={id} onUploadSuccess={handleUploadSuccess} />
+        {documentsLoading && <LoadingState label="Loading documents..." />}
+        {!documentsLoading && documentsError && (
+          <ErrorState message={documentsError.message} onRetry={fetchDocuments} />
+        )}
+        {!documentsLoading && !documentsError && documents && documents.length === 0 && (
+          <EmptyState message="No documents have been uploaded for this letter yet." />
+        )}
+        {!documentsLoading && !documentsError && documents && documents.length > 0 && (
+          <DocumentList letterId={id} documents={documents} />
+        )}
       </div>
 
       {showArchiveDialog && (

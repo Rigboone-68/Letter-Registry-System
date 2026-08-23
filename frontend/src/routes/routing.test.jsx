@@ -22,8 +22,19 @@ vi.mock('../services/tokenStorage', () => ({
   setToken: vi.fn(),
   clearToken: vi.fn(),
 }))
+// The real AppShell/Topbar (rendered end-to-end in this test, Phase 5B)
+// now also renders NotificationBell (Phase 5E), which fetches the
+// unread count on mount — mocked here so this test never makes a real,
+// unmocked network request.
+vi.mock('../services/notificationService', () => ({
+  unreadCount: vi.fn(),
+  list: vi.fn(),
+  markRead: vi.fn(),
+  markAllRead: vi.fn(),
+}))
 
 import * as authService from '../services/authService'
+import * as notificationService from '../services/notificationService'
 import * as tokenStorage from '../services/tokenStorage'
 
 const ACTIVE_USER = {
@@ -62,6 +73,7 @@ describe('routing: logout', () => {
   it('clears the session and redirects to /login when the user clicks Log out', async () => {
     tokenStorage.getToken.mockReturnValue('a-token')
     authService.getCurrentUser.mockResolvedValue(ACTIVE_USER)
+    notificationService.unreadCount.mockResolvedValue({ unread_count: 0 })
 
     render(
       <MemoryRouter initialEntries={['/app']}>

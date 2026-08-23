@@ -34,8 +34,21 @@ authority over Users within their own department, both now have a real
 frontend exercising exactly the role/department checks
 `app/services/authorization.py` and `app/api/deps.py` already enforce,
 verified directly against this implementation rather than only
-designed for it. Document/Notification screens still do not exist —
-this document explains the roles and hierarchy
+designed for it. Phase 5E then reviewed, and implemented, the
+Documents/Notifications frontend against `documents.py`/
+`notifications.py` — both confirmed unchanged since Phase 4D/4E,
+re-verifying that a document download requires an authenticated
+fetch (the same Bearer-token requirement every other endpoint in this
+system has, no exception) and that a notification's access rule is
+per-account ownership alone, never department/role scoping. The
+Letter detail page now has a real Documents section and `Topbar` now
+has a `NotificationBell`, both built with no frontend authorization
+rule of any kind layered on top of the backend's own access
+decisions — a `404` renders identically whether a document is
+nonexistent or its parent Letter is classified-inaccessible, the same
+discipline every prior phase's own frontend work already held to. See
+`document-notification-ui.md` §27 for the full implementation record.
+This document explains the roles and hierarchy
 the database schema is
 built to support, how a caller's identity is established (Phase 3A), how
 role/department authorization decisions are enforced on top of that
@@ -806,6 +819,75 @@ decisions, only the ones already recommended, built.
   with identical results.
 * **No backend file was touched** — confirmed by `git status` and a full
   backend regression run (458 passed, unaffected) before and after.
+
+### Reviewed, then implemented (Phase 5E — Documents & Notifications UI)
+
+Full design in [`document-notification-ui.md`](document-notification-ui.md).
+`documents.py`/`document_service.py`/`document_storage.py`/
+`document_validation.py` and `notifications.py`/
+`notification_service.py`/`notification_repository.py` were all
+re-read fresh and confirmed byte-for-byte unchanged since Phase 4D/4E.
+
+* **Confirmed, precisely, why a document download needs an
+  authenticated fetch, not a plain `<a href>`** — the same Bearer-token
+  requirement every endpoint in this system has; `Content-Disposition:
+  attachment` is set automatically by the backend's own `FileResponse`
+  call whenever a `filename` is passed, forcing a real download once
+  fetched as a blob.
+* **Confirmed the document lifecycle is upload-only** — no replace, no
+  delete, no per-document archive concept; "replacement" is simply
+  uploading again, leaving the prior document row and file completely
+  untouched.
+* **Confirmed the one generated notification message is safe to render
+  as plain text** — a fixed, server-authored template with exactly one
+  non-sensitive interpolated value (a Letter's reference number), never
+  the Letter's subject/content/classification.
+* **A real, previously-undocumented interaction found**: a
+  notification's Letter link can still 404 if the recipient's own
+  access changed since the notification was generated (e.g. an Admin
+  department transfer, Phase 5D's own confirmed instant-effect
+  behavior) — documented as expected, identically-rendered 404
+  behavior, never a distinguishing message.
+* **Confirmed notification recipient isolation is structural** — no
+  endpoint anywhere accepts a `recipient_user_id` parameter; every
+  read/write is scoped to the caller's own id at the query level.
+* Full component (`DocumentList`/`DocumentUploadForm`,
+  `NotificationBell`/`NotificationPanel`/`NotificationItem`), service
+  (`documentService.js`/`notificationService.js`), route (no new route
+  for Documents; `/app/notifications` fills an already-slotted
+  placeholder), error-handling, accessibility, a 15-item security
+  threat review, and a test plan were all designed during the review.
+  No frontend or backend file was touched during the review itself.
+
+**Then implemented, same phase, second pass** — every component/
+service/route above was built exactly as designed, with no new
+architecture decisions:
+
+* **Documents** — `DocumentUploadForm` (client-side pre-checks only,
+  explicitly labeled as UX, never authoritative) and `DocumentList`
+  (metadata + Download only — no Delete/Replace/Archive, because no
+  such endpoint exists) integrated directly into `LetterDetailPage`,
+  replacing its prior placeholder. Download uses an authenticated blob
+  fetch through the existing API client, never a plain `<a href>`.
+* **Notifications** — `NotificationBell` in the existing `Topbar`
+  polls `GET /notifications/unread-count` only, every 60 seconds
+  (`PROVISIONAL`), paused while the tab is hidden; `NotificationPanel`
+  (dropdown) and `NotificationsPage` (`/app/notifications`, real
+  pagination via Phase 5C's `Pagination` component) both share one
+  `NotificationItem`. Mark-read is **explicit-button-only** — clicking
+  a notification's Letter link never marks it read, an explicit
+  override of this review's own PROVISIONAL "mark on navigate" lean,
+  applied deliberately rather than silently.
+* **No frontend authorization rule was added anywhere** — a document
+  or notification-linked Letter that is inaccessible renders the same
+  generic `404` this project has used since Phase 4B/5C, with nothing
+  in the frontend attempting to explain why.
+* **Test suite grown from 159 to 225 tests**, run 3 consecutive times
+  with identical results and clean stderr output.
+* **No backend file was touched** — confirmed by `git status` and a
+  full backend regression run (458 passed, unaffected) before and
+  after. Full implementation record: `document-notification-ui.md`
+  §27.
 
 ### Explicitly deferred (not yet implemented)
 

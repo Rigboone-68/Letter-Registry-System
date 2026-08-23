@@ -1,19 +1,22 @@
 # LRS Frontend
 
-React + Vite client for the Letter Registry System. **Phase 5D:
-Administration & Account Management UI — implemented**, on top of Phase
-5C's core Letter registry, Phase 5B's authentication/account UX, Phase
-5A's foundation, and Phase 5's own architecture/UX review
-(`docs/architecture/frontend.md`, `docs/architecture/administration-ui.md`).
-Login, signup, session restoration, and logout are all in place; the
-Letter registry — list/search/sort/paginate, create, view, edit, and
-archive — works against the real backend; and Department/Administrator/
-User management — list/create/detail, authorization workflows,
-lifecycle actions, and Admin department transfer — now exists and works
-against the real backend too. **Document upload/download and
-Notifications UI are still placeholders**; see
-`docs/architecture/frontend.md` §32 for the recommended build-out
-sequence.
+React + Vite client for the Letter Registry System. **Phase 5E:
+Documents & Notifications UI — implemented**, on top of Phase 5D's
+Administration & Account Management UI, Phase 5C's core Letter
+registry, Phase 5B's authentication/account UX, Phase 5A's foundation,
+and Phase 5's own architecture/UX review
+(`docs/architecture/frontend.md`,
+`docs/architecture/administration-ui.md`,
+`docs/architecture/document-notification-ui.md`). Login, signup,
+session restoration, and logout are all in place; the Letter registry
+— list/search/sort/paginate, create, view, edit, and archive — works
+against the real backend; Department/Administrator/User management —
+list/create/detail, authorization workflows, lifecycle actions, and
+Admin department transfer — works against the real backend; and
+Document upload/list/download (integrated into the Letter detail page)
+and Notifications (a bell in the Topbar, a dropdown panel, and a full
+paginated page) now work against the real backend too. Category/
+Classification management UI is still unbuilt.
 
 ## Setup
 
@@ -232,6 +235,60 @@ renders exactly what `GET`/`POST`/`PATCH`/`DELETE
   single `list()` export to the full create/read/update/activate/
   deactivate set — existing zero-arg callers are unaffected).
 
+## Documents & Notifications (Phase 5E)
+
+Same UX-conveniences-only boundary as above — nothing here decides,
+filters, or infers what the caller may access; it renders exactly what
+`GET`/`POST /api/v1/letters/{id}/documents*` and
+`GET/PATCH /api/v1/notifications*` return. **No frontend authorization
+rule was added for either** — a document or a notification-linked
+Letter that the caller cannot access renders the same generic `404`
+this project has used since Phase 4B, with nothing distinguishing
+"classified" from "nonexistent."
+
+* **Documents** (`components/DocumentUploadForm.jsx`/`DocumentList.jsx`,
+  integrated directly into `LetterDetailPage` — no separate route) —
+  upload with `onUploadProgress`-driven feedback (falling back to an
+  indeterminate state where progress can't be measured), client-side
+  pre-checks (missing file/unsupported extension/oversized file)
+  explicitly labeled as a UX convenience, never authoritative; the list
+  renders only confirmed `DocumentResponse` fields with one Download
+  action per row — no Delete/Replace/Archive, because no such endpoint
+  exists. Download uses an authenticated blob fetch through the
+  existing `apiClient` (a plain `<a href>` cannot carry the Bearer
+  token a download requires), then a synthetic anchor click using the
+  backend's own filename, then a delayed `URL.revokeObjectURL`.
+* **Notifications** (`components/NotificationBell.jsx`/
+  `NotificationPanel.jsx`/`NotificationItem.jsx`, `pages/
+  NotificationsPage.jsx` at `/app/notifications`) — `NotificationBell`
+  lives in the existing `Topbar` and polls
+  `GET /notifications/unread-count` only (never the full list) on a
+  60-second interval (`PROVISIONAL` — no confirmed business
+  requirement mandates this exact number), paused while the browser
+  tab is hidden via `visibilitychange`. `NotificationPanel` (dropdown,
+  10 per page) and `NotificationsPage` (full page, real backend
+  pagination) both render the same `NotificationItem`. **Mark-read is
+  explicit-button-only** — clicking a notification's related-Letter
+  link never marks it read; only the dedicated "Mark as read" button
+  does, via `PATCH /notifications/{id}/read`. This is a deliberate
+  override of the architecture review's own provisional "mark on
+  navigate" lean, not a silently-invented policy — see
+  `docs/architecture/document-notification-ui.md` §27.
+* **No `recipient_user_id` or equivalent is ever sent** —
+  `notificationService.list` forwards only `page`/`page_size`; there is
+  no recipient-selection capability anywhere, matching the backend's
+  own structural per-account isolation (no endpoint accepts a recipient
+  identifier at all).
+* **No `is_read` query parameter exists or was invented** — confirmed
+  absent from the backend contract; `NotificationsPage` renders every
+  notification for the current page, distinguishing read/unread only
+  visually.
+* **API service layer** — `services/documentService.js`
+  (`list`/`upload`/`download` only — no `deleteDocument`/
+  `replaceDocument`/`archiveDocument`, because no such endpoint
+  exists), `services/notificationService.js` (`list`/`unreadCount`/
+  `markRead`/`markAllRead` only).
+
 ## Source layout
 
 | Path | Responsibility |
@@ -240,14 +297,14 @@ renders exactly what `GET`/`POST`/`PATCH`/`DELETE
 | `src/App.jsx` | Provides `AuthProvider` and mounts the router |
 | `src/routes/` | `router` (route tree), `ProtectedRoute` (authentication guard), `RoleGuard` (role-based navigation convenience, not security) |
 | `src/context/` | `AuthContext` — the one authentication state mechanism |
-| `src/services/` | `apiClient.js` (the one Axios instance), `authService.js` (login/signup/me), `letterService.js` (Phase 5C), `categoryService.js`/`classificationService.js` (thin, SYSTEM_ADMIN-only reference-data wrappers, Phase 5C), `departmentService.js` (Phase 5C reference-data + Phase 5D full CRUD/lifecycle), `adminService.js`/`userService.js` (Phase 5D), `tokenStorage.js` (isolated token access), `errorNormalization.js` |
-| `src/navigation/` | `navigationConfig.js` — role → nav item mapping, data only (unchanged since Phase 5A — its Departments/Administrators/Users entries already pointed at the Phase 5D routes) |
-| `src/layouts/` | `AppShell`/`Sidebar`/`Topbar` — the authenticated app's chrome |
-| `src/pages/` | `LoginPage`/`SignupPage` (auth/account UX, Phase 5B), `LetterListPage`/`LetterFormPage`/`LetterDetailPage` (Letter registry, Phase 5C), `DepartmentListPage`/`DepartmentCreatePage`/`DepartmentDetailPage`/`AdminListPage`/`AdminAuthorizePage`/`AdminDetailPage`/`UserListPage`/`UserAuthorizePage`/`UserAuthorizationsPage`/`UserDetailPage` (administration, Phase 5D), `RootRedirect`, `PlaceholderPage` (every remaining unbuilt business feature screen renders this generic placeholder) |
-| `src/components/` | `LoadingState`/`ErrorState`/`EmptyState` — reusable primitives; `PendingApprovalNotice`/`DeactivatedAccountNotice` — account-state notices; `LetterTable`/`LetterFilters`/`Pagination`/`ArchiveConfirmDialog` — Letter registry components (Phase 5C); `StatusBadge` (Phase 5C, extended in Phase 5D); `ConfirmDialog`/`AdminTransferDialog`/`DepartmentSelector`/`DepartmentForm`/`DepartmentTable`/`AdminTable`/`UserTable`/`AuthorizationTable` — administration components (Phase 5D) |
+| `src/services/` | `apiClient.js` (the one Axios instance), `authService.js` (login/signup/me), `letterService.js` (Phase 5C), `categoryService.js`/`classificationService.js` (thin, SYSTEM_ADMIN-only reference-data wrappers, Phase 5C), `departmentService.js` (Phase 5C reference-data + Phase 5D full CRUD/lifecycle), `adminService.js`/`userService.js` (Phase 5D), `documentService.js`/`notificationService.js` (Phase 5E), `tokenStorage.js` (isolated token access), `errorNormalization.js` |
+| `src/navigation/` | `navigationConfig.js` — role → nav item mapping, data only (unchanged since Phase 5A — its Departments/Administrators/Users/Notifications entries already pointed at the eventual routes) |
+| `src/layouts/` | `AppShell`/`Sidebar`/`Topbar` — the authenticated app's chrome; `Topbar` renders `NotificationBell` since Phase 5E |
+| `src/pages/` | `LoginPage`/`SignupPage` (auth/account UX, Phase 5B), `LetterListPage`/`LetterFormPage`/`LetterDetailPage` (Letter registry, Phase 5C; `LetterDetailPage` gained a real Documents section in Phase 5E), `DepartmentListPage`/`DepartmentCreatePage`/`DepartmentDetailPage`/`AdminListPage`/`AdminAuthorizePage`/`AdminDetailPage`/`UserListPage`/`UserAuthorizePage`/`UserAuthorizationsPage`/`UserDetailPage` (administration, Phase 5D), `NotificationsPage` (Phase 5E, at `/app/notifications`), `RootRedirect`, `PlaceholderPage` (every remaining unbuilt business feature screen renders this generic placeholder) |
+| `src/components/` | `LoadingState`/`ErrorState`/`EmptyState` — reusable primitives; `PendingApprovalNotice`/`DeactivatedAccountNotice` — account-state notices; `LetterTable`/`LetterFilters`/`Pagination`/`ArchiveConfirmDialog` — Letter registry components (Phase 5C); `StatusBadge` (Phase 5C, extended in Phase 5D); `ConfirmDialog`/`AdminTransferDialog`/`DepartmentSelector`/`DepartmentForm`/`DepartmentTable`/`AdminTable`/`UserTable`/`AuthorizationTable` — administration components (Phase 5D); `DocumentUploadForm`/`DocumentList`/`NotificationBell`/`NotificationPanel`/`NotificationItem` — documents/notifications components (Phase 5E) |
 | `src/styles/` | `tokens.css` (design tokens), `global.css` (minimal reset, plus a `.sr-only` utility added in Phase 5D) |
 | `src/test/` | `setup.js` — Vitest/Testing-Library wiring, shared by every test file |
-| `src/utils/` | `formValidation.js` — lightweight, dependency-free form validation (auth forms, `validateLetterForm` since Phase 5C, `validateDepartmentForm`/`validateAdminAuthorizeForm`/`validateUserAuthorizeForm` since Phase 5D); `statusLabels.js` (Phase 5D) — human-readable labels for the raw enum values `StatusBadge` renders |
+| `src/utils/` | `formValidation.js` — lightweight, dependency-free form validation (auth forms, `validateLetterForm` since Phase 5C, `validateDepartmentForm`/`validateAdminAuthorizeForm`/`validateUserAuthorizeForm` since Phase 5D, `validateDocumentFile` since Phase 5E); `statusLabels.js` (Phase 5D) — human-readable labels for the raw enum values `StatusBadge` renders |
 | `src/assets/`, `src/hooks/`, `src/constants/` | Still mostly placeholders (`constants/app.js` has real content); populated as feature work needs them |
 
 ## Conventions
@@ -270,17 +327,18 @@ renders exactly what `GET`/`POST`/`PATCH`/`DELETE
 
 ## Testing
 
-Vitest + React Testing Library (`npm run test`). 159 tests across 25
+Vitest + React Testing Library (`npm run test`). 225 tests across 32
 files. Auth/foundation (unchanged since Phase 5B):
 `services/errorNormalization.test.js`, `navigation/navigationConfig.test.js`,
 `routes/ProtectedRoute.test.jsx`, `routes/routing.test.jsx`,
 `context/AuthContext.test.jsx`, `pages/LoginPage.test.jsx`,
-`pages/SignupPage.test.jsx`. Letter registry (Phase 5C, unchanged):
+`pages/SignupPage.test.jsx`. Letter registry (Phase 5C; `LetterDetailPage.test.jsx`
+gained a Documents-integration `describe` block in Phase 5E):
 `components/LetterTable.test.jsx`, `components/Pagination.test.jsx`,
 `pages/LetterListPage.test.jsx`, `pages/LetterDetailPage.test.jsx`,
 `pages/LetterFormPage.test.jsx`. `utils/formValidation.test.js` now
-covers all six validators across Phase 5B/5C/5D. Administration
-(Phase 5D, new): `components/ConfirmDialog.test.jsx` (dialog
+covers all seven validators across Phase 5B/5C/5D/5E. Administration
+(Phase 5D): `components/ConfirmDialog.test.jsx` (dialog
 accessibility, focus, Escape, backdrop click, Tab-trap),
 `routes/RoleGuard.test.jsx` (both usage modes, including the new
 `<Outlet/>` layout-route behavior), `pages/DepartmentListPage.test.jsx`/
@@ -291,11 +349,41 @@ approval-race 409, and a transfer-destination-not-active 409),
 `pages/UserListPage.test.jsx`/`UserAuthorizePage.test.jsx`/
 `UserAuthorizationsPage.test.jsx`/`UserDetailPage.test.jsx` (including
 the default-`ACTIVE`-filter behavior, a used-authorization 409 race, and
-the 403-department-phrasing test) — the API layer is mocked in every
-test; none of these tests requires a running backend.
+the 403-department-phrasing test). Documents & Notifications (Phase
+5E, new): `components/DocumentUploadForm.test.jsx`,
+`components/DocumentList.test.jsx`, `components/NotificationItem.test.jsx`,
+`components/NotificationBell.test.jsx` (fake-timer-driven polling/pause
+tests), `components/NotificationPanel.test.jsx`,
+`pages/NotificationsPage.test.jsx`, `layouts/Topbar.test.jsx` (new file
+— no such test previously existed) — including coverage that mark-read
+never fires on Letter-link navigation, that no `is_read`/recipient
+parameter is ever sent, and that a notification pointing at an
+inaccessible Letter renders the ordinary generic 404. The API layer is
+mocked in every test; none of these tests requires a running backend.
 
 ## Known limitations
 
+* **60-second unread-count polling interval** (Phase 5E) —
+  `PROVISIONAL`, centralized as `POLL_INTERVAL_MS` in
+  `NotificationBell.jsx`; not backed by a confirmed business
+  requirement. See `docs/architecture/document-notification-ui.md`
+  §11/§27.
+* **Explicit-only mark-read behavior** (Phase 5E) — implemented per an
+  explicit override in the implementation brief; the underlying
+  business question (mark-read-on-navigate vs. explicit-only) remains
+  open. See `docs/architecture/document-notification-ui.md` §23/§27.
+* **No pagination on the Document list** (Phase 5E, a CONFIRMED
+  backend-contract limitation) — `GET /letters/{id}/documents` returns
+  the complete result set, unlike the notification list. See
+  `docs/architecture/document-notification-ui.md` §1.1/§27.
+* **No `is_read` filter on the Notification list** (Phase 5E, a
+  CONFIRMED backend-contract limitation) — confirmed absent; not
+  invented. See `docs/architecture/document-notification-ui.md`
+  §2.2/§27.
+* **No document delete/replace/archive** (Phase 5E, a CONFIRMED
+  backend-contract limitation) — no such endpoint exists; "replacement"
+  is uploading again, leaving the prior document untouched. See
+  `docs/architecture/document-notification-ui.md` §5/§27.
 * **No pagination, search, or sort on Departments/Admins/Users/User-
   authorizations** (Phase 5D, a CONFIRMED backend-contract limitation)
   — unlike `GET /letters`, none of the four resources' list endpoints
@@ -331,7 +419,9 @@ test; none of these tests requires a running backend.
   during tests (`v7_startTransition`, `v7_relativeSplatPath`) — informational
   only, not a functional issue; not addressed this phase.
 
-The structure anticipates the remaining feature set (Documents,
-Notifications) — see `docs/architecture/frontend.md` for the complete
+The structure anticipates the remaining feature set (dashboards,
+reporting, an audit read API, Category/Classification management) —
+see `docs/architecture/frontend.md` and
+`docs/architecture/document-notification-ui.md` for the complete
 design and `docs/PROJECT_STATUS.md` for what's built versus still
 pending.

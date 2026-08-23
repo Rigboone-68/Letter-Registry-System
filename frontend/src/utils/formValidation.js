@@ -150,3 +150,36 @@ export function validateUserAuthorizeForm({ email }) {
 
   return errors
 }
+
+/**
+ * A UX-nicety pre-check only, mirroring the backend's own confirmed
+ * pipeline (backend/app/services/document_validation.py) as closely as
+ * a filename/size check can — the backend's magic-byte content-
+ * signature sniff remains the sole authority; a file that passes this
+ * check can still be rejected by the backend with a `422` if its actual
+ * bytes don't match its extension, and this function never claims
+ * otherwise (docs/architecture/document-notification-ui.md §3.4).
+ * Returns a single error string, or `null` if the file passes every
+ * client-side check.
+ */
+export function validateDocumentFile(file, { allowedExtensions, maxSizeBytes }) {
+  if (!file) {
+    return 'Select a file to upload.'
+  }
+
+  const extension = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : ''
+  if (!allowedExtensions.includes(extension)) {
+    return `Unsupported file type. Accepted types: ${allowedExtensions.join(', ')}.`
+  }
+
+  if (file.size === 0) {
+    return 'Selected file is empty.'
+  }
+
+  if (file.size > maxSizeBytes) {
+    const maxMb = (maxSizeBytes / (1024 * 1024)).toFixed(0)
+    return `File exceeds the maximum allowed size of ${maxMb} MB.`
+  }
+
+  return null
+}

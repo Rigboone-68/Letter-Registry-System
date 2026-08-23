@@ -1,0 +1,66 @@
+.item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-sm);
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+.unread {
+  background: var(--color-warning-bg);
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  min-width: 0;
+}
+
+.message {
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+a.message {
+  color: var(--color-primary);
+}
+
+a.message:hover {
+  text-decoration: underline;
+}
+
+.unread .message {
+  font-weight: var(--font-weight-medium);
+}
+
+.timestamp {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.markRead {
+  flex-shrink: 0;
+  padding: var(--space-2xs) var(--space-sm);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+.markRead:hover:not(:disabled) {
+  background: var(--color-bg);
+}
+
+.markRead:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

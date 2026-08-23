@@ -7,48 +7,92 @@ supervisor as-is.
 
 ## Current Phase
 
-**Phase 5D — Administration & Account Management UI: Implementation.**
-Complete. Builds directly on this same phase's own prior architecture
-review: `/app/system/departments`, `/app/system/admins`, and
-`/app/admin/users` are now a complete Department/Administrator/User
+**Phase 5E — Documents & Notifications UI: Implementation.** Complete.
+Frontend only, built directly on this same phase's own prior
+architecture review — no backend code, migration, or production data
+was touched. `LetterDetailPage` now has a real Documents section
+(`DocumentUploadForm` + `DocumentList`, upload with progress feedback,
+authenticated blob download, no delete/replace action anywhere,
+because no such endpoint exists); a `NotificationBell` in the existing
+`Topbar` polls `GET /notifications/unread-count` only, every 60
+seconds (`PROVISIONAL`), paused while the tab is hidden; a
+`NotificationPanel` dropdown and a full paginated `/app/notifications`
+page (reusing Phase 5C's `Pagination` component) both use **explicit
+"Mark as read" only** — clicking a notification's related-Letter link
+never marks it read, per an explicit override of this review's own
+PROVISIONAL lean (§23/§27 of the architecture doc). No frontend
+authorization rule of any kind was added for classified/inaccessible
+Letters or their documents — a `404` renders exactly as it always has.
+
+Test suite grown from 159 to **225 tests**, run 3 consecutive times
+with identical results and clean stderr output. `npm run build`
+succeeds. Backend regression (`pytest tests/`) — **458 passed**,
+unaffected, confirming zero backend impact. Full implementation record
+in `docs/architecture/document-notification-ui.md` §27.
+
+**Not added, per the brief's own explicit list:** OCR, antivirus
+scanning, cloud storage, public/signed document URLs, email/SMS/push
+notifications, WebSockets, queues, Celery, Redis, an audit UI, a
+dashboard, exports, document deletion, a document replacement
+endpoint, notification recipient management, a notification-creation
+UI, or any new frontend authorization logic.
+
+### Phase 5E — Documents & Notifications UI: Architecture &
+Requirements Review
+
+Complete (prior pass, this same phase). Review only — no frontend or
+backend code, migration, or test was written at that stage. Repository
+confirmed clean and at Phase 5D (`f46cb7c`) before this review began.
+Re-inspected `app/api/v1/endpoints/documents.py`/`notifications.py`,
+their services (`document_service.py`/`document_storage.py`/
+`document_validation.py`/`notification_service.py`), repositories, and
+schemas fresh — both confirmed **unchanged since Phase 4D/4E**, so this
+review reaches the same conclusions Phase 5's own original §14/§15
+already did on the big questions (fetch+blob required for downloads,
+no delete endpoint, poll only `/unread-count`) and adds the
+implementation-level detail (exact routes/components/services/tests)
+neither Phase 5 nor Phase 5C went into.
+
+**Confirmed, precisely, why a plain `<a href>` cannot download a
+document**: the response requires a Bearer token like every other
+endpoint; `Content-Disposition: attachment` is set automatically by
+Starlette's `FileResponse` whenever a `filename=` is passed (confirmed
+from the exact call in `documents.py`, not assumed), forcing a real
+browser download once fetched as a blob. **Confirmed the document
+lifecycle precisely**: upload only, no replace/delete endpoint of any
+kind — "replacement" is calling upload again, leaving the prior
+document fully untouched, exactly as Phase 4D's own review concluded.
+**Confirmed the notification message is safe to render as plain
+JSX text** — a fixed server-authored template with one non-sensitive
+interpolated value (the Letter's reference number), auto-escaped by
+React, never requiring sanitization.
+
+**A real, narrow scenario documented, not previously written down
+anywhere**: a `LETTER_REGISTERED` notification's recipient can still
+hit a generic Letter `404` if their own access changed after the
+notification was generated (e.g. an Admin department transfer, Phase
+5D) — not a bug, and not something the frontend should treat
+differently from any other Letter 404.
+
+Full review in `docs/architecture/document-notification-ui.md`.
+
+**Not in scope for this phase, and not added:** any frontend page,
+component, service, or test; any backend endpoint, schema, service, or
+migration; document deletion/replacement endpoints; email/SMS/push
+notifications; WebSockets; a dashboard; an audit UI.
+
+### Phase 5D — Administration & Account Management UI: Implementation
+
+Complete (prior phase). Builds directly on this same phase's own prior
+architecture review: `/app/system/departments`, `/app/system/admins`,
+and `/app/admin/users` are now a complete Department/Administrator/User
 management UI — 10 new pages, 4 new list tables, a generalized
 `ConfirmDialog`, a specialized `AdminTransferDialog`, an extended
 `StatusBadge` (two new tones — `PENDING_APPROVAL`/`REVOKED`), and two
 new API service modules (`adminService.js`/`userService.js`) plus an
-extended `departmentService.js`. `routes/RoleGuard.jsx` was extended
-(backward-compatibly) to also work as a layout route, so each new
-route group shares one guard instance rather than repeating it on every
-child route. `navigationConfig.js` needed no change — confirmed its
-three relevant entries already pointed at the right paths since
-Phase 5A.
-
-**The three-way distinction the review insisted on was preserved, not
-flattened**: `UserStatus`/`AuthorizationStatus`/`ActiveStatus` never
-share a badge tone by accident (`PENDING_APPROVAL` renders as a
-warning, `REVOKED` as a negative tone, distinct from a plain
-`DEACTIVATED`/`USED` neutral), and a `403` on Approve/Reactivate is
-phrased specifically around the *Admin's own* department — never the
-target account — while Deactivate (which can never return that `403`)
-shows no such warning. Verified by a dedicated test, not just designed.
-
-**Every confirmed backend-contract gap the review found was respected,
-not silently worked around**: no pagination/search/sort UI was built
-for any of the four resources (none exists on the backend); no
-department field appears on the User authorization form (none exists
-on `UserAuthorizationCreate`); no revoke action was added for
-Admin-purpose authorizations (no such endpoint exists); no department/
-admin/user count is shown anywhere (no such field exists).
-
-Test suite grown from 84 to **159 tests**, run 3 consecutive times with
-identical results. Frontend production build and backend regression
-(458 tests) both succeed, unaffected — confirmed by re-running before
-and after, with zero backend files touched. Full implementation record
-in `docs/architecture/administration-ui.md` §26.
-
-**Not in scope for this phase, and not added:** any backend endpoint,
-schema, service, or migration; Document/Notification/dashboard/audit
-UI; Category/Classification management UI (out of this phase's own
-objective list); any new authorization or business rule.
+extended `departmentService.js`. Test suite grown from 84 to **159
+tests**, run 3 consecutive times with identical results. Full
+implementation record in `docs/architecture/administration-ui.md` §26.
 
 ### Phase 5D — Administration & Account Management UI: Architecture & Requirements Review
 
@@ -316,6 +360,48 @@ until the review's recommendations were approved; see "Completed" below
 for both, in order.
 
 ## Completed
+
+### Phase 5E — Documents & Notifications UI architecture & requirements review
+
+* **Inspected the actual current backend state, not assumed** — fresh
+  reads of `documents.py`/`document_service.py`/`document_storage.py`/
+  `document_validation.py`/`letter_document_repository.py`/
+  `document.py` (schema) and `notifications.py`/
+  `notification_service.py`/`notification_repository.py`/
+  `notification.py` (schema/model); both confirmed byte-for-byte
+  unchanged since Phase 4D/4E.
+* **The download mechanism confirmed precisely, not just "fetch+blob is
+  needed"**: `Content-Disposition: attachment` is set automatically by
+  Starlette's `FileResponse` whenever `filename=` is passed — traced to
+  the exact call site in `documents.py`, not assumed from general
+  FastAPI knowledge. `X-Content-Type-Options: nosniff` is already
+  present on every download response.
+* **Document lifecycle confirmed exhaustively**: upload only; no
+  replace, no delete, no archive-a-document concept independent of its
+  parent Letter. `document_service.py`'s own docstring states
+  "replacement" is simply calling upload again.
+* **Notification message content confirmed safe to render as plain
+  text** — a fixed, server-authored template with exactly one
+  non-sensitive interpolated value (the Letter's reference number),
+  auto-escaped by ordinary JSX rendering.
+* **A real, previously-undocumented interaction found**: a
+  `LETTER_REGISTERED` notification's recipient can still hit a generic
+  Letter `404` if their own access changed after the notification was
+  generated (e.g. an Admin department transfer, Phase 5D's own
+  confirmed instant-effect behavior) — documented as expected,
+  non-distinguishing 404 behavior, not a bug.
+* **Full architecture designed**: `DocumentList`/`DocumentUploadForm`
+  inline on `LetterDetailPage`'s existing placeholder section (no new
+  route); `NotificationBell`/`NotificationPanel`/`NotificationItem` in
+  `Topbar`, plus the already-slotted `/app/notifications` page;
+  `documentService.js`/`notificationService.js` (new); a full
+  error-handling matrix (`422` vs. `413` vs. `500` distinguished for
+  uploads); a 15-item security threat review; a ~50-60-test plan.
+* **No frontend or backend file was touched** — confirmed by `git
+  status` before/after; this phase produced documentation only.
+* **Documentation**: `docs/architecture/document-notification-ui.md`
+  (new), plus updates to the root README, `docs/README.md`,
+  `docs/architecture/frontend.md`, and `docs/architecture/overview.md`.
 
 ### Phase 5D — Administration & Account Management UI implementation
 
@@ -1635,6 +1721,33 @@ detail behind each:
 | 5 | `letter_documents.uploaded_by` had no index, unlike every other User-referencing FK in the schema | Added (`ix_letter_documents_uploaded_by`) |
 | 6 | The role/department `CHECK` constraint hardcoded role strings, duplicating `UserRole`'s values | Model-side constraint now built from `UserRole.*.value`; the migration's own copy is deliberately still a literal (migrations are frozen snapshots) — see `app/models/user.py` docstring |
 
+### Validation performed — Phase 5E implementation
+
+| Check | Result |
+|---|---|
+| `npm run build` (frontend, `frontend/`) | Succeeds — 176 modules transformed, no errors |
+| `npm run test` (frontend, Vitest) | **225 passed**, 0 failed — run 3 consecutive times against the final code, identical results, clean stderr output |
+| `pytest tests/` (backend, `backend/`) | **458 passed**, 0 failed, 0 skipped — unaffected by this phase, confirming zero backend impact |
+| `git status` — backend files | No `backend/app/`, `backend/alembic/`, or `backend/tests/` file touched |
+| `git status` — secrets | No `.env`/`.env.local` tracked; no new dependency added (only new first-party source/test files) |
+| Grep for `jwt`/`decode`/`localStorage`/`recipient_user_id` in new/changed files | Zero matches representing actual usage — only comments/test names documenting their absence |
+| Grep for `dangerouslySetInnerHTML` | Zero matches representing actual usage — appears only in a comment and a test name asserting it is never used |
+| Grep for `DELETE`/delete-document calls, storage-path exposure, signed/public URLs, hardcoded role checks, hardcoded department IDs | Zero matches of any kind in the new/changed file set |
+| Grep for a `403`→`404` (or reverse) conversion in the new pages/components | Zero matches |
+| Manual verification against a running backend | Not performed — no backend/dev environment was running at any point this session; reported honestly rather than claimed |
+
+### Validation performed — Phase 5E review
+
+An architecture/requirements review, not an implementation phase —
+validation here means confirming no code was written and no drift was
+introduced, the same standard applied to every prior review-only pass:
+
+| Check | Result |
+|---|---|
+| `git status` before and after the review | Identical except one new documentation file and five documentation updates — no frontend file (`.jsx`/`.js`/`.css`), backend file, migration, or test file touched |
+| Direct reads of every Document/Notification endpoint, schema, service, repository, and model file | Confirmed exact status codes, error messages, response headers, and lifecycle behavior, all fresh this session |
+| Cross-check against `docs/architecture/frontend.md` §14/§15's original findings | Confirmed both backend modules unchanged since Phase 4D/4E — the original review's conclusions still hold, extended with implementation-level detail this pass added |
+
 ### Validation performed — Phase 5D implementation
 
 | Check | Result |
@@ -1992,23 +2105,27 @@ afterward — `lrs_dev` is empty again.
 
 ## In Progress
 
-Nothing — Phase 5D's implementation is complete (Phase 5's own
-architecture review, Phase 5A's foundation, Phase 5B's authentication/
-account UX, Phase 5C's core Letter registry UI, and now Phase 5D's
-Department/Administrator/User management UI are all done) and the
-project is paused pending explicit instruction to begin the next phase,
-per the standing project rule that phases are reviewed before the next
-begins.
+Nothing — Phase 5E's implementation is complete (Phase 5's own
+architecture review, Phase 5A's foundation, Phase 5B's
+authentication/account UX, Phase 5C's core Letter registry UI, Phase
+5D's Department/Administrator/User management UI, Phase 5E's own
+Documents/Notifications review, and now Phase 5E's implementation are
+all done) and the project is paused pending explicit instruction to
+begin the next phase, per the standing project rule that phases are
+reviewed before the next begins.
 
-## Pending (Phase 5E and later)
+## Pending (Phase 5F and later)
 
-* **Document upload/download UI and Notifications UI** remain unbuilt —
-  Phase 5A/5B/5C/5D built the foundation, the authentication/account
-  experience, the core Letter registry, and now Department/Admin/User
-  management those screens will be built on top of. Category/
-  Classification management UI also remains unbuilt (out of Phase 5D's
-  own objective list, not an oversight). See
-  `docs/architecture/frontend.md` §32 for the recommended sequence.
+* **Category/Classification management UI** remains unbuilt — out of
+  Phase 5D's own objective list, not an oversight, and out of Phase
+  5E's scope too (Documents/Notifications only). See
+  `docs/architecture/document-notification-ui.md` §24 for how Phase 5E
+  itself was sequenced.
+* **No signed/shareable document-download URL** (Phase 5E review,
+  restating Phase 5's own §14 finding) — every download requires an
+  authenticated fetch; there is no "open in a new tab" URL for a
+  document. `PENDING BACKEND API` if ever wanted; not proposed by this
+  review.
 * **No pagination, search, or sort on Departments/Admins/Users/User-
   authorizations** (Phase 5D review finding) — unlike `GET /letters`,
   none of `GET /departments`/`/admins`/`/users`/`/users/authorizations`
@@ -2528,16 +2645,22 @@ behind each.
 
 ## Next Recommended Phase
 
-**Phase 5E — Document management UI**, the next step in the *original*
-Phase 5 sequence, now that Phase 5D has filled in the administration
-detour (`docs/architecture/frontend.md` §32: foundation — done →
-auth/account UX — done (Phase 5B) → Letters — done (Phase 5C) →
-Administration — done (Phase 5D) → **Documents nested into Letter
-detail** → Notifications → additional test coverage alongside each).
-**Or** resolving the category/classification reference-data access gap
-Phase 5C confirmed (a backend change: a read-scoped,
-non-SYSTEM_ADMIN-only variant of `GET /categories`/`/classifications` —
-not designed or proposed by any phase so far), **or** whether
+Phase 5E's implementation is now complete — the frontend has a full
+Document management UI (upload/list/download, integrated into
+`LetterDetailPage`) and a full Notification UI (`NotificationBell`/
+`NotificationPanel`/`NotificationsPage`), matching the architecture
+review's design exactly. See
+`docs/architecture/document-notification-ui.md` §27 for the full
+implementation record. No further work is pending from Phase 5E
+itself; what remains is either the next screen (Category/Classification
+management, out of every phase's scope so far), or resolving one of
+several genuinely open questions before more UI is built on top of
+them:
+
+Resolving the category/classification reference-data access gap Phase
+5C confirmed (a backend change: a read-scoped, non-SYSTEM_ADMIN-only
+variant of `GET /categories`/`/classifications` — not designed or
+proposed by any phase so far), **or** whether
 Departments/Admins/Users/User-authorizations need pagination at real V1
 data volumes (Phase 5D's review, `docs/architecture/administration-ui.md`
 §11/§22), **or** whether Admin-purpose authorizations should become
@@ -2545,23 +2668,24 @@ revocable, matching User-purpose ones (same review, §8.1/§22), **or**
 dashboards/reporting reading from the operational tables plus the
 now-populated `AuditLog`, **or** an audit-viewing/read API once its
 access-control question is resolved, **or** resolving the outstanding
-business clarifications first. The foundation Phase 5E needs already
-exists and is tested (`AuthContext`, the API client, route guards,
-navigation, the shell, the full authentication/account UX, the Letter
-registry Documents will nest into, and the `ConfirmDialog`/`StatusBadge`
-primitives Phase 5D built, ready to reuse for upload/delete-adjacent
-confirmations if needed) — the next phase can go directly to building
-rather than needing any more scaffolding first. Recommended before or
-alongside whichever is chosen: resolve the exact classification value
-list and classified-visibility matrix with the product owner
+business clarifications first. Recommended before or alongside
+whichever is chosen: resolve the exact classification value list and
+classified-visibility matrix with the product owner
 (`docs/architecture/letter-registry.md` §12,
 `docs/architecture/registry-search.md` §11); the category/classification
 reference-data access gap named above; who should receive a "letter
 registered" notification, since "department Admins" is still an
-explicit guess (`docs/architecture/audit-notifications.md` §13); which
+explicit guess (`docs/architecture/audit-notifications.md` §13);
+whether mark-read-on-navigate is the desired notification behavior —
+implemented as explicit-only for now, per an explicit override
+documented in `docs/architecture/document-notification-ui.md` §27, but
+the underlying business question remains open — and notification
+polling frequency/retention (still `PROVISIONAL` at 60 seconds,
+`docs/architecture/document-notification-ui.md` §11/§27); which
 deployment model applies (individually-assigned workstations vs. shared
 machines), since it changes the frontend's token-storage recommendation
 (`docs/architecture/frontend.md` §28); and whether a unified global
-search, a signed document-download URL, or a dashboard aggregate
-endpoint are ever actually wanted before any is built speculatively
-(`docs/architecture/frontend.md` §31).
+search, a signed document-download URL, document previews, or a
+dashboard aggregate endpoint are ever actually wanted before any is
+built speculatively (`docs/architecture/frontend.md` §31,
+`docs/architecture/document-notification-ui.md` §23).

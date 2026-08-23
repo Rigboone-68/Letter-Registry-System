@@ -17,8 +17,19 @@ archive) built on top of both. Phase 5D's Department/Administrator/User
 management UI is now also implemented — its full design and
 implementation record live in `administration-ui.md` rather than as a
 further section here, since that phase's own review was already a
-substantial standalone document. Documents, Notifications, dashboard,
-and audit UI still do not exist.
+substantial standalone document. **Documents & Notifications UI is now
+also implemented** (Phase 5E — architecture/requirements review, then
+implementation, both recorded in
+[`document-notification-ui.md`](document-notification-ui.md), §27 has
+the full implementation record) — this document's own §14/§15,
+written during the original Phase 5 pass, were re-verified fresh
+against current source before that implementation and confirmed still
+accurate; the newer document adds the implementation-level detail
+(exact routes/components/services/tests) this one never went into.
+`LetterDetailPage` now has a real Documents section (upload/list/
+download); `Topbar` now has a `NotificationBell`; `/app/notifications`
+is a real paginated page. Dashboard and audit UI still do not exist as
+real screens.
 
 This document originally inspected the actual current frontend (a Phase
 1 skeleton) and the actual current backend API surface (42 business
@@ -1478,5 +1489,8 @@ confirms no file under `backend/app/`, `backend/alembic/`, or
   future-flag warnings, no server-side logout revocation) — none is
   affected by this phase's work.
 * **No document or notification UI** — explicitly out of scope for this
-  phase (Phase 5D); the Letter detail page has a labeled placeholder
-  section for documents rather than a fake feature.
+  phase (Phase 5C); at the time, the Letter detail page had a labeled
+  placeholder section for documents rather than a fake feature.
+  **RESOLVED (Phase 5E)** — the placeholder was replaced with a real
+  Documents section, and a full Notification UI was added; see
+  `document-notification-ui.md` §27.

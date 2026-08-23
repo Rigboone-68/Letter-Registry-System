@@ -2,8 +2,9 @@
 
 **A Production of AJ-Labs**
 
-> **Current status: Phase 5D — Administration & Account Management UI
-> implemented (Phase 5C Core Registry UI implemented; Phase 5B
+> **Current status: Phase 5E — Documents & Notifications UI
+> implemented (Phase 5D Administration & Account Management UI
+> implemented; Phase 5C Core Registry UI implemented; Phase 5B
 > Authentication & Account UX implemented; Phase 5A Frontend Foundation
 > implemented; Phase 5 architecture/UX review complete; Phase 4E
 > Operational Activity, Notifications & Audit implemented; Phase 3B
@@ -128,10 +129,35 @@
 > support pagination, search, or sort — every list renders the complete
 > backend result set for its filter, exactly as confirmed, nothing
 > invented. Test suite grown from 84 to 159 tests. See
-> `docs/architecture/administration-ui.md`. **No Document/Notification
-> screen exists yet** — those nav destinations remain shared
-> placeholders for a later phase. See `docs/PROJECT_STATUS.md` for the
-> full picture.
+> `docs/architecture/administration-ui.md`. Phase 5E then first
+> reviewed, then implemented, the Documents & Notifications frontend:
+> every `documents.py`/`notifications.py` endpoint, service,
+> repository, and schema was re-read fresh and confirmed unchanged
+> since Phase 4D/4E — confirming precisely *why* a plain `<a href>`
+> cannot download a document (a Bearer token is required, and
+> `Content-Disposition: attachment` is set automatically by the
+> backend's own `FileResponse` call), that no document replace/delete
+> endpoint exists or is planned ("replacement" is simply uploading
+> again), and that the one generated notification message is a fixed,
+> non-sensitive template safe to render as plain text. A real,
+> previously-undocumented interaction was found: a notification's
+> Letter link can still 404 if the recipient's own access changed since
+> the notification was generated (e.g. an Admin department transfer) —
+> documented as expected, non-distinguishing 404 behavior, not a bug.
+> `LetterDetailPage` now has a real Documents section
+> (upload/list/download, no delete/replace action, because none
+> exists); `Topbar` now has a `NotificationBell` polling
+> `GET /notifications/unread-count` only, every 60 seconds
+> (`PROVISIONAL`); `/app/notifications` is a real paginated page.
+> Mark-read is explicit-button-only — clicking a notification's Letter
+> link never marks it read, an explicit override of this review's own
+> provisional lean. No frontend authorization rule was added anywhere;
+> a `404` renders identically whether a document is nonexistent or its
+> parent Letter is classified-inaccessible. Test suite grown from 159
+> to 225 tests, run 3 consecutive times with identical results. See
+> `docs/architecture/document-notification-ui.md` §27 for the full
+> implementation record and `docs/PROJECT_STATUS.md` for the full
+> picture.
 
 ---
 
@@ -343,13 +369,15 @@ backend.
 | 5A | Frontend Foundation: routing wired up, `AuthContext` (session restore via `/auth/me`, login, logout), one centralized Axios client (auth header, error normalization, 401 handling), `ProtectedRoute`/`RoleGuard`, role-derived navigation, `AppShell`/`Sidebar`/`Topbar`, design tokens, a11y baseline, Vitest test setup (17 tests). No feature screens. | **Complete** |
 | 5B | Authentication & Account UX: production Login/Signup forms (client-side validation, full ARIA wiring), reusable pending-approval/deactivated-account notices, session-restoration network-failure handling with retry, logout/redirect verification, test suite grown to 44 tests. No business feature screens. | **Complete** |
 | 5C | Core Registry UI: Letter list/search/sort/paginate, create/view/edit/archive, driven entirely by the confirmed `GET/POST/PATCH/DELETE /api/v1/letters*` contract; a confirmed category/classification reference-data access gap resolved (not hardcoded around); test suite grown to 84 tests. No Document/Notification/Administration UI. | **Complete** |
-| **5D** | Administration & Account Management UI: Department/Administrator/User management screens — list/create/detail, Admin/User authorization workflows, approve/deactivate/reactivate lifecycle, Admin department transfer — driven entirely by the confirmed Department/Admin/User backend contract (no pagination/search/sort exists on any of the four resources, unlike Letters, so none was invented); test suite grown to 159 tests. No Document/Notification/Category/Classification UI. | **Complete** |
-| 5E+ | Frontend feature implementation: Documents, Notifications | Not started |
-| 6 | Dashboards, reporting, additional notification triggers, audit read API | Not started |
+| 5D | Administration & Account Management UI: Department/Administrator/User management screens — list/create/detail, Admin/User authorization workflows, approve/deactivate/reactivate lifecycle, Admin department transfer — driven entirely by the confirmed Department/Admin/User backend contract (no pagination/search/sort exists on any of the four resources, unlike Letters, so none was invented); test suite grown to 159 tests. No Document/Notification/Category/Classification UI. | **Complete** |
+| 5E | Documents & Notifications UI: architecture/requirements review of the Document upload/list/download and Notification frontend against the confirmed `documents.py`/`notifications.py` backend contract — confirms fetch+blob is required for downloads, no document delete/replace endpoint exists, and designs the full component/service/route/security/test architecture. Review only, no frontend code. | **Complete (review only)** |
+| **5E impl.** | Documents & Notifications UI implementation: `DocumentList`/`DocumentUploadForm` wired into `LetterDetailPage` (upload with progress, authenticated blob download, no delete/replace action), `NotificationBell`/`NotificationPanel`/`NotificationItem` wired into `Topbar` and a real paginated `/app/notifications` page, explicit-button-only mark-read, 60-second (`PROVISIONAL`) unread-count polling — driven entirely by the confirmed Document/Notification backend contract; test suite grown to 225 tests. | **Complete** |
+| 6 | Dashboards, reporting, additional notification triggers, audit read API, Category/Classification management UI | Not started |
 
-See `docs/PROJECT_STATUS.md` for what Phase 5D delivered,
-`docs/architecture/administration-ui.md` for the full design, and known
-limitations. The next phase begins only when explicitly instructed.
+See `docs/PROJECT_STATUS.md` for what Phase 5E delivered,
+`docs/architecture/document-notification-ui.md` §27 for the full
+implementation record, and known limitations. The next phase begins
+only when explicitly instructed.
 
 ---
 

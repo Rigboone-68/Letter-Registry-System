@@ -78,22 +78,27 @@
 }
 
 .content,
-.documentsPlaceholder {
+.documentsSection {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: var(--space-lg);
 }
 
-.content h2,
-.documentsPlaceholder h2 {
+.documentsSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.content h2 {
   margin-top: 0;
   font-size: var(--font-size-md);
 }
 
-.documentsPlaceholder p {
-  color: var(--color-text-muted);
-  margin-bottom: 0;
+.documentsSection h2 {
+  margin: 0;
+  font-size: var(--font-size-md);
 }
 
 @media (max-width: 767px) {
