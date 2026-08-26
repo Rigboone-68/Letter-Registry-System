@@ -84,11 +84,22 @@ to `assert_letter_access`), the document endpoints
 role that can already access the parent Letter, including SYSTEM_ADMIN
 cross-department; no deletion endpoint), Category/Classification
 management endpoints (`/api/v1/categories*`, `/api/v1/classifications*`,
-SYSTEM_ADMIN only), the notification endpoints (`/api/v1/notifications*` —
-any authenticated role, always scoped to the caller's own notifications),
-five verification-only authorization endpoints under
-`/api/v1/auth/test/*` (not business functionality — see
-`docs/architecture/authorization.md` §7), plus `/docs` and `/redoc`.
+SYSTEM_ADMIN only), Designation management endpoints
+(`/api/v1/designations*`, Phase 5H — writes are SYSTEM_ADMIN only, but
+`GET /designations` is deliberately readable by any authenticated role,
+unlike Category/Classification's own list endpoints, specifically so
+USER/ADMIN can populate the Letter form's Designation dropdown; see
+`docs/architecture/source-designation.md` §11), the notification
+endpoints (`/api/v1/notifications*` — any authenticated role, always
+scoped to the caller's own notifications), five verification-only
+authorization endpoints under `/api/v1/auth/test/*` (not business
+functionality — see `docs/architecture/authorization.md` §7), plus
+`/docs` and `/redoc`. **`GET /api/v1/departments` is also now readable
+by any authenticated role** (Phase 5H, the same reasoning as
+Designations above, needed so USER/ADMIN can populate the Letter
+form's new Source Department selector) — every other Department
+endpoint (create/update/single-get/activate/deactivate) remains
+SYSTEM_ADMIN only, unchanged.
 
 ## Bootstrapping the first System Admin
 
@@ -128,11 +139,12 @@ if an active System Admin already exists. See
 | `app/api/deps.py` | `get_current_user` (authentication) plus `require_system_admin`/`require_admin`/`require_admin_or_system_admin`/`require_user_or_admin`/`require_department_access` (authorization) |
 | `app/api/v1/router.py` | Aggregate v1 router |
 | `app/api/v1/endpoints/auth.py` | `/auth/signup`, `/auth/login`, `/auth/me` |
-| `app/api/v1/endpoints/departments.py` | `/departments*` — SYSTEM_ADMIN only |
+| `app/api/v1/endpoints/departments.py` | `/departments*` — SYSTEM_ADMIN only, **except `GET /departments` (list)**, deliberately relaxed to any authenticated role in Phase 5H so USER/ADMIN can populate the Letter form's Source Department selector (`docs/architecture/source-designation.md` §5) |
 | `app/api/v1/endpoints/admins.py` | `/admins*` — SYSTEM_ADMIN only |
 | `app/api/v1/endpoints/users.py` | `/users*` — ADMIN only, scoped to the caller's own department (Phase 3B.4); includes the project's first authorization-revocation endpoint |
 | `app/api/v1/endpoints/letters.py` | `/letters*` (Phase 4B) — `POST` is USER/ADMIN only; every other route accepts any authenticated role, with the actual department/classified-access decision made inside `LetterService`, not the route dependency |
 | `app/api/v1/endpoints/categories.py`, `app/api/v1/endpoints/classifications.py` | `/categories*`, `/classifications*` (Phase 4B) — SYSTEM_ADMIN only, mirroring `departments.py` exactly |
+| `app/api/v1/endpoints/designations.py` | `/designations*` (Phase 5H) — mirrors `categories.py` closely, with one deliberate departure: `GET /designations` (list) is `get_current_user`-only, not SYSTEM_ADMIN-only, so USER/ADMIN can populate the Letter form's Designation dropdown; every write (`create`/`update`/`activate`/`deactivate`) and `GET /{id}` remain SYSTEM_ADMIN only. No delete route |
 | `app/api/v1/endpoints/documents.py` | `/letters/{letter_id}/documents*` (Phase 4D) — nested under Letter on purpose, so the letter-first authorization chain is structurally unavoidable; every route uses `get_current_user` only (no `require_user_or_admin`), since the real decision is `LetterService.get_letter`'s `assert_letter_access`, exactly the same one-check-not-two principle `letters.py` already established. No delete route |
 | `app/api/v1/endpoints/notifications.py` | `/notifications*` (Phase 4E) — `get_current_user` only, unconditionally scoped to `current_user` for every role including SYSTEM_ADMIN (ownership, not role/department, is the whole access rule); no `recipient_user_id` query parameter exists anywhere |
 | `app/api/v1/endpoints/dev_authz_test.py` | `/auth/test/*` — verification-only, not business functionality (see `docs/architecture/authorization.md` §7) |
@@ -194,7 +206,7 @@ competing one.
 injects `DATABASE_URL` from the environment at runtime, so no connection
 string ever appears in source control.
 
-Six migrations exist: `3da4b7ee8167_core_schema_...` (baseline — every
+Seven migrations exist: `3da4b7ee8167_core_schema_...` (baseline — every
 table, enum type, foreign key, index, and constraint),
 `e8a5cea2ccc6_database_hardening_...` (a corrective follow-up from a Phase 2
 self-review: two missed indexes and a database-level default for
@@ -219,7 +231,15 @@ could easily violate legitimately; see
 `9fa970ffa560_add_letters_reference_number_index_...` (Phase 4C: re-adds
 a plain, non-unique index on `reference_number` — lost when its unique
 constraint was dropped — since reference-number search is a real Phase
-4C requirement). All six are described in `docs/database/schema.md`.
+4C requirement), and `323ccfde77f4_designation_master_data` (Phase 5H:
+adds the new `designations` table — reusing the existing `active_status`
+enum type, never re-creating it — and a new, **nullable**
+`letters.designation_id` FK, `ondelete=RESTRICT`; deliberately no
+backfill of any kind, since every existing Letter keeps its current
+`sender_designation` text exactly as it is — see
+`docs/architecture/source-designation.md` §8/§15). The first six are
+described in `docs/database/schema.md`; the seventh is documented in
+its own migration file and in `docs/architecture/source-designation.md`.
 **None of Phase 3A (authentication), 3B.1 (RBAC/department authorization),
 3B.2 (department management), 3B.4 (User management), 4D (document
 management), or 4E (audit/notification) required a schema change** —
@@ -233,14 +253,17 @@ Phase 4E is the first phase to actually write rows to either table.
 Phase 3B.2 did fix a constraint-*naming* inconsistency in
 `app/models/department.py` (see `docs/database/schema.md` §2.1) — a
 Python-model-only change, not a migration, since the real database
-already had the correct name. Phase 3B.3, Phase 4B (two migrations), and
-Phase 4C (one migration) are the only phases since Phase 2's hardening
-pass to need one; `alembic check` confirms zero drift after all six, and
-still confirms zero drift after Phase 4D and Phase 4E (no seventh
-migration was ever added).
+already had the correct name. Phase 3B.3, Phase 4B (two migrations),
+Phase 4C (one migration), and Phase 5H (one migration) are the only
+phases since Phase 2's hardening pass to need one; `alembic check`
+confirms zero drift after all seven, and confirmed zero drift after
+Phase 4D and Phase 4E too (no migration was needed for either). The
+Phase 5H migration was verified with a real `upgrade head` → `downgrade`
+→ `upgrade head` → `check` cycle against a real local PostgreSQL
+instance, not merely written and assumed correct.
 
 ```bash
-alembic upgrade head       # apply all six, in order
+alembic upgrade head       # apply all seven, in order
 alembic downgrade base     # fully reverse — drops all tables and enum types
 alembic current            # show the applied revision
 alembic history            # list all revisions
@@ -284,8 +307,14 @@ decoded, mirroring `DATABASE_URL`'s existing lazy-check pattern in
 pytest tests/
 ```
 
-458 tests total (277 baseline + 67 in Phase 4B + 43 in Phase 4C + 38 in
-Phase 4D + 33 new in Phase 4E). `SECRET_KEY` must be set (via `.env`) for
+487 tests total (277 baseline + 67 in Phase 4B + 43 in Phase 4C + 38 in
+Phase 4D + 33 in Phase 4E + 29 new in Phase 5H — a new
+`tests/integration/test_designation_management.py`, plus Letter/
+Source/Designation integration tests added to
+`tests/integration/test_letter_registry.py` and department-list-access
+tests added to `tests/integration/test_department_management.py`).
+Run 3 consecutive times with identical results. `SECRET_KEY` must be
+set (via `.env`) for
 the JWT-dependent tests to run — copy `.env.example` to `.env` first if
 you haven't. Scope the invocation to `tests/` (not a bare `pytest`) —
 `app/api/v1/endpoints/dev_authz_test.py`'s

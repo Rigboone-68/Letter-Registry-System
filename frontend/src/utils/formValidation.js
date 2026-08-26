@@ -63,9 +63,7 @@ export function validateSignupForm({ full_name, email, password, password_confir
 const LETTER_REQUIRED_FIELDS = [
   ['reference_number', 'Reference number is required.'],
   ['subject', 'Subject is required.'],
-  ['source_name', 'Source is required.'],
   ['sender_name', 'Sender name is required.'],
-  ['sender_designation', 'Sender designation is required.'],
   ['sender_department', "Sender's department is required."],
 ]
 
@@ -75,14 +73,44 @@ const LETTER_REQUIRED_FIELDS = [
  * creation per the finalized Phase 4B business decisions; everything
  * else on the schema is optional. `received_at` is validated separately
  * since it's a datetime, not a blank-checked string.
+ *
+ * `source_department_id`/`designation_id` (Phase 5H) are validated here
+ * instead of `source_name`/`sender_designation` — the backend schema
+ * itself still requires the latter two as text, but this V1 form no
+ * longer offers a manual text box for either (`LetterFormPage.jsx`
+ * derives both from the selected Department/Designation and sends them
+ * alongside the id) — see docs/architecture/source-designation.md
+ * §12/§13. This is a frontend UX decision, not a backend contract
+ * change: `source_department_id`/`designation_id` remain optional on
+ * `LetterCreate`/`LetterUpdate` themselves.
+ *
+ * **Required only when creating** (`isEdit: false`, the default) — a
+ * Letter recorded before Phase 5H legitimately has neither field set,
+ * and editing an unrelated field (e.g. fixing a typo in Subject) must
+ * not be blocked into retroactively demanding a Source Department or
+ * Designation it never had. This mirrors the backend's own "an
+ * omitted/unchanged field is never re-validated" convention
+ * (docs/architecture/source-designation.md §9) at the frontend layer.
  */
-export function validateLetterForm({ reference_number, subject, source_name, sender_name, sender_designation, sender_department, received_at }) {
-  const values = { reference_number, subject, source_name, sender_name, sender_designation, sender_department }
+export function validateLetterForm(
+  { reference_number, subject, source_department_id, sender_name, designation_id, sender_department, received_at },
+  { isEdit = false } = {}
+) {
+  const values = { reference_number, subject, sender_name, sender_department }
   const errors = {}
 
   for (const [field, message] of LETTER_REQUIRED_FIELDS) {
     if (isBlank(values[field])) {
       errors[field] = message
+    }
+  }
+
+  if (!isEdit) {
+    if (isBlank(source_department_id)) {
+      errors.source_department_id = 'Source Department is required.'
+    }
+    if (isBlank(designation_id)) {
+      errors.designation_id = 'Designation is required.'
     }
   }
 
@@ -102,6 +130,57 @@ export function validateLetterForm({ reference_number, subject, source_name, sen
  * always supplies a name), so it is not duplicated here.
  */
 export function validateDepartmentForm({ name }) {
+  const errors = {}
+
+  if (isBlank(name)) {
+    errors.name = 'Name is required.'
+  }
+
+  return errors
+}
+
+/**
+ * Mirrors `validateDepartmentForm` — `DesignationCreate`
+ * (backend/app/schemas/designation.py) has exactly one field, `name`,
+ * always required. Case-insensitive/duplicate handling is entirely the
+ * backend's own job (`uq_designations_name_lower`); this form only
+ * catches the trivial empty-string case before a request is even sent.
+ */
+export function validateDesignationForm({ name }) {
+  const errors = {}
+
+  if (isBlank(name)) {
+    errors.name = 'Name is required.'
+  }
+
+  return errors
+}
+
+/**
+ * Mirrors `validateDepartmentForm` — `CategoryCreate`
+ * (backend/app/schemas/category.py) requires `name`; `description` is
+ * always optional. Duplicate-name handling is entirely the backend's
+ * own job (`uq_categories_name`).
+ */
+export function validateCategoryForm({ name }) {
+  const errors = {}
+
+  if (isBlank(name)) {
+    errors.name = 'Name is required.'
+  }
+
+  return errors
+}
+
+/**
+ * Mirrors `validateCategoryForm` — `ClassificationCreate`
+ * (backend/app/schemas/classification.py) requires `name`;
+ * `description`/`restricts_access` are always optional (the latter
+ * defaults `false` server-side if omitted). This form never validates
+ * `restricts_access` itself — it's a plain boolean checkbox, nothing to
+ * validate.
+ */
+export function validateClassificationForm({ name }) {
   const errors = {}
 
   if (isBlank(name)) {

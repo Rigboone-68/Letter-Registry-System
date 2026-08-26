@@ -18,6 +18,7 @@ from tests.factories import (
     make_category,
     make_classification,
     make_department,
+    make_designation,
     make_letter,
     make_user,
 )
@@ -250,6 +251,219 @@ def test_sender_address_optional(client, db_session):
     )
     assert with_address.status_code == 201
     assert with_address.json()["sender_address"] == "123 Main St, Quetta"
+
+
+# =========================================================================
+# DESIGNATION (Phase 5H) — master-data reference alongside the existing,
+# unchanged sender_designation text snapshot. See
+# docs/architecture/source-designation.md §8/§9.
+# =========================================================================
+
+
+def test_designation_id_optional_reference_succeeds(client, db_session):
+    department = make_department(db_session, name="Designation Letter Dept 1")
+    user = _make_regular_user(db_session, department, email="user.designation1@example.gov")
+    designation = make_designation(db_session, name="Section Officer")
+
+    response = client.post(
+        LETTERS_URL,
+        json=_valid_payload(designation_id=str(designation.id)),
+        headers=_auth_headers(user),
+    )
+    assert response.status_code == 201
+    assert response.json()["designation_id"] == str(designation.id)
+
+
+def test_designation_selection_overrides_client_sender_designation_text(client, db_session):
+    """Master-data selection is authoritative — the client's own
+    sender_designation text is never trusted once designation_id is
+    supplied (docs/architecture/source-designation.md §9)."""
+    department = make_department(db_session, name="Designation Letter Dept 2")
+    user = _make_regular_user(db_session, department, email="user.designation2@example.gov")
+    designation = make_designation(db_session, name="Deputy Director")
+
+    response = client.post(
+        LETTERS_URL,
+        json=_valid_payload(
+            designation_id=str(designation.id), sender_designation="Whatever The Client Typed"
+        ),
+        headers=_auth_headers(user),
+    )
+    assert response.status_code == 201
+    assert response.json()["sender_designation"] == "Deputy Director"
+
+
+def test_designation_omitted_preserves_backward_compatible_sender_designation(client, db_session):
+    """An old API client that never sends designation_id at all keeps
+    working exactly as before Phase 5H — sender_designation is used
+    verbatim, no designation_id is ever assigned."""
+    department = make_department(db_session, name="Designation Letter Dept 3")
+    user = _make_regular_user(db_session, department, email="user.designation3@example.gov")
+
+    response = client.post(
+        LETTERS_URL,
+        json=_valid_payload(sender_designation="Plain Text Designation"),
+        headers=_auth_headers(user),
+    )
+    assert response.status_code == 201
+    assert response.json()["sender_designation"] == "Plain Text Designation"
+    assert response.json()["designation_id"] is None
+
+
+def test_nonexistent_designation_rejected(client, db_session):
+    department = make_department(db_session, name="Designation Letter Dept 4")
+    user = _make_regular_user(db_session, department, email="user.designation4@example.gov")
+    response = client.post(
+        LETTERS_URL,
+        json=_valid_payload(designation_id=str(uuid.uuid4())),
+        headers=_auth_headers(user),
+    )
+    assert response.status_code == 404
+
+
+def test_inactive_designation_rejected_for_new_letter(client, db_session):
+    department = make_department(db_session, name="Designation Letter Dept 5")
+    user = _make_regular_user(db_session, department, email="user.designation5@example.gov")
+    inactive_designation = make_designation(
+        db_session, name="Retired Designation", status=ActiveStatus.INACTIVE
+    )
+    response = client.post(
+        LETTERS_URL,
+        json=_valid_payload(designation_id=str(inactive_designation.id)),
+        headers=_auth_headers(user),
+    )
+    assert response.status_code == 409
+
+
+def test_update_letter_designation_persists_and_updates_snapshot(client, db_session):
+    department = make_department(db_session, name="Designation Letter Dept 6")
+    user = _make_regular_user(db_session, department, email="user.designation6@example.gov")
+    designation = make_designation(db_session, name="Assistant Director")
+    create_resp = client.post(LETTERS_URL, json=_valid_payload(), headers=_auth_headers(user))
+    letter_id = create_resp.json()["id"]
+
+    response = client.patch(
+        _letter_url(letter_id),
+        json={"designation_id": str(designation.id)},
+        headers=_auth_headers(user),
+    )
+    assert response.status_code == 200
+    assert response.json()["designation_id"] == str(designation.id)
+    assert response.json()["sender_designation"] == "Assistant Director"
+
+
+def test_update_letter_to_inactive_designation_rejected(client, db_session):
+    department = make_department(db_session, name="Designation Letter Dept 7")
+    user = _make_regular_user(db_session, department, email="user.designation7@example.gov")
+    inactive_designation = make_designation(
+        db_session, name="Retired Designation 7", status=ActiveStatus.INACTIVE
+    )
+    create_resp = client.post(LETTERS_URL, json=_valid_payload(), headers=_auth_headers(user))
+    letter_id = create_resp.json()["id"]
+
+    response = client.patch(
+        _letter_url(letter_id),
+        json={"designation_id": str(inactive_designation.id)},
+        headers=_auth_headers(user),
+    )
+    assert response.status_code == 409
+
+
+def test_resending_unchanged_now_inactive_designation_does_not_invalidate_edit(client, db_session):
+    """Critical historical-integrity behavior (docs/architecture/
+    source-designation.md §9): re-submitting the *same* designation_id
+    a letter already carries is never re-validated, even if that
+    designation has since been deactivated — only an actual *change* to
+    a different designation requires the new one to be ACTIVE. Editing
+    an unrelated field must not be blocked just because a form happens
+    to echo back the letter's current (now-inactive) designation."""
+    department = make_department(db_session, name="Designation Letter Dept 8")
+    user = _make_regular_user(db_session, department, email="user.designation8@example.gov")
+    designation = make_designation(db_session, name="Will Be Retired")
+    create_resp = client.post(
+        LETTERS_URL,
+        json=_valid_payload(designation_id=str(designation.id)),
+        headers=_auth_headers(user),
+    )
+    letter_id = create_resp.json()["id"]
+
+    sys_admin = _make_system_admin(db_session, email="sys.admin.designation8@example.gov")
+    deactivate_resp = client.post(
+        f"/api/v1/designations/{designation.id}/deactivate", headers=_auth_headers(sys_admin)
+    )
+    assert deactivate_resp.status_code == 200
+
+    response = client.patch(
+        _letter_url(letter_id),
+        json={"subject": "Unrelated Edit", "designation_id": str(designation.id)},
+        headers=_auth_headers(user),
+    )
+    assert response.status_code == 200
+    assert response.json()["subject"] == "Unrelated Edit"
+    assert response.json()["designation_id"] == str(designation.id)
+    assert response.json()["sender_designation"] == "Will Be Retired"
+
+
+def test_letter_readable_after_designation_deactivated(client, db_session):
+    department = make_department(db_session, name="Designation Letter Dept 9")
+    user = _make_regular_user(db_session, department, email="user.designation9@example.gov")
+    designation = make_designation(db_session, name="Historical Title")
+    create_resp = client.post(
+        LETTERS_URL,
+        json=_valid_payload(designation_id=str(designation.id)),
+        headers=_auth_headers(user),
+    )
+    letter_id = create_resp.json()["id"]
+
+    sys_admin = _make_system_admin(db_session, email="sys.admin.designation9@example.gov")
+    client.post(f"/api/v1/designations/{designation.id}/deactivate", headers=_auth_headers(sys_admin))
+
+    get_resp = client.get(_letter_url(letter_id), headers=_auth_headers(user))
+    assert get_resp.status_code == 200
+    assert get_resp.json()["sender_designation"] == "Historical Title"
+    assert get_resp.json()["designation_id"] == str(designation.id)
+
+
+def test_letter_without_designation_id_remains_valid(client, db_session):
+    department = make_department(db_session, name="Designation Letter Dept 10")
+    user = _make_regular_user(db_session, department, email="user.designation10@example.gov")
+    create_resp = client.post(LETTERS_URL, json=_valid_payload(), headers=_auth_headers(user))
+    letter_id = create_resp.json()["id"]
+
+    get_resp = client.get(_letter_url(letter_id), headers=_auth_headers(user))
+    assert get_resp.status_code == 200
+    assert get_resp.json()["designation_id"] is None
+    assert get_resp.json()["sender_designation"] == "Test Designation"
+
+
+def test_source_department_id_never_expands_letter_authorization(client, db_session):
+    """CRITICAL security regression: source_department_id is metadata
+    only — it must never widen which department a Letter is scoped to.
+    A USER records a letter naming a *different* department as its
+    Source; the letter must still belong to the recorder's own
+    recipient_department_id, and a USER in that other (source) department
+    must still be unable to see it — docs/architecture/
+    source-designation.md §6."""
+    recipient_department = make_department(db_session, name="Recipient Isolation Dept")
+    source_department = make_department(db_session, name="Source Isolation Dept")
+    recorder = _make_regular_user(
+        db_session, recipient_department, email="user.isolation.recorder@example.gov"
+    )
+    outsider = _make_regular_user(
+        db_session, source_department, email="user.isolation.outsider@example.gov"
+    )
+
+    create_resp = client.post(
+        LETTERS_URL,
+        json=_valid_payload(source_department_id=str(source_department.id)),
+        headers=_auth_headers(recorder),
+    )
+    assert create_resp.status_code == 201
+    letter_id = create_resp.json()["id"]
+    assert create_resp.json()["recipient_department_id"] == str(recipient_department.id)
+
+    outsider_get = client.get(_letter_url(letter_id), headers=_auth_headers(outsider))
+    assert outsider_get.status_code == 404
 
 
 # =========================================================================

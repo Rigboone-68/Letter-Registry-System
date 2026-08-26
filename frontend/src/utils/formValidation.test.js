@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import {
   validateAdminAuthorizeForm,
+  validateCategoryForm,
+  validateClassificationForm,
   validateDepartmentForm,
   validateDocumentFile,
   validateLetterForm,
@@ -62,9 +64,9 @@ describe('validateLetterForm', () => {
   const VALID = {
     reference_number: 'REF-001',
     subject: 'Budget approval',
-    source_name: 'Ministry of Finance',
+    source_department_id: 'dept-1',
     sender_name: 'Jane Sender',
-    sender_designation: 'Director',
+    designation_id: 'designation-1',
     sender_department: 'Finance',
     received_at: '2026-01-01T09:00',
   }
@@ -73,17 +75,17 @@ describe('validateLetterForm', () => {
     const errors = validateLetterForm({
       reference_number: '',
       subject: '',
-      source_name: '',
+      source_department_id: '',
       sender_name: '',
-      sender_designation: '',
+      designation_id: '',
       sender_department: '',
       received_at: '',
     })
     expect(errors.reference_number).toMatch(/required/i)
     expect(errors.subject).toMatch(/required/i)
-    expect(errors.source_name).toMatch(/required/i)
+    expect(errors.source_department_id).toMatch(/required/i)
     expect(errors.sender_name).toMatch(/required/i)
-    expect(errors.sender_designation).toMatch(/required/i)
+    expect(errors.designation_id).toMatch(/required/i)
     expect(errors.sender_department).toMatch(/required/i)
     expect(errors.received_at).toMatch(/required/i)
   })
@@ -98,6 +100,21 @@ describe('validateLetterForm', () => {
     expect(errors.reason).toBeUndefined()
     expect(errors.category_id).toBeUndefined()
   })
+
+  it('does not require Source Department or Designation when editing — a pre-existing letter may legitimately have neither', () => {
+    const errors = validateLetterForm(
+      { ...VALID, source_department_id: '', designation_id: '' },
+      { isEdit: true }
+    )
+    expect(errors.source_department_id).toBeUndefined()
+    expect(errors.designation_id).toBeUndefined()
+  })
+
+  it('requires Source Department and Designation when creating', () => {
+    const errors = validateLetterForm({ ...VALID, source_department_id: '', designation_id: '' })
+    expect(errors.source_department_id).toMatch(/required/i)
+    expect(errors.designation_id).toMatch(/required/i)
+  })
 })
 
 describe('validateDepartmentForm', () => {
@@ -108,6 +125,31 @@ describe('validateDepartmentForm', () => {
   it('does not require code', () => {
     const errors = validateDepartmentForm({ name: 'Finance' })
     expect(errors.code).toBeUndefined()
+    expect(errors).toEqual({})
+  })
+})
+
+describe('validateCategoryForm', () => {
+  it('requires name', () => {
+    expect(validateCategoryForm({ name: '' }).name).toMatch(/required/i)
+  })
+
+  it('does not require description', () => {
+    const errors = validateCategoryForm({ name: 'Administrative' })
+    expect(errors.description).toBeUndefined()
+    expect(errors).toEqual({})
+  })
+})
+
+describe('validateClassificationForm', () => {
+  it('requires name', () => {
+    expect(validateClassificationForm({ name: '' }).name).toMatch(/required/i)
+  })
+
+  it('does not require description or restricts_access', () => {
+    const errors = validateClassificationForm({ name: 'Confidential' })
+    expect(errors.description).toBeUndefined()
+    expect(errors.restricts_access).toBeUndefined()
     expect(errors).toEqual({})
   })
 })

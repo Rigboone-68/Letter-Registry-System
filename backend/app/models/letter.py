@@ -71,6 +71,7 @@ if TYPE_CHECKING:
     from app.models.category import Category
     from app.models.classification import Classification
     from app.models.department import Department
+    from app.models.designation import Designation
     from app.models.letter_document import LetterDocument
     from app.models.notification import Notification
     from app.models.user import User
@@ -98,7 +99,23 @@ class Letter(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     source_location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     sender_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # `sender_designation` remains the required, free-text historical
+    # snapshot it always was (Phase 4B) — unchanged by Phase 5H.
+    # `designation_id` is a new, nullable structured reference: when set,
+    # `LetterService` copies the referenced Designation's *current* name
+    # into `sender_designation` at write time — the two are never
+    # expected to independently drift for a letter recorded through the
+    # new dropdown, but `sender_designation` is never re-derived at read
+    # time, so an existing letter's snapshot survives unchanged even if
+    # `designation_id`'s target is later renamed or deactivated. See
+    # docs/architecture/source-designation.md §8.
     sender_designation: Mapped[str] = mapped_column(String(255), nullable=False)
+    designation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("designations.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
     sender_department: Mapped[str] = mapped_column(String(255), nullable=False)
     sender_address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
@@ -137,6 +154,7 @@ class Letter(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         foreign_keys=[source_department_id]
     )
     category: Mapped[Optional["Category"]] = relationship(back_populates="letters")
+    designation: Mapped[Optional["Designation"]] = relationship(back_populates="letters")
     classification: Mapped[Optional["Classification"]] = relationship(
         back_populates="letters"
     )

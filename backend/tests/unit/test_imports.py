@@ -66,7 +66,8 @@ def test_app_models_import_alone_registers_full_metadata():
         "from app.database.base import Base\n"
         "names = sorted(Base.metadata.tables.keys())\n"
         "expected = ['audit_logs', 'categories', 'classifications', 'departments', "
-        "'letter_documents', 'letters', 'notifications', 'user_authorizations', 'users']\n"
+        "'designations', 'letter_documents', 'letters', 'notifications', "
+        "'user_authorizations', 'users']\n"
         "assert names == expected, names\n"
     )
     assert result.returncode == 0, result.stderr

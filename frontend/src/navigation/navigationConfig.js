@@ -32,6 +32,7 @@ export const NAVIGATION_BY_ROLE = Object.freeze({
     { label: 'Notifications', path: '/app/notifications' },
     { label: 'Departments', path: '/app/system/departments' },
     { label: 'Administrators', path: '/app/system/admins' },
+    { label: 'Designations', path: '/app/system/designations' },
     { label: 'Categories', path: '/app/system/categories' },
     { label: 'Classifications', path: '/app/system/classifications' },
   ],

@@ -64,18 +64,53 @@ def test_user_cannot_create_department(client, db_session):
     assert response.status_code == 403
 
 
-def test_admin_cannot_list_departments(client, db_session):
+def test_admin_can_list_departments_for_source_selection(client, db_session):
+    """Phase 5H: `GET /departments` (list only) is deliberately relaxed
+    to any authenticated role, so ADMIN/USER can populate the Letter
+    form's new Source Department selector — see
+    docs/architecture/source-designation.md §5. Every write endpoint
+    (create/update/activate/deactivate) and the single-resource
+    `GET /{id}` remain SYSTEM_ADMIN-only, unchanged — see
+    test_admin_cannot_create_department/test_admin_cannot_update_department
+    and test_admin_cannot_get_department below."""
     department = make_department(db_session, name="Dept Auth 4")
     admin = _make_admin(db_session, department, email="admin.auth4@example.gov")
     response = client.get(DEPARTMENTS_URL, headers=_auth_headers(admin))
-    assert response.status_code == 403
+    assert response.status_code == 200
+    assert any(item["id"] == str(department.id) for item in response.json()["items"])
 
 
-def test_user_cannot_list_departments(client, db_session):
+def test_user_can_list_departments_for_source_selection(client, db_session):
+    """Same relaxation as above, for USER — the other role that can
+    call `POST /letters` and therefore needs to populate Source
+    Department."""
     department = make_department(db_session, name="Dept Auth 5")
     user = _make_regular_user(db_session, department, email="user.auth5@example.gov")
     response = client.get(DEPARTMENTS_URL, headers=_auth_headers(user))
+    assert response.status_code == 200
+    assert any(item["id"] == str(department.id) for item in response.json()["items"])
+
+
+def test_admin_cannot_get_single_department(client, db_session):
+    """Unlike the list endpoint, `GET /{department_id}` stays
+    SYSTEM_ADMIN-only — the Phase 5H relaxation is deliberately narrow
+    (docs/architecture/source-designation.md §5)."""
+    department = make_department(db_session, name="Dept Auth 4b")
+    admin = _make_admin(db_session, department, email="admin.auth4b@example.gov")
+    response = client.get(_department_url(department.id), headers=_auth_headers(admin))
     assert response.status_code == 403
+
+
+def test_user_can_filter_department_list_by_active_status(client, db_session):
+    """The existing `status` query filter still works for the relaxed
+    list endpoint — USER can request `?status=ACTIVE` exactly like
+    SYSTEM_ADMIN already could."""
+    department = make_department(db_session, name="Dept Auth 5b")
+    make_department(db_session, name="Dept Auth 5c (inactive)", status=ActiveStatus.INACTIVE)
+    user = _make_regular_user(db_session, department, email="user.auth5b@example.gov")
+    response = client.get(f"{DEPARTMENTS_URL}?status=ACTIVE", headers=_auth_headers(user))
+    assert response.status_code == 200
+    assert all(item["status"] == "ACTIVE" for item in response.json()["items"])
 
 
 def test_admin_cannot_update_department(client, db_session):

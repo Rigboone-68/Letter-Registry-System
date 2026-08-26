@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from app.models.category import Category
 from app.models.classification import Classification
 from app.models.department import Department
+from app.models.designation import Designation
 from app.models.enums import (
     ActiveStatus,
     AuthorizationPurpose,
@@ -85,6 +86,13 @@ def make_category(db_session, name="Test Category", status=ActiveStatus.ACTIVE):
     return category
 
 
+def make_designation(db_session, name="Test Designation", status=ActiveStatus.ACTIVE):
+    designation = Designation(name=name, status=status)
+    db_session.add(designation)
+    db_session.flush()
+    return designation
+
+
 def make_classification(
     db_session, name="Test Classification", restricts_access=False, status=ActiveStatus.ACTIVE
 ):
@@ -106,6 +114,7 @@ def make_letter(
     source_location=None,
     sender_name="Test Sender",
     sender_designation="Test Designation",
+    designation=None,
     sender_department="Test Sender Department",
     sender_address=None,
     subject=None,
@@ -122,6 +131,7 @@ def make_letter(
         source_location=source_location,
         sender_name=sender_name,
         sender_designation=sender_designation,
+        designation_id=designation.id if designation else None,
         sender_department=sender_department,
         sender_address=sender_address,
         subject=subject,

@@ -1,4 +1,4 @@
-"""Department management endpoints — SYSTEM_ADMIN only.
+"""Department management endpoints.
 
 Endpoints stay thin — request validation is the schema's job
 (app/schemas/department.py), business rules are the service's job
@@ -6,11 +6,30 @@ Endpoints stay thin — request validation is the schema's job
 service-layer exceptions into HTTP responses, the same division of
 responsibility as app/api/v1/endpoints/auth.py.
 
-Every route depends on `require_system_admin` (app/api/deps.py, Phase
-3B.1) — ADMIN and USER both receive a `403` with the same generic message
-every other authorization failure in this codebase uses (see
-docs/architecture/authorization.md, "Error behavior"); an unauthenticated
-caller receives `401` from `get_current_user` before role is ever checked.
+Every *write* route (create/update/activate/deactivate) and the single-
+resource `GET /{department_id}` still depend on `require_system_admin`
+(app/api/deps.py, Phase 3B.1) — ADMIN and USER both receive a `403` with
+the same generic message every other authorization failure in this
+codebase uses (see docs/architecture/authorization.md, "Error
+behavior"); an unauthenticated caller receives `401` from
+`get_current_user` before role is ever checked.
+
+**`GET /departments` (list) is the one deliberate exception** (Phase
+5H): it depends on `get_current_user` — any authenticated, ACTIVE
+account, not SYSTEM_ADMIN only. This is a documented, narrow relaxation
+of read access to department *names* (`DepartmentResponse` carries
+nothing confidential), made specifically so USER/ADMIN can populate the
+new Source Department selector on the Letter form
+(docs/architecture/source-designation.md §5) — without it, the exact
+same access gap already documented for Category/Classification
+(docs/architecture/frontend.md §36) would make that selector
+unusable for the only roles that ever record a Letter. Nothing else
+about this endpoint changes: the existing `status` query filter still
+works exactly as before, and this relaxation grants no write capability
+of any kind — `assert_department_access`/`assert_letter_access`
+(the actual authorization boundary) are untouched, and
+`recipient_department_id` remains the only thing that determines which
+Letters a caller can see.
 """
 
 import uuid
@@ -19,7 +38,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_system_admin
+from app.api.deps import get_current_user, require_system_admin
 from app.database.session import get_db
 from app.models.department import Department
 from app.models.enums import ActiveStatus
@@ -75,12 +94,12 @@ def create_department(
 @router.get(
     "",
     response_model=DepartmentListResponse,
-    summary="List departments, optionally filtered by status (SYSTEM_ADMIN only)",
+    summary="List departments, optionally filtered by status (any authenticated role)",
 )
 def list_departments(
     status_filter: Optional[ActiveStatus] = Query(default=None, alias="status"),
     db: Session = Depends(get_db),
-    _current_user: User = Depends(require_system_admin),
+    _current_user: User = Depends(get_current_user),
 ) -> DepartmentListResponse:
     service = DepartmentService(db)
     departments = service.list_departments(status_filter=status_filter)

@@ -69,6 +69,8 @@ from app.services.exceptions import (
     ClassificationNotActiveError,
     ClassificationNotFoundError,
     DepartmentAccessDeniedError,
+    DesignationNotActiveError,
+    DesignationNotFoundError,
     InvalidDateRangeError,
     LetterNotFoundError,
     SourceDepartmentNotActiveError,
@@ -115,6 +117,14 @@ def _handle_reference_data_errors(exc: Exception) -> HTTPException:
         return HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Classification is not ACTIVE."
         )
+    if isinstance(exc, DesignationNotFoundError):
+        return HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Designation not found."
+        )
+    if isinstance(exc, DesignationNotActiveError):
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Designation is not ACTIVE."
+        )
     raise exc  # pragma: no cover - defensive, every caller passes a handled type
 
 
@@ -139,6 +149,7 @@ def create_letter(
             source_location=payload.source_location,
             sender_name=payload.sender_name,
             sender_designation=payload.sender_designation,
+            designation_id=payload.designation_id,
             sender_department=payload.sender_department,
             sender_address=payload.sender_address,
             subject=payload.subject,
@@ -157,6 +168,8 @@ def create_letter(
         CategoryNotActiveError,
         ClassificationNotFoundError,
         ClassificationNotActiveError,
+        DesignationNotFoundError,
+        DesignationNotActiveError,
     ) as exc:
         raise _handle_reference_data_errors(exc)
 
@@ -273,6 +286,7 @@ def update_letter(
             source_location=payload.source_location,
             sender_name=payload.sender_name,
             sender_designation=payload.sender_designation,
+            designation_id=payload.designation_id,
             sender_department=payload.sender_department,
             sender_address=payload.sender_address,
             subject=payload.subject,
@@ -291,6 +305,8 @@ def update_letter(
         CategoryNotActiveError,
         ClassificationNotFoundError,
         ClassificationNotActiveError,
+        DesignationNotFoundError,
+        DesignationNotActiveError,
     ) as exc:
         raise _handle_reference_data_errors(exc)
 

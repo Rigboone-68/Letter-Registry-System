@@ -39,9 +39,11 @@ from sqlalchemy.orm import Session
 from app.models.enums import ActiveStatus, LetterStatus, UserRole
 from app.models.letter import Letter
 from app.models.user import User
+from app.models.designation import Designation
 from app.repositories.category_repository import CategoryRepository
 from app.repositories.classification_repository import ClassificationRepository
 from app.repositories.department_repository import DepartmentRepository
+from app.repositories.designation_repository import DesignationRepository
 from app.repositories.letter_repository import LetterRepository
 from app.services.audit_service import AuditService
 from app.services.authorization import (
@@ -57,6 +59,8 @@ from app.services.exceptions import (
     ClassificationNotFoundError,
     ClassifiedAccessDeniedError,
     DepartmentAccessDeniedError,
+    DesignationNotActiveError,
+    DesignationNotFoundError,
     InvalidDateRangeError,
     LetterNotFoundError,
     SourceDepartmentNotActiveError,
@@ -74,6 +78,7 @@ class LetterService:
         self.categories = CategoryRepository(session)
         self.classifications = ClassificationRepository(session)
         self.departments = DepartmentRepository(session)
+        self.designations = DesignationRepository(session)
         self.audit = AuditService(session)
         self.notification_service = NotificationService(session)
 
@@ -106,6 +111,24 @@ class LetterService:
         if classification.status != ActiveStatus.ACTIVE:
             raise ClassificationNotActiveError()
 
+    def _resolve_designation(self, designation_id: Optional[uuid.UUID]) -> Optional[Designation]:
+        """Returns the referenced `Designation` when `designation_id` is
+        supplied, requiring it to exist and be `ACTIVE` — the same shape
+        as `_validate_category`, but returning the row (not just
+        validating it) because the caller needs its *current* `name` to
+        write into `sender_designation` (docs/architecture/
+        source-designation.md §8/§9) — the master-data selection is
+        authoritative, never the client-supplied `sender_designation`
+        text, whenever a `designation_id` is actually being assigned."""
+        if designation_id is None:
+            return None
+        designation = self.designations.find_by_id(designation_id)
+        if designation is None:
+            raise DesignationNotFoundError()
+        if designation.status != ActiveStatus.ACTIVE:
+            raise DesignationNotActiveError()
+        return designation
+
     def _get_for_access(self, letter_id: uuid.UUID, *, user: User) -> Letter:
         """Load a letter and enforce `assert_letter_access`, collapsing
         both "doesn't exist" and "exists but inaccessible" into the one
@@ -133,6 +156,7 @@ class LetterService:
         source_location: Optional[str],
         sender_name: str,
         sender_designation: str,
+        designation_id: Optional[uuid.UUID],
         sender_department: str,
         sender_address: Optional[str],
         subject: Optional[str],
@@ -150,6 +174,12 @@ class LetterService:
         self._validate_source_department(source_department_id)
         self._validate_category(category_id)
         self._validate_classification(classification_id)
+        designation = self._resolve_designation(designation_id)
+        if designation is not None:
+            # Master-data selection is authoritative — never trust the
+            # client's own sender_designation text once a designation_id
+            # is supplied (docs/architecture/source-designation.md §9).
+            sender_designation = designation.name
 
         letter = self.letters.create(
             reference_number=reference_number,
@@ -159,6 +189,7 @@ class LetterService:
             source_location=source_location,
             sender_name=sender_name,
             sender_designation=sender_designation,
+            designation_id=designation_id,
             sender_department=sender_department,
             sender_address=sender_address,
             subject=subject,
@@ -171,9 +202,10 @@ class LetterService:
         )
         # No try/except IntegrityError here: every FK on this insert is
         # validated beforehand (_validate_source_department/_category/
-        # _classification), and recipient_department_id/recorded_by come
-        # from an already-loaded, trusted User — there is no remaining
-        # constraint this flush could realistically violate.
+        # _classification/_resolve_designation), and
+        # recipient_department_id/recorded_by come from an already-loaded,
+        # trusted User — there is no remaining constraint this flush
+        # could realistically violate.
         # `reference_number` has no uniqueness constraint (removed by
         # migration c887ab35e4a3 — see app/models/letter.py).
         self.session.flush()
@@ -291,6 +323,7 @@ class LetterService:
         source_location: Optional[str] = None,
         sender_name: Optional[str] = None,
         sender_designation: Optional[str] = None,
+        designation_id: Optional[uuid.UUID] = None,
         sender_department: Optional[str] = None,
         sender_address: Optional[str] = None,
         subject: Optional[str] = None,
@@ -313,6 +346,23 @@ class LetterService:
         # needed for the targeted old/new audit pairs below (§8/§11).
         old_category_id = letter.category_id
         old_classification_id = letter.classification_id
+        old_designation_id = letter.designation_id
+
+        # A resent-but-unchanged designation_id (e.g. a form that always
+        # echoes the letter's current value) is never re-validated —
+        # only an actual *change* requires the newly selected
+        # Designation to be ACTIVE (docs/architecture/
+        # source-designation.md §9). Deliberately more lenient than
+        # _validate_category's own "any explicit value is re-validated"
+        # behavior, specifically so an already-assigned, now-inactive
+        # Designation never blocks an edit that isn't trying to change
+        # it — preserving historical integrity.
+        if designation_id is not None and designation_id != old_designation_id:
+            designation = self._resolve_designation(designation_id)
+            # Master-data selection is authoritative — overrides
+            # whatever sender_designation text the client also sent.
+            sender_designation = designation.name
+
         changed_fields = [
             field
             for field, value in (
@@ -322,6 +372,7 @@ class LetterService:
                 ("source_location", source_location),
                 ("sender_name", sender_name),
                 ("sender_designation", sender_designation),
+                ("designation_id", designation_id),
                 ("sender_department", sender_department),
                 ("sender_address", sender_address),
                 ("subject", subject),
@@ -342,6 +393,7 @@ class LetterService:
             source_location=source_location,
             sender_name=sender_name,
             sender_designation=sender_designation,
+            designation_id=designation_id,
             sender_department=sender_department,
             sender_address=sender_address,
             subject=subject,
@@ -364,6 +416,21 @@ class LetterService:
                 entity_type="Letter",
                 entity_id=letter.id,
                 new_values={"changed_fields": changed_fields},
+            )
+
+        # Designation changes get their own, higher-priority event with
+        # a targeted old/new id pair, mirroring
+        # LETTER_CLASSIFICATION_CHANGED/LETTER_CATEGORY_CHANGED below.
+        if designation_id is not None and designation_id != old_designation_id:
+            self.audit.record(
+                actor_id=user.id,
+                action="LETTER_DESIGNATION_CHANGED",
+                entity_type="Letter",
+                entity_id=letter.id,
+                old_values={
+                    "designation_id": str(old_designation_id) if old_designation_id else None
+                },
+                new_values={"designation_id": str(designation_id)},
             )
 
         # Classification/category changes get their own, higher-priority

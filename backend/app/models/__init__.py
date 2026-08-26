@@ -14,6 +14,7 @@ from app.models.audit_log import AuditLog
 from app.models.category import Category
 from app.models.classification import Classification
 from app.models.department import Department
+from app.models.designation import Designation
 from app.models.letter import Letter
 from app.models.letter_document import LetterDocument
 from app.models.notification import Notification
@@ -25,6 +26,7 @@ __all__ = [
     "Category",
     "Classification",
     "Department",
+    "Designation",
     "Letter",
     "LetterDocument",
     "Notification",

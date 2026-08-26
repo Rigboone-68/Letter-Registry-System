@@ -7,8 +7,151 @@ supervisor as-is.
 
 ## Current Phase
 
-**Phase 5G — Backend Dashboard Aggregation & Analytics API:
-Architecture & Requirements Review.** Complete. Review only — no
+**Phase 5H.1 — Complete Existing Category & Classification Admin UI.**
+Complete. A confirmed frontend completion gap found during Phase 5H's
+own manual E2E verification: `/app/system/categories` and
+`/app/system/classifications` still rendered `PlaceholderPage` ("planned
+but not yet implemented"), even though both resources' backend
+(list/create/update/activate/deactivate, `SYSTEM_ADMIN`-only) has
+existed unchanged since Phase 4B. This phase is a pure frontend
+exposure task — **zero backend files were touched**, confirmed by a
+fresh character-substituted diff of `categories.py`/`classifications.py`
+showing them structurally identical (Classification adds only
+`restricts_access`).
+
+Six new pages (`CategoryListPage`/`CategoryCreatePage`/
+`CategoryDetailPage`, and the Classification equivalents), mirroring the
+existing `DepartmentListPage`/`DepartmentCreatePage`/
+`DepartmentDetailPage` three-page pattern exactly — list with a status
+filter, create, and a detail page with inline edit plus
+Activate/Deactivate (Deactivate confirmed via `ConfirmDialog`, Activate
+not, matching the established Phase 5D confirmation matrix). No delete
+action exists for either resource, matching the backend (there is no
+`DELETE` route). Classification's form/table additionally show
+`restricts_access` as plain "Yes"/"No" text — the frontend only ever
+forwards a SYSTEM_ADMIN's explicit choice for this flag to the backend;
+the classified-access authorization boundary itself
+(`assert_letter_access`) is completely unchanged and untouched by this
+phase. `routes/index.jsx`'s two placeholder routes were replaced with
+nested `RoleGuard` route groups identical in shape to
+`system/departments`; `navigationConfig.js` needed no changes at all —
+its Categories/Classifications entries already pointed at the correct
+paths, and the "planned" appearance came entirely from the route
+rendering `PlaceholderPage`, not from anything in navigation.
+
+Test suite grown to **320 frontend tests** (280 + 40), run 3 consecutive
+times with identical results; backend suite unaffected at
+**487 passed**. Full implementation record in
+`docs/architecture/frontend.md` §36's own resolution note.
+
+**Not implemented, matching the approved scope exactly:** delete for
+either resource; dashboard/audit/notification integration for either
+resource; any UI polish/typography/spacing/footer; Phase 6 work; any
+change to classified-access authorization semantics.
+
+### Phase 5H — Source Department & Designation Master Data:
+Implementation
+
+Complete (prior phase). Two supervisor-requested changes from a
+live handover demonstration, both now working end to end against the
+real backend: the Letter form's Source field is a Department picker
+(reusing the existing `DepartmentSelector`), and Designation is a new,
+SYSTEM_ADMIN-managed, system-wide master-data dropdown.
+
+**Backend**: a new `Designation` resource (model/repository/service/
+endpoints) mirrors `Category` closely, with one deliberate departure —
+`GET /api/v1/designations` is readable by any authenticated role, not
+SYSTEM_ADMIN-only, so USER/ADMIN can populate the Letter form's
+dropdown. `GET /api/v1/departments` received the identical, minimal
+relaxation for the same reason (Source Department); every write
+endpoint on both resources remains SYSTEM_ADMIN-only, verified directly
+by re-reading every endpoint's dependency after implementation. A new,
+**nullable** `letters.designation_id` FK (migration
+`323ccfde77f4_designation_master_data`) sits alongside the existing,
+completely unchanged, required `sender_designation` text column — zero
+backfill, zero risk to any existing Letter. The migration was verified
+for real: `alembic upgrade head` → `downgrade` → `upgrade head` →
+`check`, clean at every step, against a real local PostgreSQL instance.
+
+**Frontend**: `LetterFormPage.jsx`'s free-text Source and Sender-
+designation inputs are replaced with real selections — Source
+Department auto-fills `source_name`, Designation auto-fills
+`sender_designation` (the backend remains authoritative and overrides
+it regardless). Both are required only when *creating* a Letter, never
+retroactively demanded when editing one that predates this phase. A
+new, deliberately minimal SYSTEM_ADMIN screen
+(`/app/system/designations`) is the only way to add designations — the
+system intentionally starts with zero, by explicit business decision,
+so Letter recording is correctly, disclosedly blocked until a
+SYSTEM_ADMIN adds at least one.
+
+Test suite grown to **487 backend tests** (458 + 29) and **280 frontend
+tests** (258 + 22), each run 3 consecutive times with identical
+results. Full implementation record in
+`docs/architecture/source-designation.md` §26.
+
+**Not implemented, matching the approved scope exactly:** any UI
+polish/typography/spacing/footer; Phase 6 work; making Source or
+Designation backend-mandatory; an external/non-departmental Source
+fallback; a Designation edit/detail page.
+
+### Phase 5H — Source Department & Designation Master Data: Architecture & Requirements Review
+
+Complete (prior pass, this same phase). Review only — no backend or
+frontend code, migration, or test was written at that stage. Prepared
+under real handover time pressure — written to be directly actionable,
+not just thorough. Two supervisor-requested changes from a live
+demonstration: Source (currently free text) should be selectable from
+the existing Department list; Designation (currently free text) should
+be a SYSTEM_ADMIN-managed, system-wide dropdown.
+
+**Two findings drove the whole review.** First: `source_department_id`
+already exists, fully wired, on `LetterCreate`/`LetterUpdate`/
+`LetterResponse`/`LetterListItem`, with existing backend validation
+(`LetterService._validate_source_department`) rejecting a nonexistent
+or `INACTIVE` department — it was simply never given a frontend
+control (`LetterFormPage.jsx`'s own docstring already says so). Making
+Source a dropdown is therefore mostly a **frontend** task. Second: `GET
+/api/v1/departments` is `require_system_admin`-only today — the exact
+same access gap already documented for Category/Classification
+(`frontend.md` §36) would silently block Source Department *and*
+Designation for USER/ADMIN, the only roles that can ever record a
+Letter, unless corrected. **This review recommends a one-line
+dependency relaxation on that single endpoint** (read-only; every write
+endpoint stays SYSTEM_ADMIN-only) as the one small, necessary backend
+change — without it, neither feature works for its actual users.
+
+**Recommended design**: `source_name` (required text) is retained, not
+replaced — an already-confirmed product decision ("must never force
+every source into a department FK") — with the frontend auto-filling it
+from the selected department's name. A new `Designation` master-data
+table mirrors `Category`/`Classification` almost exactly (never
+physically deleted, idempotent activate/deactivate, `ActiveStatus`
+reused), with one deliberate departure: case-insensitive name
+uniqueness (matching `User.email`'s existing functional-index
+technique) rather than Category/Classification's case-sensitive
+`unique=True`. Historical integrity is solved the same way
+`source_department_id`/`source_name` already coexist today: a new,
+**nullable** `designation_id` FK added alongside the existing,
+unchanged, required `sender_designation` text column — zero backfill,
+zero risk to existing Letters. `designation_id` is recommended
+**optional**, deliberately, because no designations are being seeded
+(the supervisor provided no list) — making it mandatory with an empty
+starting table would break Letter recording entirely until a
+SYSTEM_ADMIN manually adds one first.
+
+Full review, including a MUST-IMPLEMENT-BEFORE-HANDOVER vs.
+NICE-TO-HAVE/FUTURE split and a complete implementation sequence, in
+`docs/architecture/source-designation.md`.
+
+**Not in scope for this phase, and not added:** any backend or
+frontend code; a migration; UI polish/typography/spacing/footer; Phase
+6 work; making Source or Designation mandatory; an external/non-
+departmental Source fallback.
+
+### Phase 5G — Backend Dashboard Aggregation & Analytics API: Architecture & Requirements Review
+
+Complete (prior phase). Review only — no
 backend or frontend code, migration, index, or test was written this
 phase. Repository confirmed clean and at Phase 5F (`1e5c8de`) before
 this review began. Re-inspected the full backend layering
@@ -1858,6 +2001,33 @@ detail behind each:
 | Grep for a `403`→`404` (or reverse) conversion in the new pages/components | Zero matches |
 | Manual verification against a running backend | Not performed — no backend/dev environment was running at any point this session; reported honestly rather than claimed |
 
+### Validation performed — Phase 5H implementation
+
+| Check | Result |
+|---|---|
+| `npm run build` (frontend, `frontend/`) | Succeeds — 187 modules transformed, no errors |
+| `npm run test` (frontend, Vitest) | **280 passed**, 0 failed — run 3 consecutive times against the final code, identical results |
+| `pytest tests/` (backend, `backend/`) | **487 passed**, 0 failed, 0 skipped — run 3 consecutive times, identical results |
+| `alembic upgrade head` → `downgrade 9fa970ffa560` → `upgrade head` → `check` | Clean at every step against a real local PostgreSQL instance; `alembic check` reports "No new upgrade operations detected" |
+| Every `designations.py`/`departments.py` endpoint's `Depends(...)` re-read after implementation | Exactly one `get_current_user` dependency per file (the two list endpoints); every other endpoint `require_system_admin`, matching the design exactly |
+| Grep for `jwt`/`decode`/`localStorage`/hardcoded department or designation ids/`source_department_id`-as-authorization/client-controlled `role`/`DELETE`-on-designation | Zero matches representing actual usage — only comments documenting their absence |
+| `git status` — scope | No file outside the explicit implementation scope touched; no dependency added |
+| Manual/live click-through of the actual demo path | Not performed — only the real-database migration cycle above is genuinely live; reported honestly rather than claimed |
+
+### Validation performed — Phase 5H review
+
+An architecture/requirements review, not an implementation phase —
+validation here means confirming no code was written and no drift was
+introduced, the same standard applied to every prior review-only pass:
+
+| Check | Result |
+|---|---|
+| `git status` before and after the review | Identical except one new documentation file and four documentation updates — no backend file, frontend file, migration, or test file touched |
+| Direct reads of `backend/app/models/letter.py`, `schemas/letter.py`, `services/letter_service.py` | Confirmed `source_department_id` already exists end-to-end with existing validation (`_validate_source_department`) — a fresh finding not assumed from any prior phase's report |
+| Direct reads of `backend/app/models/category.py`/`classification.py`, `services/category_service.py`, `api/v1/endpoints/categories.py` | Used as the direct design precedent for the new `Designation` resource — model shape, service pattern, endpoint verbs (`POST .../activate`, confirmed, not the brief's own guessed `PATCH`) |
+| Direct read of `backend/app/api/v1/endpoints/departments.py` | Confirmed `GET /departments`'s dependency is `require_system_admin` — the access-gap finding this review treats as critical |
+| Direct read of `frontend/src/pages/LetterFormPage.jsx` | Confirmed its own docstring already documents *why* `source_department_id` has no UI today — cross-checked against the schema finding above, not assumed |
+
 ### Validation performed — Phase 5G review
 
 An architecture/requirements review, not an implementation phase —
@@ -2272,18 +2442,30 @@ afterward — `lrs_dev` is empty again.
 
 ## In Progress
 
-Nothing — Phase 5G's architecture/requirements review is complete
-(Phase 5's own architecture review, Phase 5A's foundation, Phase 5B's
-authentication/account UX, Phase 5C's core Letter registry UI, Phase
-5D's Department/Administrator/User management UI, Phase 5E's own
-Documents/Notifications review and implementation, Phase 5F's own
-Dashboard review and implementation, and now Phase 5G's Backend
-Aggregation review are all done) and the project is paused pending
-explicit instruction to begin Phase 5G's implementation (if ever
-authorized — see below), per the standing project rule that phases are
-reviewed before the next begins.
+Nothing — Phase 5H's implementation is complete (every prior phase
+through Phase 5G's own Backend Aggregation review, a manual E2E bug fix
+to `DepartmentSelector`'s controlled-value handling, Phase 5H's own
+Source Department & Designation review, and now Phase 5H's
+implementation are all done) and the project is paused pending explicit
+instruction to begin the next phase, per the standing project rule that
+phases are reviewed before the next begins.
 
-## Pending (Phase 5G implementation, if ever authorized, and later)
+## Pending (Phase 5H's own remaining known limitations, and later)
+
+* **A Designation edit/detail page** — `PATCH /designations/{id}`
+  exists on the backend; no frontend screen calls it yet. Deliberate
+  Phase 5H scope, not an oversight — see
+  `docs/architecture/source-designation.md` §12/§22.
+* **An external/non-departmental Source fallback** — the Letter form's
+  Source field is now exclusively a Department picker; a letter from an
+  organization with no LRS department record has no representation
+  through this form. `PENDING BUSINESS CLARIFICATION` — see
+  `docs/architecture/source-designation.md` §4/§21.
+* **A Letter aggregation/breakdown backend endpoint**
+  (`GET /api/v1/letters/aggregate`, by category/classification/
+  department/day/week/month) — fully designed
+  (`docs/architecture/dashboard-analytics-api.md` §12-§16) but **not
+  recommended for V1**: no metric in the Phase 5G inventory cleared the
 
 * **A Letter aggregation/breakdown backend endpoint**
   (`GET /api/v1/letters/aggregate`, by category/classification/
@@ -2308,11 +2490,11 @@ reviewed before the next begins.
   separate, per-entity-type join design not yet attempted. `FUTURE`,
   explicitly deferred to its own later phase, not bundled with Letter
   aggregation. See `docs/architecture/dashboard-analytics-api.md` §5/§20.
-* **Category/Classification management UI** remains unbuilt — out of
-  Phase 5D's own objective list, not an oversight, and out of Phase
-  5E's and Phase 5F's scope too. See
+* **Category/Classification management UI** — **RESOLVED (Phase 5H.1)**.
+  Was out of Phase 5D's, 5E's, and 5F's scope (not an oversight — see
   `docs/architecture/document-notification-ui.md` §24 for how Phase 5E
-  itself was sequenced.
+  itself was sequenced); built in Phase 5H.1 once found to be a
+  confirmed frontend completion gap during Phase 5H's manual E2E pass.
 * **No signed/shareable document-download URL** (Phase 5E review,
   restating Phase 5's own §14 finding) — every download requires an
   authenticated fetch; there is no "open in a new tab" URL for a
@@ -2837,17 +3019,25 @@ behind each.
 
 ## Next Recommended Phase
 
-Phase 5G's own review is now complete — it found that **no backend
+Phase 5H's implementation is now complete — Source Department and
+Designation both work end to end against the real backend, matching
+`docs/architecture/source-designation.md` §22's MUST-IMPLEMENT list
+exactly. See that document's own §26 for the full implementation
+record. What remains from this phase is small and disclosed: a
+Designation edit/detail page, and the open "external source" business
+question (§21 of that review) — neither blocks tonight's handover.
+
+Separately, Phase 5G's own review is complete — it found that **no backend
 aggregation is currently justified**: every candidate analytics metric
 either already has an existing, sufficient API (Phase 5F's own
 operational dashboard) or is gated behind an unconfirmed business want.
 A complete `GET /api/v1/letters/aggregate` design is documented and
 ready to build (`docs/architecture/dashboard-analytics-api.md` §12-§16)
 the moment at least one specific breakdown or trend is confirmed
-wanted — but nothing was implemented or authorized this phase. What
-remains is either the next screen (Category/Classification management,
-out of every phase's scope so far), resolving Phase 5G's own business
-clarifications (§27 of that review — is analytics wanted at all, which
+wanted — but nothing was implemented or authorized this phase. Category/
+Classification management (the other previously-open screen) was built
+in the subsequent Phase 5H.1. What remains is resolving Phase 5G's own
+business clarifications (§27 of that review — is analytics wanted at all, which
 trend/breakdown matters, default date range, whether USER should see
 any aggregate), or resolving one of the several other genuinely open
 questions before more UI or any analytics widget is built on top of

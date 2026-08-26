@@ -2,15 +2,16 @@
 
 **A Production of AJ-Labs**
 
-> **Current status: Phase 5G — Backend Dashboard Aggregation &
-> Analytics API architecture/requirements review complete (Phase 5F
-> Dashboard & Operational Overview UI implemented; Phase 5E Documents &
-> Notifications UI implemented; Phase 5D Administration & Account
-> Management UI implemented; Phase 5C Core Registry UI implemented;
-> Phase 5B Authentication & Account UX implemented; Phase 5A Frontend
-> Foundation implemented; Phase 5 architecture/UX review complete;
-> Phase 4E Operational Activity, Notifications & Audit implemented;
-> Phase 3B complete).**
+> **Current status: Phase 5H.1 — Category & Classification Admin UI
+> completed (Phase 5H Source Department & Designation Master Data
+> implemented; Phase 5G Backend Dashboard Aggregation & Analytics
+> API review complete; Phase 5F Dashboard & Operational Overview UI
+> implemented; Phase 5E Documents & Notifications UI implemented; Phase
+> 5D Administration & Account Management UI implemented; Phase 5C Core
+> Registry UI implemented; Phase 5B Authentication & Account UX
+> implemented; Phase 5A Frontend Foundation implemented; Phase 5
+> architecture/UX review complete; Phase 4E Operational Activity,
+> Notifications & Audit implemented; Phase 3B complete).**
 > Local email/password login, JWT access tokens, role-based access
 > control, System-Admin-controlled department management,
 > System-Admin-controlled Admin management, and Admin-controlled User
@@ -201,8 +202,38 @@
 > want. A complete, ready-to-build design
 > (`GET /api/v1/letters/aggregate`) is documented but explicitly not
 > implemented or authorized. See
-> `docs/architecture/dashboard-analytics-api.md` and
-> `docs/PROJECT_STATUS.md` for the full picture.
+> `docs/architecture/dashboard-analytics-api.md` for the full review.
+> Phase 5H then first reviewed, then implemented, two supervisor-
+> requested changes from a live demonstration ahead of handover: making
+> "Source" selectable from the Department list, and "Designation" a
+> SYSTEM_ADMIN-managed dropdown. Two findings drove the design: first,
+> `source_department_id` **already existed**, fully wired, on every
+> Letter schema, with existing backend validation — it was simply never
+> given a frontend control, so making Source a dropdown was mostly a
+> frontend task. Second, `GET /api/v1/departments` was
+> `require_system_admin`-only — the exact access gap already documented
+> for Category/Classification would have silently blocked both Source
+> Department *and* the new Designation dropdown for USER/ADMIN, the
+> only roles that ever record a Letter — fixed with a one-line
+> dependency relaxation (read-only; every write endpoint stays
+> SYSTEM_ADMIN-only). `source_name` remains required and is now
+> auto-filled from the selected department (the existing, already-
+> confirmed product decision is not reversed); a new `Designation`
+> master-data resource (model/repository/service/endpoints, plus a
+> minimal SYSTEM_ADMIN management page at `/app/system/designations`)
+> mirrors `Category`/`Classification` almost exactly, with the identical
+> list-endpoint access relaxation applied. Historical integrity is
+> solved the same way `source_department_id`/`source_name` already
+> coexist: a new, nullable `designation_id` FK
+> (migration `323ccfde77f4`) alongside the existing, unchanged, required
+> `sender_designation` text — zero backfill, zero risk to existing
+> Letters, verified with a real `upgrade`/`downgrade`/`upgrade`/`check`
+> cycle. Both new fields are required only when *creating* a Letter,
+> never retroactively demanded on edit. Test suite grown to 487 backend
+> and 280 frontend tests, each run 3 consecutive times with identical
+> results. See `docs/architecture/source-designation.md` §26 for the
+> full implementation record and `docs/PROJECT_STATUS.md` for the full
+> picture.
 
 ---
 
@@ -419,12 +450,15 @@ backend.
 | 5E impl. | Documents & Notifications UI implementation: `DocumentList`/`DocumentUploadForm` wired into `LetterDetailPage` (upload with progress, authenticated blob download, no delete/replace action), `NotificationBell`/`NotificationPanel`/`NotificationItem` wired into `Topbar` and a real paginated `/app/notifications` page, explicit-button-only mark-read, 60-second (`PROVISIONAL`) unread-count polling — driven entirely by the confirmed Document/Notification backend contract; test suite grown to 225 tests. | **Complete** |
 | 5F | Dashboard & Operational Overview UI: architecture/requirements review against all twelve mounted business routers — confirms no dashboard/aggregate/audit-read endpoint exists, that Letter counts are cheap and already correctly isolated (real SQL `COUNT`) while Department/Admin/User/Category/Classification counts cost a full-list fetch (no pagination, no DB `COUNT`), and that every historical/trend metric requires new backend work. Full metric inventory, role-specific requirements, and an operational-only V1 recommendation. Review only, no frontend code. | **Complete (review only)** |
 | 5F impl. | Dashboard & Operational Overview UI implementation: `/app/dashboard` — role-aware summary cards (Letters for every role; Departments/Admins for SYSTEM_ADMIN; Users for ADMIN), a Recent Letters list, and role-scoped Quick Actions to already-existing screens — driven entirely by existing, already-isolated endpoints; no chart, trend, filter control, or new backend endpoint; test suite grown to 249 tests. | **Complete** |
-| **5G** | Backend Dashboard Aggregation & Analytics API: architecture/requirements review of whether new backend aggregate endpoints are justified — confirms the existing `letter_visibility_filter`/department-derivation authorization logic is directly reusable for any future aggregate, that every plausible aggregate dimension is already indexed (zero new indexes recommended), and that `AuditLog` has no department column (audit analytics deferred to a future, separate phase). Full metric inventory found no metric with both confirmed value and no existing sufficient API — recommends deferring backend aggregation entirely for V1, with a complete, ready-to-build `GET /api/v1/letters/aggregate` design documented but not implemented. Review only, no backend or frontend code. | **Complete (review only)** |
-| 6 | Additional notification triggers, audit read API, Category/Classification management UI, dashboard analytics (if a specific breakdown/trend is ever confirmed wanted) | Not started |
+| 5G | Backend Dashboard Aggregation & Analytics API: architecture/requirements review of whether new backend aggregate endpoints are justified — confirms the existing `letter_visibility_filter`/department-derivation authorization logic is directly reusable for any future aggregate, that every plausible aggregate dimension is already indexed (zero new indexes recommended), and that `AuditLog` has no department column (audit analytics deferred to a future, separate phase). Full metric inventory found no metric with both confirmed value and no existing sufficient API — recommends deferring backend aggregation entirely for V1, with a complete, ready-to-build `GET /api/v1/letters/aggregate` design documented but not implemented. Review only, no backend or frontend code. | **Complete (review only)** |
+| 5H | Source Department & Designation Master Data: architecture/requirements review of two handover-demo requirements — confirms `source_department_id` already exists end-to-end on every Letter schema with existing backend validation (a frontend-only task), and that `GET /api/v1/departments` being `require_system_admin`-only would silently block both Source Department and a new Designation dropdown for USER/ADMIN unless relaxed to any authenticated role (read-only). Designs a new `Designation` master-data resource mirroring `Category`/`Classification`, with historical integrity solved via a new nullable `designation_id` FK alongside the existing, unchanged `sender_designation` text — zero backfill. A MUST-IMPLEMENT-BEFORE-HANDOVER list and implementation sequence are documented. Review only, no backend or frontend code. | **Complete (review only)** |
+| 5H impl. | Source Department & Designation Master Data implementation: new `Designation` resource (model/repository/service/`GET,POST,PATCH /designations`, `POST .../activate|deactivate`) with its list endpoint deliberately readable by any authenticated role; `GET /departments` relaxed identically; new nullable `letters.designation_id` FK (migration `323ccfde77f4`, verified upgrade/downgrade/upgrade/check); `LetterFormPage.jsx` gains a Source Department selector and a Designation dropdown, both auto-filling their legacy text fields and required only on create; a minimal SYSTEM_ADMIN management page at `/app/system/designations`. Test suite grown to 487 backend / 280 frontend tests. | **Complete** |
+| **5H.1** | Complete Existing Category & Classification Admin UI: a confirmed frontend completion gap found during Phase 5H's own manual E2E pass — `/app/system/categories`/`/app/system/classifications` still rendered a "planned" placeholder despite the backend (list/create/update/activate/deactivate, `SYSTEM_ADMIN`-only) being unchanged since Phase 4B. Six new pages mirror the existing Department three-page (list/create/detail-with-inline-edit) pattern exactly; `routes/index.jsx`'s two placeholder routes replaced with nested `RoleGuard` route groups; `navigationConfig.js` needed no changes. No delete action (no `DELETE` route exists); Classification's `restricts_access` flag is forwarded to the backend exactly as set, never computed or enforced client-side. Zero backend files touched. Test suite grown to 487 backend (unchanged) / 320 frontend tests. | **Complete** |
+| 6 | Additional notification triggers, audit read API, dashboard analytics (if a specific breakdown/trend is ever confirmed wanted), a Designation edit/detail page | Not started |
 
-See `docs/PROJECT_STATUS.md` for what Phase 5G found,
-`docs/architecture/dashboard-analytics-api.md` for the full design, and
-known limitations. The next phase begins only when explicitly
+See `docs/PROJECT_STATUS.md` for what Phase 5H and 5H.1 delivered,
+`docs/architecture/source-designation.md` §26 for the Phase 5H
+implementation record. The next phase begins only when explicitly
 instructed.
 
 ---

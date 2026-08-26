@@ -191,6 +191,28 @@ class DuplicateClassificationError(ServiceError):
     (`uq_classifications_name`)."""
 
 
+# --- Designation management (Phase 5H) --------------------------------------
+
+
+class DesignationNotFoundError(ServiceError):
+    """No `Designation` exists with this id — see
+    app/services/designation_service.py."""
+
+
+class DuplicateDesignationError(ServiceError):
+    """A designation with this name already exists, case-insensitively
+    (`uq_designations_name_lower`)."""
+
+
+class DesignationNotActiveError(ServiceError):
+    """`designation_id` was supplied and exists, but that designation is
+    `INACTIVE` — a retired designation cannot be assigned to a *new* or
+    newly-*changed* letter designation (an existing letter already
+    carrying it keeps its reference untouched; see
+    app/models/letter.py's `designation_id`/`sender_designation`
+    docstring)."""
+
+
 # --- Letter registry (Phase 4B) ---------------------------------------------
 
 

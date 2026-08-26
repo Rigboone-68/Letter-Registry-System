@@ -23,6 +23,21 @@
  * `letters`, not `dashboard` — preserving the existing landing
  * behavior was an explicit implementation-brief instruction, not an
  * oversight.
+ *
+ * Phase 5H (docs/architecture/source-designation.md §12) fills in
+ * `system/designations` — a single combined list+create+lifecycle
+ * page, SYSTEM_ADMIN only, with no nested child routes (no detail/edit
+ * page exists for this resource, deliberately, per that review's own
+ * "do not overbuild" instruction).
+ *
+ * Phase 5H.1 fills in `system/categories` and `system/classifications`
+ * — both resources' backend (SYSTEM_ADMIN-only, since Phase 4B) already
+ * supported list/create/update/activate/deactivate; only the frontend
+ * exposure was missing (these two routes previously rendered
+ * `PlaceholderPage`). Each gets its own nested route group, mirroring
+ * `system/departments` exactly, since both support an update endpoint
+ * that a single combined list+create page (Designation's pattern)
+ * would not have room for.
  */
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 
@@ -30,10 +45,17 @@ import AppShell from '../layouts/AppShell'
 import AdminAuthorizePage from '../pages/AdminAuthorizePage'
 import AdminDetailPage from '../pages/AdminDetailPage'
 import AdminListPage from '../pages/AdminListPage'
+import CategoryCreatePage from '../pages/CategoryCreatePage'
+import CategoryDetailPage from '../pages/CategoryDetailPage'
+import CategoryListPage from '../pages/CategoryListPage'
+import ClassificationCreatePage from '../pages/ClassificationCreatePage'
+import ClassificationDetailPage from '../pages/ClassificationDetailPage'
+import ClassificationListPage from '../pages/ClassificationListPage'
 import DashboardPage from '../pages/DashboardPage'
 import DepartmentCreatePage from '../pages/DepartmentCreatePage'
 import DepartmentDetailPage from '../pages/DepartmentDetailPage'
 import DepartmentListPage from '../pages/DepartmentListPage'
+import DesignationListPage from '../pages/DesignationListPage'
 import LetterDetailPage from '../pages/LetterDetailPage'
 import LetterFormPage from '../pages/LetterFormPage'
 import LetterListPage from '../pages/LetterListPage'
@@ -113,20 +135,30 @@ export const router = createBrowserRouter([
             ],
           },
           {
-            path: 'system/categories',
+            path: 'system/designations',
             element: (
               <RoleGuard allowedRoles={['SYSTEM_ADMIN']}>
-                <PlaceholderPage title="Categories" />
+                <DesignationListPage />
               </RoleGuard>
             ),
           },
           {
+            path: 'system/categories',
+            element: <RoleGuard allowedRoles={['SYSTEM_ADMIN']} />,
+            children: [
+              { index: true, element: <CategoryListPage /> },
+              { path: 'new', element: <CategoryCreatePage /> },
+              { path: ':id', element: <CategoryDetailPage /> },
+            ],
+          },
+          {
             path: 'system/classifications',
-            element: (
-              <RoleGuard allowedRoles={['SYSTEM_ADMIN']}>
-                <PlaceholderPage title="Classifications" />
-              </RoleGuard>
-            ),
+            element: <RoleGuard allowedRoles={['SYSTEM_ADMIN']} />,
+            children: [
+              { index: true, element: <ClassificationListPage /> },
+              { path: 'new', element: <ClassificationCreatePage /> },
+              { path: ':id', element: <ClassificationDetailPage /> },
+            ],
           },
         ],
       },

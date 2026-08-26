@@ -78,8 +78,31 @@ metric inventory found no metric that both needs a new backend endpoint
 and has confirmed business value, so backend aggregation is recommended
 deferred entirely for V1; a complete `GET /api/v1/letters/aggregate`
 design is documented as ready-to-build if that ever changes. See
-`dashboard-analytics-api.md` for the full review. This document
-explains the roles and hierarchy
+`dashboard-analytics-api.md` for the full review. Phase 5H then first
+reviewed, then implemented, two handover-demo requirements: Source
+selectable from the Department list, and a new, SYSTEM_ADMIN-managed
+Designation dropdown. Re-reading the actual Letter schema confirmed
+`source_department_id` already existed, fully wired, with existing
+backend validation (`LetterService._validate_source_department`) — a
+frontend-only task, mostly. Re-reading `app/api/v1/endpoints/
+departments.py` confirmed its list endpoint was `require_system_admin`-
+only — the identical access gap already documented for Category/
+Classification (`frontend.md` §36) would have blocked Source Department
+and Designation from USER/ADMIN, the only roles that ever call
+`POST /letters` — fixed by relaxing both this endpoint and the new
+Designation resource's own list endpoint to any authenticated role
+(read-only; every write endpoint unaffected, verified directly by
+re-reading every endpoint's own dependency after implementation). The
+new `Designation` resource mirrors `Category`/`Classification` closely,
+and solves historical integrity the same way `source_department_id`/
+`source_name` already coexist: a new, nullable `designation_id` FK
+(migration `323ccfde77f4`, verified with a real upgrade/downgrade/
+upgrade/check cycle) beside the existing, unchanged, required
+`sender_designation` text — no backfill, no risk to existing Letters.
+`LetterFormPage.jsx` gained real Source Department and Designation
+selectors, both required only when creating a Letter. See
+`source-designation.md` §26 for the full implementation record. This
+document explains the roles and hierarchy
 the database schema is
 built to support, how a caller's identity is established (Phase 3A), how
 role/department authorization decisions are enforced on top of that
@@ -134,8 +157,12 @@ departments (`POST`/`GET`/`PATCH /api/v1/departments...` —
 deactivates/reactivates Admin accounts, and moves an Admin between
 departments (`/api/v1/admins*` —
 [`admin-management.md`](admin-management.md)) — using the *same* signup
-workflow a regular User goes through, not a separate one. Managing
-Categories and Classifications remains future work (§4). As of Phase
+workflow a regular User goes through, not a separate one. As of Phase
+5H.1, a System Admin also manages Categories and Classifications
+end-to-end — list/create/update/activate/deactivate, at
+`/app/system/categories*`/`/app/system/classifications*` — a frontend
+completion task, since the underlying backend API has existed
+unchanged since Phase 4B. As of Phase
 4D, a System Admin can also upload, list, and download any Letter's
 documents regardless of department — the one place document access is
 deliberately *not* restricted the way Letter *creation* is (System Admin
@@ -1025,6 +1052,85 @@ re-read fresh this phase.
   specific breakdown or trend is ever confirmed wanted. Nothing was
   implemented. No backend or frontend file was touched during the
   review.
+
+### Reviewed, then implemented (Phase 5H — Source Department & Designation Master Data)
+
+Full design in [`source-designation.md`](source-designation.md).
+Two supervisor-requested changes from a live handover demonstration,
+reviewed under real time pressure.
+
+* **Confirmed `source_department_id` already exists, fully wired**, on
+  `LetterCreate`/`LetterUpdate`/`LetterResponse`/`LetterListItem`, with
+  existing backend validation (`LetterService._validate_source_department`
+  — rejects a nonexistent or `INACTIVE` department) — it was simply
+  never given a frontend control. Making Source a dropdown is
+  therefore mostly a frontend task.
+* **Confirmed a critical access gap**: `GET /api/v1/departments` is
+  `require_system_admin`-only — the identical gap already documented
+  for Category/Classification (`frontend.md` §36) would silently block
+  both Source Department and a new Designation dropdown for USER/ADMIN,
+  the only roles that ever call `POST /letters`. **Recommends** a
+  one-line dependency relaxation on that single list endpoint (read-
+  only; every write endpoint stays SYSTEM_ADMIN-only) as a necessary,
+  minimal backend change.
+* **Recommends retaining `source_name`**, not replacing it — an
+  already-confirmed product decision ("must never force every source
+  into a department FK") — with the frontend auto-filling it from the
+  selected department's name rather than the user typing it.
+* **Designs a new `Designation` master-data resource** mirroring
+  `Category`/`Classification` closely (never physically deleted,
+  idempotent activate/deactivate, `ActiveStatus` reused), with one
+  deliberate departure: case-insensitive name uniqueness (the same
+  functional-index technique `User.email` already uses).
+* **Solves historical integrity the same way `source_department_id`/
+  `source_name` already coexist**: a new, nullable `designation_id` FK
+  added alongside the existing, unchanged, required
+  `sender_designation` text column — zero backfill, zero risk to
+  existing Letters.
+* **Recommends `designation_id` stay optional** — no designations are
+  being seeded (the supervisor provided no list), so making it
+  mandatory against an empty table would break Letter recording
+  entirely until a SYSTEM_ADMIN manually adds one first.
+* A MUST-IMPLEMENT-BEFORE-HANDOVER list, a 12-row security threat
+  review, and a tightly-scoped implementation sequence were documented
+  during the review. No backend or frontend file was touched during
+  the review itself.
+
+**Then implemented, same phase, second pass** — exactly the approved
+MUST-IMPLEMENT scope, no new architecture decisions:
+
+* **New `Designation` resource** — model/repository/service mirror
+  `Category` almost line-for-line; `GET/POST/PATCH /designations`,
+  `POST .../activate`, `POST .../deactivate`. **`GET /designations` is
+  `get_current_user`-only, not SYSTEM_ADMIN-only** — every write
+  endpoint and `GET /{id}` remain SYSTEM_ADMIN-only, verified directly
+  by re-reading each endpoint's own dependency after implementation.
+* **`GET /departments` relaxed identically**, and confirmed to be the
+  *only* change on that resource — every other Department endpoint
+  unchanged.
+* **`letters.designation_id`** — new, nullable FK, migration
+  `323ccfde77f4`, verified with a real `upgrade`/`downgrade`/`upgrade`/
+  `check` cycle against a local PostgreSQL instance, not merely
+  written. `sender_designation` is completely unchanged.
+* **One deliberate refinement beyond `_validate_category`'s own
+  behavior**: a *resent-but-unchanged* `designation_id` on update is
+  never re-validated, even if now `INACTIVE` — only an actual change
+  to a different designation requires it to be `ACTIVE`, verified by a
+  dedicated test.
+* **`LetterFormPage.jsx`** gained a Source Department selector
+  (reusing `DepartmentSelector`) and a Designation `<select>`, both
+  auto-filling their legacy required-text counterparts; both required
+  only on create, never retroactively demanded on edit
+  (`formValidation.js`'s new `{isEdit}` option).
+* **A minimal SYSTEM_ADMIN page**, `/app/system/designations` — create
+  + list + Activate (direct) + Deactivate (confirmed) — the only way to
+  populate what the system intentionally starts empty.
+* **Test suite grown from 458 to 487 backend tests and from 258 to 280
+  frontend tests**, each run 3 consecutive times with identical
+  results.
+* **No backend file outside the explicit scope was touched** — confirmed
+  by `git status` and a full backend regression run before and after.
+  Full implementation record: `source-designation.md` §26.
 
 ### Explicitly deferred (not yet implemented)
 

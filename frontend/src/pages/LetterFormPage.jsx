@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
+import DepartmentSelector from '../components/DepartmentSelector'
 import ErrorState from '../components/ErrorState'
 import LoadingState from '../components/LoadingState'
 import { useAuth } from '../context/AuthContext'
 import * as categoryService from '../services/categoryService'
 import * as classificationService from '../services/classificationService'
+import * as departmentService from '../services/departmentService'
+import * as designationService from '../services/designationService'
 import * as letterService from '../services/letterService'
 import { validateLetterForm } from '../utils/formValidation'
 import styles from './LetterFormPage.module.css'
@@ -13,9 +16,11 @@ import styles from './LetterFormPage.module.css'
 const EMPTY_FORM = {
   reference_number: '',
   subject: '',
+  source_department_id: '',
   source_name: '',
   source_location: '',
   sender_name: '',
+  designation_id: '',
   sender_designation: '',
   sender_department: '',
   sender_address: '',
@@ -60,36 +65,60 @@ function FieldError({ name, fieldErrors }) {
 
 /**
  * Letter create/edit form (docs/architecture/frontend.md §9/§10,
- * Phase 5C) — one component for both `/app/letters/new` (create,
- * `POST /api/v1/letters`) and `/app/letters/:id/edit` (edit,
- * `PATCH /api/v1/letters/:id`), the same reuse pattern
- * `docs/architecture/frontend.md` §31 recommends.
+ * Phase 5C; Source Department + Designation, Phase 5H) — one component
+ * for both `/app/letters/new` (create, `POST /api/v1/letters`) and
+ * `/app/letters/:id/edit` (edit, `PATCH /api/v1/letters/:id`), the same
+ * reuse pattern `docs/architecture/frontend.md` §31 recommends.
  *
- * Fields shown are exactly `LetterCreate`'s field set
- * (backend/app/schemas/letter.py, `extra="forbid"`) minus two
- * deliberately omitted, documented exceptions:
+ * **Source Department** (Phase 5H) replaces the old free-text "Source
+ * name" input with a `DepartmentSelector` bound to
+ * `source_department_id` — the field already existed on every Letter
+ * schema (`source_department_id`, optional) but had no frontend control
+ * until now, per docs/architecture/source-designation.md §1/§4.
+ * Selecting a department auto-fills `source_name` (still the backend's
+ * own required text field, unchanged) with that department's name —
+ * the user never types it. `GET /api/v1/departments` is now readable by
+ * every authenticated role (§5 of that document), not SYSTEM_ADMIN
+ * only, specifically so this works for USER/ADMIN.
  *
- *   - `source_department_id` — an optional structured cross-reference to
- *     an LRS department; omitted from this V1 form because resolving it
- *     to a selectable name requires `GET /api/v1/departments`
- *     (SYSTEM_ADMIN-only) and `source_name` (always required, always
- *     shown) already conveys the source in human-readable form. A
- *     scope simplification, not a backend blocker.
- *   - `category_id`/`classification_id` — a CONFIRMED backend-contract
- *     gap, not a simplification: `GET /api/v1/categories` and
- *     `/classifications` are both `require_system_admin`-only
- *     (`app/api/v1/endpoints/{categories,classifications}.py`), but
- *     `POST /api/v1/letters` is USER/ADMIN-only
- *     (`require_user_or_admin` — SYSTEM_ADMIN has no department to
- *     record a letter against). No caller of the create form can ever
- *     legitimately load the option list, so these two fields never
- *     appear on create. On edit, they appear only for a SYSTEM_ADMIN
- *     caller (the only role that can both load the options and, per
- *     `assert_letter_access`'s SYSTEM_ADMIN bypass, edit any letter) —
- *     a USER/ADMIN editing a letter simply never touches these two
- *     fields, and the backend's own "omitted field means unchanged"
- *     `LetterUpdate` semantics leave whatever value was already there
- *     untouched.
+ * **Designation** (Phase 5H) replaces the old free-text "Sender
+ * designation" input with a `<select>` bound to the new `designation_id`
+ * field. Selecting one auto-fills `sender_designation` (still required
+ * text, unchanged) with that designation's name; the backend itself is
+ * still authoritative and overrides this value server-side regardless
+ * (docs/architecture/source-designation.md §9) — the client-side
+ * mirroring here is only so the required text field is never sent
+ * blank. `GET /api/v1/designations` is readable by every authenticated
+ * role by design (§11 of that document) — the one thing this new
+ * resource exists to support.
+ *
+ * Both selectors load only `ACTIVE` options on **create** (§5/§11 —
+ * "only active/appropriate" options should ever be offered for a new
+ * assignment); on **edit**, both load the *complete* list (active and
+ * inactive) so a Letter's already-assigned, possibly-now-inactive
+ * department/designation still renders and remains selectable as
+ * "unchanged" — mirroring the existing Category/Classification
+ * inactive-injection pattern below. Both are required at this form's
+ * own validation layer only on **create** — an existing Letter
+ * predating Phase 5H legitimately has neither set, and editing an
+ * unrelated field must not retroactively demand one
+ * (`utils/formValidation.js`'s own `isEdit` parameter).
+ *
+ * `category_id`/`classification_id` remain a CONFIRMED backend-contract
+ * gap, unchanged by this phase: `GET /api/v1/categories` and
+ * `/classifications` are still both `require_system_admin`-only
+ * (`app/api/v1/endpoints/{categories,classifications}.py`), but
+ * `POST /api/v1/letters` is USER/ADMIN-only
+ * (`require_user_or_admin` — SYSTEM_ADMIN has no department to
+ * record a letter against). No caller of the create form can ever
+ * legitimately load that option list, so these two fields never
+ * appear on create. On edit, they appear only for a SYSTEM_ADMIN
+ * caller (the only role that can both load the options and, per
+ * `assert_letter_access`'s SYSTEM_ADMIN bypass, edit any letter) —
+ * a USER/ADMIN editing a letter simply never touches these two
+ * fields, and the backend's own "omitted field means unchanged"
+ * `LetterUpdate` semantics leave whatever value was already there
+ * untouched.
  *
  * `id`/`recipient_department_id`/`recorded_by`/`status`/`created_at`/
  * `updated_at` have no field in `EMPTY_FORM` at all — there is nothing
@@ -111,6 +140,17 @@ export default function LetterFormPage() {
   const [loadError, setLoadError] = useState(null)
   const [referenceOptions, setReferenceOptions] = useState({ categories: null, classifications: null })
 
+  // Source Department / Designation (Phase 5H) — required for every
+  // role that can reach this form (USER/ADMIN), unlike
+  // categories/classifications above, so this loads unconditionally,
+  // not gated by isSystemAdmin. ACTIVE-only on create; the complete
+  // list on edit, so an already-assigned, now-inactive value still
+  // renders and stays selectable as "unchanged" — see this file's own
+  // module docstring.
+  const [departments, setDepartments] = useState(null)
+  const [designations, setDesignations] = useState(null)
+  const [referenceDataError, setReferenceDataError] = useState(null)
+
   useEffect(() => {
     if (!isEdit) return
     letterService
@@ -119,9 +159,11 @@ export default function LetterFormPage() {
         setForm({
           reference_number: letter.reference_number,
           subject: letter.subject ?? '',
+          source_department_id: letter.source_department_id ?? '',
           source_name: letter.source_name,
           source_location: letter.source_location ?? '',
           sender_name: letter.sender_name,
+          designation_id: letter.designation_id ?? '',
           sender_designation: letter.sender_designation,
           sender_department: letter.sender_department,
           sender_address: letter.sender_address ?? '',
@@ -155,18 +197,65 @@ export default function LetterFormPage() {
       })
   }, [isSystemAdmin, isEdit])
 
+  useEffect(() => {
+    const filter = isEdit ? {} : { status: 'ACTIVE' }
+    Promise.all([departmentService.list(filter), designationService.list(filter)])
+      .then(([departmentResponse, designationResponse]) => {
+        setDepartments(departmentResponse.items)
+        setDesignations(designationResponse.items)
+      })
+      .catch((normalizedError) => setReferenceDataError(normalizedError))
+  }, [isEdit])
+
   const handleChange = useCallback((event) => {
     const { name, value } = event.target
     setForm((previous) => ({ ...previous, [name]: value }))
   }, [])
 
+  // Selecting a Source Department auto-fills source_name (still the
+  // backend's own required text field) with that department's name —
+  // the user never types it (docs/architecture/source-designation.md
+  // §4/§13). Clearing the selection clears source_name too, rather than
+  // leaving a stale name attached to no department.
+  const handleSourceDepartmentChange = useCallback(
+    (event) => {
+      const departmentId = event.target.value
+      const selected = departments?.find((department) => department.id === departmentId)
+      setForm((previous) => ({
+        ...previous,
+        source_department_id: departmentId,
+        source_name: selected ? selected.name : '',
+      }))
+    },
+    [departments]
+  )
+
+  // Mirrors handleSourceDepartmentChange for Designation — the backend
+  // is still authoritative and overrides sender_designation server-side
+  // regardless (§9), but the field remains required text on
+  // LetterCreate/LetterUpdate, so it must never be sent blank.
+  const handleDesignationChange = useCallback(
+    (event) => {
+      const designationId = event.target.value
+      const selected = designations?.find((designation) => designation.id === designationId)
+      setForm((previous) => ({
+        ...previous,
+        designation_id: designationId,
+        sender_designation: selected ? selected.name : '',
+      }))
+    },
+    [designations]
+  )
+
   function buildPayload() {
     const payload = {
       reference_number: form.reference_number,
       subject: form.subject,
+      source_department_id: form.source_department_id || null,
       source_name: form.source_name,
       source_location: form.source_location || null,
       sender_name: form.sender_name,
+      designation_id: form.designation_id || null,
       sender_designation: form.sender_designation,
       sender_department: form.sender_department,
       sender_address: form.sender_address || null,
@@ -191,7 +280,7 @@ export default function LetterFormPage() {
     event.preventDefault()
     setFormError(null)
 
-    const errors = validateLetterForm(form)
+    const errors = validateLetterForm(form, { isEdit })
     setFieldErrors(errors)
     if (Object.keys(errors).length > 0) return
 
@@ -218,6 +307,8 @@ export default function LetterFormPage() {
   if (initialLoading) return <LoadingState label="Loading letter..." />
   if (notFound) return <ErrorState message="Letter not found." />
   if (loadError) return <ErrorState message={loadError.message} />
+  if (referenceDataError) return <ErrorState message={referenceDataError.message} />
+  if (!departments || !designations) return <LoadingState label="Loading form options..." />
 
   return (
     <section className={styles.root}>
@@ -248,9 +339,26 @@ export default function LetterFormPage() {
         <fieldset className={styles.fieldset}>
           <legend>Source</legend>
           <div className={styles.field}>
-            <label htmlFor="source_name">Source name *</label>
-            <input type="text" required {...fieldProps('source_name', form, fieldErrors, handleChange)} />
-            <FieldError name="source_name" fieldErrors={fieldErrors} />
+            <label htmlFor="source_department_id">Source Department{!isEdit && ' *'}</label>
+            <DepartmentSelector
+              id="source_department_id"
+              name="source_department_id"
+              departments={departments}
+              value={form.source_department_id}
+              onChange={handleSourceDepartmentChange}
+              activeOnly={false}
+              required={!isEdit}
+              aria-invalid={Boolean(fieldErrors.source_department_id)}
+              aria-describedby={
+                fieldErrors.source_department_id ? 'source_department_id-error' : undefined
+              }
+            />
+            <p className={styles.hint}>
+              The department this letter originated from — distinct from "Recipient
+              Department" (your own department, which registers the letter) and "Sender's
+              Department" below (the individual sender's own department, free text).
+            </p>
+            <FieldError name="source_department_id" fieldErrors={fieldErrors} />
           </div>
           <div className={styles.field}>
             <label htmlFor="source_location">Source location</label>
@@ -266,16 +374,38 @@ export default function LetterFormPage() {
             <FieldError name="sender_name" fieldErrors={fieldErrors} />
           </div>
           <div className={styles.field}>
-            <label htmlFor="sender_designation">Sender designation *</label>
-            <input type="text" required {...fieldProps('sender_designation', form, fieldErrors, handleChange)} />
-            <FieldError name="sender_designation" fieldErrors={fieldErrors} />
+            <label htmlFor="designation_id">Designation{!isEdit && ' *'}</label>
+            <select
+              id="designation_id"
+              name="designation_id"
+              value={form.designation_id}
+              onChange={handleDesignationChange}
+              required={!isEdit}
+              aria-invalid={Boolean(fieldErrors.designation_id)}
+              aria-describedby={fieldErrors.designation_id ? 'designation_id-error' : undefined}
+            >
+              <option value="">Select a designation</option>
+              {designations.map((designation) => (
+                <option key={designation.id} value={designation.id}>
+                  {designation.name}
+                  {designation.status === 'INACTIVE' ? ' (inactive)' : ''}
+                </option>
+              ))}
+            </select>
+            {designations.length === 0 && (
+              <p className={styles.hint}>
+                No designations are available yet. A System Administrator must add at
+                least one before a letter can be recorded.
+              </p>
+            )}
+            <FieldError name="designation_id" fieldErrors={fieldErrors} />
           </div>
           <div className={styles.field}>
             <label htmlFor="sender_department">Sender's department *</label>
             <input type="text" required {...fieldProps('sender_department', form, fieldErrors, handleChange)} />
             <p className={styles.hint}>
               Free text describing the sender's own department — distinct from
-              "Source," which may or may not be the same organization.
+              "Source Department," which may or may not be the same organization.
             </p>
             <FieldError name="sender_department" fieldErrors={fieldErrors} />
           </div>

@@ -11,6 +11,7 @@ from app.api.v1.endpoints import (
     categories,
     classifications,
     departments,
+    designations,
     dev_authz_test,
     documents,
     letters,
@@ -25,6 +26,7 @@ api_router.include_router(admins.router)
 api_router.include_router(users.router)
 api_router.include_router(categories.router)
 api_router.include_router(classifications.router)
+api_router.include_router(designations.router)
 api_router.include_router(letters.router)
 # Nested under /letters/{letter_id}/documents — see that module's
 # docstring for why this is a separate router rather than routes added

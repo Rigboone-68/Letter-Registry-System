@@ -77,7 +77,16 @@ class LetterCreate(BaseModel):
     source_location: Optional[str] = Field(default=None, max_length=255)
 
     sender_name: str = Field(min_length=1, max_length=255)
+    # Remains required text — the historical snapshot, unchanged since
+    # Phase 4B. `designation_id` (Phase 5H) is a new, optional structured
+    # reference; when supplied, the service overrides whatever value is
+    # sent here with the referenced Designation's own current name — the
+    # master-data selection is authoritative, never the client's text.
+    # Omitting `designation_id` (old API clients, or a source that isn't
+    # backed by master data) preserves this field's original, unchanged
+    # behavior exactly. See docs/architecture/source-designation.md §9.
     sender_designation: str = Field(min_length=1, max_length=255)
+    designation_id: Optional[uuid.UUID] = None
     sender_department: str = Field(min_length=1, max_length=255)
     sender_address: Optional[str] = None
 
@@ -120,7 +129,15 @@ class LetterUpdate(BaseModel):
     source_location: Optional[str] = Field(default=None, max_length=255)
 
     sender_name: Optional[str] = Field(default=None, max_length=255)
+    # `None` means "leave unchanged," the same convention every other
+    # field on this schema already uses — including for an already-
+    # assigned, now-INACTIVE designation: omitting this field never
+    # re-validates or disturbs it (docs/architecture/
+    # source-designation.md §9). Supplying a genuinely different value
+    # requires the newly selected Designation to be ACTIVE, and
+    # overrides `sender_designation` with its current name.
     sender_designation: Optional[str] = Field(default=None, max_length=255)
+    designation_id: Optional[uuid.UUID] = None
     sender_department: Optional[str] = Field(default=None, max_length=255)
     sender_address: Optional[str] = None
 
@@ -152,6 +169,7 @@ class LetterResponse(BaseModel):
 
     sender_name: str
     sender_designation: str
+    designation_id: Optional[uuid.UUID]
     sender_department: str
     sender_address: Optional[str]
 
@@ -188,6 +206,7 @@ class LetterListItem(BaseModel):
 
     sender_name: str
     sender_designation: str
+    designation_id: Optional[uuid.UUID]
     sender_department: str
     sender_address: Optional[str]
 

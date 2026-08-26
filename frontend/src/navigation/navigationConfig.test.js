@@ -13,6 +13,7 @@ describe('getNavigationForRole', () => {
       'Notifications',
       'Departments',
       'Administrators',
+      'Designations',
       'Categories',
       'Classifications',
     ])

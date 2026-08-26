@@ -1,19 +1,28 @@
 /**
  * API service functions for the confirmed Department management
  * endpoints (backend/app/api/v1/endpoints/departments.py, verified
- * fresh this session) — all `require_system_admin`:
+ * fresh this session):
  *
  *   GET    /departments             → DepartmentListResponse {items, total}
  *                                      — no pagination/search/sort; only
- *                                      an optional `status` filter
+ *                                      an optional `status` filter.
+ *                                      **Readable by any authenticated
+ *                                      role** (Phase 5H) — a deliberate,
+ *                                      narrow relaxation from
+ *                                      SYSTEM_ADMIN-only, so USER/ADMIN
+ *                                      can populate the Letter form's
+ *                                      Source Department selector; see
+ *                                      docs/architecture/
+ *                                      source-designation.md §5.
  *   POST   /departments             → DepartmentResponse (201); 409 on
- *                                      duplicate name/code
- *   GET    /departments/{id}        → DepartmentResponse; 404
+ *                                      duplicate name/code (SYSTEM_ADMIN only)
+ *   GET    /departments/{id}        → DepartmentResponse; 404 (SYSTEM_ADMIN only)
  *   PATCH  /departments/{id}        → DepartmentResponse — `name`/`code`
  *                                      optional but at least one required;
  *                                      omitted means "leave unchanged"
- *   POST   /departments/{id}/activate    → DepartmentResponse, idempotent
- *   POST   /departments/{id}/deactivate  → DepartmentResponse, idempotent
+ *                                      (SYSTEM_ADMIN only)
+ *   POST   /departments/{id}/activate    → DepartmentResponse, idempotent (SYSTEM_ADMIN only)
+ *   POST   /departments/{id}/deactivate  → DepartmentResponse, idempotent (SYSTEM_ADMIN only)
  *
  * `id`/`status`/`created_at`/`updated_at` are never sent by `create`/
  * `update` — `DepartmentCreate`/`DepartmentUpdate` (backend,
@@ -22,8 +31,10 @@
  *
  * Originally built in Phase 5C as a SYSTEM_ADMIN-only reference-data
  * wrapper for the Letters screens (`list()` only); extended in Phase 5D
- * into the full Department management data layer. `list()`'s signature
- * is unchanged, so Phase 5C's own callers are unaffected.
+ * into the full Department management data layer, and in Phase 5H to
+ * back the Source Department selector for USER/ADMIN too. `list()`'s
+ * signature is unchanged throughout — only the backend's own access
+ * rule for it changed.
  */
 
 import apiClient from './apiClient'
