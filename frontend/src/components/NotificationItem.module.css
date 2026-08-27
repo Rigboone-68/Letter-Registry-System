@@ -5,15 +5,37 @@
   gap: var(--space-sm);
   padding: var(--space-sm) var(--space-md);
   border-bottom: 1px solid var(--color-border);
+  border-left: 3px solid transparent;
   font-size: var(--font-size-sm);
+  transition: background-color var(--motion-instant) var(--motion-ease),
+    border-color var(--motion-instant) var(--motion-ease);
 }
 
 .item:last-child {
   border-bottom: none;
 }
 
+.item:hover,
+.item:focus-within {
+  background: var(--color-bg);
+}
+
+/**
+ * Unread is never color-only (Phase 5I.3,
+ * docs/architecture/ui-design-system.md §21) — it already carries a
+ * bolder message weight (`.unread .message` below); the left accent
+ * bar here adds a shape signal too, matching the same accent-bar
+ * language `layouts/Sidebar.module.css` uses for its own active-route
+ * indicator.
+ */
 .unread {
-  background: var(--color-warning-bg);
+  background: var(--color-highlight-bg);
+  border-left-color: var(--color-primary);
+}
+
+.unread:hover,
+.unread:focus-within {
+  background: var(--color-highlight-bg);
 }
 
 .content {
@@ -23,9 +45,31 @@
   min-width: 0;
 }
 
+.messageRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+/**
+ * A static, non-animated unread signal (Phase 5I.4D §11) — one more
+ * supplementary shape alongside the existing accent bar/background/
+ * weight; never the sole indicator (the sr-only prefix above already
+ * states "Unread notification" as text).
+ */
+.unreadDot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--color-primary);
+}
+
 .message {
   color: var(--color-text);
   text-decoration: none;
+  min-width: 0;
 }
 
 a.message {
@@ -46,21 +90,9 @@ a.message:hover {
 }
 
 .markRead {
-  flex-shrink: 0;
+  composes: btn btnSecondary from '../styles/primitives.module.css';
+  height: auto;
   padding: var(--space-2xs) var(--space-sm);
-  border: 1px solid var(--color-border-strong);
-  background: var(--color-surface);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: var(--font-size-sm);
+  flex-shrink: 0;
   white-space: nowrap;
-}
-
-.markRead:hover:not(:disabled) {
-  background: var(--color-bg);
-}
-
-.markRead:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }

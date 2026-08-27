@@ -20,6 +20,12 @@ const PANEL_PAGE_SIZE = 10
  * — a lighter disclosure pattern: `Escape` closes it and returns focus
  * to the bell button (owned by the parent `NotificationBell`, via
  * `onClose`), but there is no backdrop and no Tab-trap.
+ *
+ * Phase 5I.4D (docs/architecture/ui-design-system.md §10) adds an
+ * "Operational Signals" eyebrow above the unchanged "Notifications"
+ * heading, and a small CSS-only pointer connecting the panel visually
+ * to the bell it opened from. Mark-read stays explicit-button-only;
+ * nothing here marks a notification read on navigation.
  */
 export default function NotificationPanel({ onClose, onUnreadCountChange }) {
   const [data, setData] = useState(null)
@@ -90,9 +96,17 @@ export default function NotificationPanel({ onClose, onUnreadCountChange }) {
   return (
     <div ref={panelRef} tabIndex={-1} role="region" aria-label="Notifications" className={styles.panel}>
       <div className={styles.header}>
-        <h2>Notifications</h2>
+        <div className={styles.headerText}>
+          <p className={styles.eyebrow}>Operational Signals</p>
+          <h2>Notifications</h2>
+        </div>
         {hasUnread && (
-          <button type="button" onClick={handleMarkAllRead} disabled={markingAll}>
+          <button
+            type="button"
+            className={styles.markAllButton}
+            onClick={handleMarkAllRead}
+            disabled={markingAll}
+          >
             {markingAll ? 'Marking…' : 'Mark all read'}
           </button>
         )}

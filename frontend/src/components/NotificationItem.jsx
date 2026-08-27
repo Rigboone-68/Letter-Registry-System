@@ -34,6 +34,13 @@ function formatDateTime(value) {
  * implementation does not silently pick the automatic behavior, per
  * the explicit instruction accompanying this phase's implementation
  * brief.
+ *
+ * Phase 5I.4D (docs/architecture/ui-design-system.md §11) adds one
+ * more static, non-animated unread signal — a small filled dot before
+ * the message, `aria-hidden` — alongside the existing accent bar,
+ * background tint, and bolder weight already established in Phase
+ * 5I.3. No continuous animation, no pulsing; unread remains understood
+ * through text (the sr-only prefix) first.
  */
 export default function NotificationItem({ notification, onMarkRead, marking, onNavigate }) {
   // `notification_type` is intentionally not read here — it's a plain
@@ -47,13 +54,16 @@ export default function NotificationItem({ notification, onMarkRead, marking, on
     <li className={`${styles.item} ${isRead ? '' : styles.unread}`}>
       <div className={styles.content}>
         <span className="sr-only">{isRead ? 'Read notification: ' : 'Unread notification: '}</span>
-        {letterId ? (
-          <Link to={`/app/letters/${letterId}`} className={styles.message} onClick={onNavigate}>
-            {message}
-          </Link>
-        ) : (
-          <span className={styles.message}>{message}</span>
-        )}
+        <span className={styles.messageRow}>
+          {!isRead && <span className={styles.unreadDot} aria-hidden="true" />}
+          {letterId ? (
+            <Link to={`/app/letters/${letterId}`} className={styles.message} onClick={onNavigate}>
+              {message}
+            </Link>
+          ) : (
+            <span className={styles.message}>{message}</span>
+          )}
+        </span>
         <span className={styles.timestamp}>{formatDateTime(createdAt)}</span>
       </div>
       {!isRead && (

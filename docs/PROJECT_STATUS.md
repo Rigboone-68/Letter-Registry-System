@@ -7,8 +7,429 @@ supervisor as-is.
 
 ## Current Phase
 
-**Phase 5H.1 — Complete Existing Category & Classification Admin UI.**
-Complete. A confirmed frontend completion gap found during Phase 5H's
+**Phase 5I.6A — Sidebar Icon Identity Correction.** Complete. A
+targeted fix found during final visual verification: the Sidebar's
+navigation "icons" (added Phase 5I.2) were actually 3-letter monograms
+(`DAS`/`LET`/`DOC`/etc.) — a deliberate placeholder at the time, but
+one manual review confirmed read as text labels, not icons, undercutting
+the intended Precision Ledger identity.
+
+**Fix**: replaced with 9 small inline SVG icons (no icon library, no
+external asset) — grid/envelope/document-stack/bell/building/shield/
+badge/folder/layers for Dashboard/Letters/Documents/Notifications/
+Departments/Administrators/Designations/Categories/Classifications,
+plus a person icon for `Users` (the ADMIN-only item the brief's own
+suggested mapping omitted). Every icon uses `stroke="currentColor"`,
+so its color simply follows the existing `.linkActive .linkGlyph`
+active-state rule — never a second, independent active-state
+mechanism. The bordered 30×22px "chip" container (which is what made
+the monogram read as a label) was replaced with a plain, unboxed
+18×18px icon box.
+
+**Explicitly unchanged**: `navigationConfig.js`, routes, labels,
+permissions, role behavior, active-route logic, Sidebar collapse
+behavior, mobile-drawer behavior, and `Topbar` — all confirmed
+unchanged via `git diff`. `aria-current="page"` (react-router-dom's
+own built-in behavior) and every link's real accessible name (the
+visible label text) are untouched — no existing test needed to change;
+one new regression test was added confirming every navigation link
+renders a decorative, `aria-hidden` icon. Zero new dependencies.
+
+Test suite grown to **364 frontend tests** (50 files, +1) and **487
+backend tests** (unchanged — one incidental flaky test reproduced as
+passing both in isolation and on a full rerun, confirmed unrelated to
+this frontend-only phase), run 3 consecutive times with identical
+results. Full implementation record in
+`docs/architecture/ui-design-system.md`'s own "Phase 5I.6A" section.
+
+### Phase 5I.6 — Final Polish, Manual E2E & Handover Audit
+
+Complete (prior phase).
+The closing audit across all nine prior visual phases (5I.1–5I.5): a
+full re-read of every project documentation file, a full screen
+inventory, and a codebase-wide audit across visual consistency,
+branding, boot experience, responsive behavior, accessibility, motion,
+functional coherence, the security boundary, document/classification
+security, performance, and error/empty/loading consistency — fixing
+only genuine issues actually found. No redesign, no new feature, no
+reopened product requirement.
+
+**Method**: combined automated, codebase-wide searches (hardcoded
+colors outside `tokens.css`, `transition: all`, `outline: none`, stray
+`console.log`/`setTimeout`, every animation's reduced-motion coverage,
+every responsive breakpoint, every emoji/pictograph character,
+branding-string consistency, and the full JWT/token/localStorage/
+role/department-id/recipient/storage-path/signed-URL security pattern
+set) with targeted reads of the specific files each result required a
+judgment call on.
+
+**The one genuine defect found and fixed**: `NotificationBell`'s icon
+was a raw 🔔 emoji — the one full-color, OS-rendered pictograph
+anywhere in the entire application, breaking the restrained,
+CSS-geometric "Precision Ledger" icon language every other screen
+maintained since Phase 5I.1. Replaced with a CSS-only bell outline
+using the same understated icon color Sidebar's own nav glyphs already
+use. Purely decorative; the button's accessible name, `aria-expanded`,
+click/keyboard behavior, unread-count badge, and polling are all
+byte-for-byte unchanged — confirmed by its own 9 existing tests passing
+unmodified.
+
+**Reviewed and confirmed correct, not defects** (documented in full,
+with reasoning, in `docs/architecture/ui-design-system.md`'s own
+"Phase 5I.6" section, so they aren't rediscovered and "fixed"
+unnecessarily later): `NotificationPanel`'s deliberate
+`outline: none` on its own non-Tab-reachable focus container; a
+one-pixel breakpoint-naming inconsistency (768px vs. 767px) with no
+visible consequence; the Boot screen's deliberately simpler background
+compared to the Authentication entrance; a mild, pre-existing,
+untouched screen-reader redundancy in the Sidebar brand mark;
+consistent table/dialog/focus-indication patterns across every
+resource; and an already-clean, unweakened error-normalization layer.
+
+**Security boundary**: a combined security-pattern grep across the
+entire `frontend/src` tree found zero new security-sensitive logic —
+every match was either a comment stating the app *never* performs that
+action, or one of the confirmed presentation-only role conditionals
+this phase's own brief explicitly allows (they gate which UI renders,
+never data access). `AuthContext.jsx` was not modified.
+
+**Manual browser verification: not performed** — no browser-automation
+tool is available in this environment, so none is claimed. Every
+finding came from static code inspection, targeted unit tests, and the
+automated searches above.
+
+Test suite unchanged at **363 frontend tests** (50 files) and **487
+backend tests**, run 3 consecutive times with identical results. The
+Phase 5I visual architecture (5I.1 through 5I.6) is now considered
+closed.
+
+### Phase 5I.5 — Boot & Loading Experience
+
+Complete (prior phase). The application's startup/loading identity —
+one new component (`BootScreen`), gated at `App.jsx` using
+`AuthContext`'s own existing `status === 'loading'` window (never a
+duplicated timer). A CSS-only "LRS Registry Glyph" (the same
+nested-square geometry as Sidebar/Auth, plus four ticks illuminating
+in sequence, a duration derived via `calc()` from the existing
+`--motion-slow` token) and a truthful `role="status"` message.
+`ProtectedRoute`/`RootRedirect`'s own loading branches, `LoadingState`,
+and every other existing loading moment are unchanged;
+`AuthContext.jsx` was read but not modified. Test suite grown to 363
+frontend tests (50 files) / 487 backend tests, run 3 consecutive times
+with identical results.
+
+### Phase 5I.4E — Authentication Visual Transformation
+
+Complete (prior phase). The fifth screen-level visual transformation —
+the unauthenticated entrance experience (`LoginPage`, `SignupPage`,
+and the `PendingApprovalNotice`/`DeactivatedAccountNotice` states they
+render). Confirmed the existing composition was exactly the generic
+"white card + email + password + blue button" pattern, with the
+submit button never composed onto the Phase 5I.3 shared primitives.
+Both pages now share one local `AuthShell` wrapper rendering a static
+brand mark (the Sidebar's nested-square geometry, scaled up),
+`APP_NAME`, and the previously-unrendered `PRODUCTION_CREDIT` line —
+distinguished only by a small eyebrow label. Both account-state
+notices gained a small color marker. `AuthContext.jsx` was read for
+context only, not modified. Test suite unchanged at 354 frontend tests
+(48 files) / 487 backend tests, run 3 consecutive times with identical
+results.
+
+### Phase 5I.4D — Documents & Notifications Visual Transformation
+
+Complete (prior phase). The fourth screen-level visual transformation —
+Documents (within the Letter dossier) and Notifications (Topbar bell,
+panel, and the full `/app/notifications` page). `DocumentList` already
+inherited the Phase 5I.4C row-accent-bar treatment for free via its
+shared `DataTable.module.css` import. `LetterDetailPage` gained a
+real, non-fabricated attachment count; the upload form gained a
+percentage-bound progress bar; the panel gained an "Operational
+Signals" eyebrow and a CSS-only bell connector; notification rows
+gained one more static unread dot; the notification page gained the
+same eyebrow/accent-line/chip-count header language used elsewhere.
+`NotificationBell` audited and left unmodified. Test suite unchanged
+at 354 frontend tests (48 files) / 487 backend tests, run 3
+consecutive times with identical results.
+
+### Phase 5I.4C — Administration Visual Transformation
+
+Complete (prior phase). The third screen-level visual transformation —
+the entire administration workspace (Departments, Administrators,
+Users, Authorizations, Designations, Categories, Classifications; ~28
+files), verified by re-reading every list/create/detail page and the
+shared `AdminPages.module.css`/`DataTable.module.css` directly before
+editing. Nearly every page already shared exactly two files — enhancing
+those two shared files once cascaded a console-wide eyebrow/accent-
+line/chip-count header language, a consistent button treatment, and a
+one-family row-accent-bar table hover to all seven resources.
+`AdminTransferDialog` gained real visual separation between current-
+department/target-department/consequences, its required wording
+confirmed byte-for-byte unchanged. Every API payload, service call,
+role branch, and 403/404 collapsing behavior confirmed unchanged via
+`git diff` and a dedicated 107-test pass across all 17 Administration
+test files. Test suite unchanged at 354 frontend tests (48 files) / 487
+backend tests, run 3 consecutive times with identical results.
+
+### Phase 5I.4B — Letter Registry Visual Transformation
+
+Complete (prior phase). The
+second screen-level visual transformation — the Letter registry family
+only (`LetterListPage`, `LetterFormPage`, `LetterDetailPage`,
+`LetterFilters`, `LetterTable`), verified by re-reading every one of
+these files and all four relevant test files directly before editing.
+
+**Implemented**: a registry header (eyebrow/accent line, the existing
+`{total} total` count restyled as a chip — same exact text, since a
+test asserts it verbatim); the filter panel recomposed into a
+"Registry Search" console — the same 13 fields, now grouped into four
+labeled `<fieldset>`s, plus a purely decorative "N active filters"
+badge computed from the page's own already-existing filter-count logic;
+the registry table gained a left accent-bar-on-hover (scoped to this
+table only, so the shared admin `DataTable` is unaffected) and tabular
+reference numbers; the Letter form gained the same header treatment and
+finally composed the shared button primitives (deferred from Phase
+5I.3, which explicitly excluded Letter pages); the Letter detail page
+became a four-section "record dossier" (Correspondence/Source/Sender/
+Additional details) instead of one flat 11-field grid.
+
+**A deliberate, recorded omission**: Category/Classification were NOT
+added to the detail-page dossier, despite being suggested — doing so
+would require a new service call and role branch `LetterDetailPage`
+doesn't already have, which is a functional change, not a visual one.
+
+**Explicitly unchanged**: every field, id, filter key, URL parameter,
+sort field, validation rule, payload shape, and role-conditional branch
+across all five files — confirmed via `git diff` that none of the
+data-fetching/business logic appears in the changed lines. Zero new
+dependencies.
+
+Test suite unchanged at **354 frontend tests** (48 files — no test
+needed to change, since no existing behavior changed) and **487 backend
+tests**, run 3 consecutive times with identical results — all 48
+pre-existing Letter-registry-specific assertions (URL sync, sorting,
+filter apply/clear, role-specific rendering, Source Department/
+Designation auto-fill, document integration, archive confirmation)
+passed completely unmodified. Full implementation record in
+`docs/architecture/ui-design-system.md`'s own "Phase 5I.4B" section.
+
+### Phase 5I.4A — Dashboard Visual Transformation
+
+Complete (prior phase). The first
+screen-level visual transformation — `/app/dashboard` only, verified by
+re-reading `DashboardPage`/`SummaryCard`/`RecentLetters`/`QuickActions`
+directly before editing.
+
+**Implemented**: a deliberate four-zone composition (header, metrics,
+registry activity, quick actions) replacing four independently-styled
+cards; a header with a neutral eyebrow/subtitle (no invented
+system-health or security claim — grepped and tested for this
+explicitly); every summary card now shares one consistent treatment
+(a left accent bar, a corner-bracket mark, tabular numerals, a
+restrained hover lift) rather than a dozen bespoke styles; Recent
+Letters reuses the existing accent-bar-on-hover language from
+`Sidebar`/`NotificationItem` and gained a real (not fabricated) "N
+shown" count; Quick Actions became one column of tiles with a
+decorative, `aria-hidden` directional arrow. One subtle whole-page
+entrance fade is the only new motion — no per-card stagger, no chart,
+no trend, no fabricated percentage or comparison.
+
+**Explicitly unchanged**: every metric, fetch, and role-based branch in
+`DashboardPage.jsx` — confirmed via `git diff` that all four
+`role === '...'` conditionals fall outside this phase's changed lines.
+No new dependency; no system-status indicator (still no honest signal
+to back one).
+
+Test suite grown to **354 frontend tests** (48 files, 349 + 5 new) and
+unchanged at **487 backend tests**, run 3 consecutive times with
+identical results — every pre-existing Dashboard assertion (wrong-role
+requests never fire, independent widget failure, no fabricated zero,
+exact Letter-link hrefs) passed completely unmodified. Full
+implementation record in `docs/architecture/ui-design-system.md`'s own
+"Phase 5I.4A" section.
+
+### Phase 5I.3 — Core UI Primitives & Interaction System Implementation
+
+Complete (prior phase). The third implementation pass against the Phase 5I proposal —
+**reusable primitives only**, deliberately excluding Dashboard, Letter
+pages, Administration pages, Documents, the Notification panel, and
+Authentication pages, each explicitly reserved for its own later phase.
+
+**Implemented**: a new shared `styles/primitives.module.css` (button
+variants, table base, dialog base) that `AdminPages.module.css`,
+`LetterFilters.module.css`, `DocumentUploadForm.module.css`,
+`DataTable.module.css`, `LetterTable.module.css`,
+`ConfirmDialog.module.css`, `ArchiveConfirmDialog.module.css`,
+`Topbar.module.css`, and `NotificationItem.module.css` now `compose`
+from via CSS Modules' native mechanism — no new component, every page
+keeps its exact existing markup. A global form-control base (input/
+select/textarea/checkbox) was added to `global.css`, since CSS Modules'
+`composes` cannot target the descendant selectors most of this
+codebase's form duplication was written with — this reaches every
+existing form with zero markup change and let five duplicate per-file
+blocks be deleted outright. `StatusBadge` gained a small `aria-hidden`
+shape per tone (circle/diamond/square); `EmptyState` gained a small
+CSS-only document glyph; `NotificationItem`'s unread state gained a
+left accent bar in addition to its existing background/weight signals;
+`ConfirmDialog`/`ArchiveConfirmDialog` gained a short entrance
+animation, fully covered by the existing reduced-motion foundation.
+Two new test files (`StatusBadge.test.jsx`, `EmptyState.test.jsx`)
+close a real prior gap — neither primitive had dedicated tests before.
+
+**A scope correction, recorded honestly**: an initial edit touched
+`pages/LetterFormPage.module.css` — on review this was an overreach
+into explicitly-prohibited "Letter page redesign," so it was reverted
+before continuing.
+
+**Explicitly not done this phase**: no Dashboard/Letter-page/
+Administration-page/Document-page/Notification-panel/Authentication-
+page redesign; no boot screen; no loading glyph; no drag-and-drop
+upload (a deliberate judgment call — the existing click-to-browse input
+already satisfies the upload contract without new event-handling risk).
+Zero dependencies installed.
+
+Test suite grown to **349 frontend tests** (48 files, 335 + 14 new) and
+unchanged at **487 backend tests**, run 3 consecutive times with
+identical results; `npm run build` succeeded (CSS actually shrank
+slightly from the deleted duplicate blocks, net of the new shared
+primitives file). Full implementation record in
+`docs/architecture/ui-design-system.md`'s own "Phase 5I.3" section.
+
+### Phase 5I.2 — App Shell & Navigation Visual Implementation
+
+Complete (prior phase). The second implementation pass against the Phase 5I
+proposal — **App Shell and Navigation only** — verified by re-reading
+`AppShell`/`Sidebar`/`Topbar`, `navigationConfig.js`, `AuthContext`, and
+`routes/index.jsx` directly before making any change.
+
+**Implemented**: a visually redesigned `Sidebar` (a small CSS-only
+brand mark, a 3-letter monogram glyph per nav item — disambiguated
+across all three roles' real labels, an active-route accent bar, a
+desktop collapse toggle with no persistence, and a mobile drawer with a
+real focus trap, Escape, and backdrop, generalized from
+`ConfirmDialog`'s own pattern); a refined `Topbar` (a hamburger toggle,
+clearer identity/role typography) with `NotificationBell`'s
+polling/API/behavior completely untouched (only its badge gained a
+small border); the AJ-OVA Labs footer, now actually rendered once in
+`AppShell` on every authenticated screen (`PRODUCTION_CREDIT`, unchanged
+text from Phase 5I.1); and a shell-level content max-width for very
+wide monitors. `navigationConfig.js`'s role-derived list is
+byte-for-byte unchanged — this phase only changed how it's rendered.
+
+**A real testing-environment finding, recorded for future phases**:
+this project's test environment (jsdom) does not evaluate `@media`
+width queries at all — a control meant to be hidden-by-default and
+revealed by a media query is permanently untestable that way here; the
+mobile toggle is instead visible-by-default and hidden only at desktop
+width, which degrades correctly in a real browser while staying
+directly testable. Full reasoning in
+`docs/architecture/ui-design-system.md`'s own "Phase 5I.2" section.
+
+**Explicitly not done this phase**: no table/form/dialog consolidation,
+no Dashboard/Letter/Administration/Documents/notification-panel/
+authentication redesign, no boot screen, no loading glyph, no system-
+status indicator (no honest signal exists to back one). Zero
+dependencies installed; zero backend/route/service/`AuthContext`/
+authorization files touched (grepped the diff for
+`jwt`/`decode`/`localStorage`/role-string comparisons/
+`recipient_user_id` — zero matches in `src/layouts/`).
+
+Test suite grown to **335 frontend tests** (46 files, 320 + 15 new) and
+unchanged at **487 backend tests**, run 3 consecutive times with
+identical results; `npm run build` succeeded (JS bundle grew from
+368.44 KB to 371.47 KB — the new shell markup itself, zero new
+dependency). Full implementation record in
+`docs/architecture/ui-design-system.md`'s own "Phase 5I.2" section.
+
+### Phase 5I.1 — Global Visual Foundation Implementation
+
+Complete (prior phase). The
+first implementation pass against the Phase 5I proposal —
+**global foundation only**, verified by re-reading the actual current
+source (`tokens.css`, `global.css`, `App.jsx`/`main.jsx`/`AppShell`/
+`Sidebar`/`Topbar` and their CSS Modules, `StatusBadge`/
+`NotificationItem`) before making any change, not assumed from the
+review document.
+
+**Implemented**: additive color tokens (`--color-text-secondary`,
+`--color-border-subtle`, `--color-surface-elevated`, `--color-accent`,
+`--color-info`/`-bg`, `--color-success-bg`, `--color-highlight-bg` —
+every Phase 5A token unchanged, nothing renamed) and a 5-value motion
+scale in `tokens.css`; a static CSS-only atmospheric background wash, a
+strengthened `:focus-visible` treatment, a global
+`prefers-reduced-motion` safety net, and one narrow global interaction-
+transition rule in `global.css`; and the fix for the confirmed ACTIVE-
+badge/unread-notification color bug found during the Phase 5I review
+(`StatusBadge.module.css`/`NotificationItem.module.css` each now
+reference their own correct token instead of both incorrectly sharing
+`--color-warning-bg`). The existing but previously unused
+`PRODUCTION_CREDIT` constant's text was updated to the approved footer
+wording — not yet rendered anywhere.
+
+**Explicitly not done this phase**: no Sidebar/Topbar/Dashboard/Letter/
+Administration/Documents/Notifications/Authentication screen was
+redesigned; no boot screen, loading animation, collapsible sidebar,
+mobile drawer, or visible footer was added; zero dependencies were
+installed; no API/service/route/`AuthContext`/authorization/business-
+rule file was touched.
+
+Test suite unchanged in count — **320 frontend tests** (44 files) and
+**487 backend tests** — run 3 consecutive times with identical results;
+`npm run build` succeeded with the JS bundle byte-identical (368.44 KB),
+confirming zero dependency change. Full implementation record in
+`docs/architecture/ui-design-system.md`'s own "Phase 5I.1" section.
+
+### Phase 5I — Futuristic UI / Visual Architecture & Design System
+Review
+
+Complete (prior phase). **Review only — no code, test, dependency, backend,
+or database file was changed.** With the functional V1 scope now frozen
+(every screen through Phase 5H.1 implemented and its automated suite
+green), this phase inspected the actual current frontend — every
+layout, component, and page CSS Module, the design tokens, and the
+relevant tests — against a "futuristic enterprise command center"
+design direction, and produced a complete, actionable visual-system
+proposal without writing a single line of implementation code.
+
+**Audit findings (confirmed by direct code reading, not assumption)**:
+a real, pre-existing color-token bug — the ACTIVE status badge and the
+unread-notification row both incorrectly reuse the `--color-warning-bg`
+token, which visually conflates "active/good" and "unread" with
+"warning"; and several genuinely duplicated CSS patterns (the
+confirmation-dialog, data-table, and form-field styles are each
+hand-written twice or more across otherwise visually consistent
+screens). Both are documented as fix targets for the eventual
+implementation phase, not fixed now.
+
+**Proposal**: an extended color/typography/spacing/shape/motion token
+system (corrects the bug above, adds `--color-accent`/`--color-info`/
+`--color-highlight-bg`/`--color-success-bg` and a small motion-timing
+scale — no existing token is removed); a collapsible sidebar and mobile
+drawer (the one confirmed structural navigation gap — the current
+mobile layout has no drawer at all); a three-tier loading system (a
+short, honest boot screen with no fabricated "securing/encrypting"
+claims, page-level skeletons, and the existing button-level loading
+pattern, unchanged); a status-badge icon layer (shape, not just color,
+per WCAG); and a wired-up AJ-OVA Labs footer (`constants/app.js`
+already has an unused, differently-worded credit string ready to be
+replaced). **Every recommendation is achievable with the exact
+dependency set already installed — zero new packages.**
+
+Explicitly preserved, restated as hard constraints: all API contracts,
+backend authorization, classified-record 404-collapsing behavior (no
+403/404 distinction is added for Letters), document security, and every
+existing test's functional assertions. Full record, including a
+34-section design specification and a manual E2E checklist for the
+eventual implementation phase, in
+`docs/architecture/ui-design-system.md`.
+
+**Not implemented, matching the approved scope exactly:** every
+recommendation above — this phase is architecture and documentation
+only. The next phase (visual implementation) begins only when
+explicitly instructed.
+
+### Phase 5H.1 — Complete Existing Category & Classification Admin UI
+
+Complete (prior phase). A confirmed frontend completion gap found during Phase 5H's
 own manual E2E verification: `/app/system/categories` and
 `/app/system/classifications` still rendered `PlaceholderPage` ("planned
 but not yet implemented"), even though both resources' backend

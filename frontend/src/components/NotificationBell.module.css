@@ -19,9 +19,43 @@
   background: var(--color-bg);
 }
 
+/**
+ * Phase 5I.6 (final handover audit) — a CSS-only bell outline
+ * replacing a raw 🔔 emoji, the one colorful, OS-rendered pictograph
+ * anywhere in the application; `--color-text-secondary` matches the
+ * understated icon color already used elsewhere (e.g. Sidebar's own
+ * nav glyphs). Purely decorative.
+ */
 .icon {
-  font-size: 1.1rem;
-  line-height: 1;
+  position: relative;
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.icon::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 11px;
+  height: 9px;
+  border: 1.5px solid var(--color-text-secondary);
+  border-bottom: none;
+  border-radius: 6px 6px 1px 1px;
+}
+
+.icon::after {
+  content: '';
+  position: absolute;
+  bottom: 1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 7px;
+  height: 2px;
+  border-bottom: 1.5px solid var(--color-text-secondary);
+  border-radius: 0 0 3px 3px;
 }
 
 .badge {
@@ -36,6 +70,7 @@
   justify-content: center;
   background: var(--color-danger);
   color: var(--color-primary-contrast);
+  border: 1.5px solid var(--color-surface);
   border-radius: 999px;
   font-size: 0.65rem;
   font-weight: var(--font-weight-bold);

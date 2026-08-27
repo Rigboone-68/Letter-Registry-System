@@ -128,6 +128,7 @@ export default function UserDetailPage() {
         <Link to="/app/admin/users" className={styles.backLink}>
           ← Back to users
         </Link>
+        <p className={styles.eyebrow}>User Management</p>
         <div className={styles.titleRow}>
           <h1>{user.full_name}</h1>
           <StatusBadge value={user.status} label={statusLabel(user.status)} domain="User" />

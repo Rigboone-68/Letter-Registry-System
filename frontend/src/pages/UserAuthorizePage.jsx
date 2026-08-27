@@ -62,7 +62,13 @@ export default function UserAuthorizePage() {
 
   return (
     <section className={styles.root}>
-      <h1>Authorize new User</h1>
+      <div className={styles.headerText}>
+        <p className={styles.eyebrow}>User Management</p>
+        <div className={styles.titleRow}>
+          <h1>Authorize new User</h1>
+          <span className={styles.headerMark} aria-hidden="true" />
+        </div>
+      </div>
       <form onSubmit={handleSubmit} noValidate className={styles.formCard}>
         {formError && <ErrorState message={formError} />}
 

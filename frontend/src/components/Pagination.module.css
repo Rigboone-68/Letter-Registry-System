@@ -1,3 +1,15 @@
+/**
+ * Polished spacing/state treatment (Phase 5I.3,
+ * docs/architecture/ui-design-system.md §14) — pure presentation; no
+ * page-number math, query parameter, or API request changed.
+ * `.controls button` stays a plain descendant selector rather than a
+ * composed class (CSS Modules' `composes` cannot target it — only
+ * every *other* number/Previous/Next button shares this one bare
+ * `<button>`, with `.current` layered on top for the active page), but
+ * its values are kept in visual parity with the shared `btnSecondary`
+ * treatment in `styles/primitives.module.css`.
+ */
+
 .root {
   display: flex;
   flex-wrap: wrap;
@@ -22,12 +34,16 @@
 
 .controls button {
   min-width: 2.25rem;
-  padding: var(--space-xs) var(--space-sm);
+  height: 2.25rem;
+  padding: 0 var(--space-sm);
   border: 1px solid var(--color-border-strong);
   background: var(--color-surface);
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: var(--font-size-sm);
+  transition: color var(--motion-instant) var(--motion-ease),
+    background-color var(--motion-instant) var(--motion-ease),
+    border-color var(--motion-instant) var(--motion-ease);
 }
 
 .controls button:hover:not(:disabled) {

@@ -1,0 +1,25 @@
+/**
+ * The one-time transition from the boot screen into the real
+ * application (Phase 5I.5, docs/architecture/ui-design-system.md
+ * §29) — a short opacity/translate settle using the existing
+ * `--motion-normal`/`--motion-ease` tokens, not a new duration. Runs
+ * exactly once, when `RouterProvider` first mounts; the global
+ * `prefers-reduced-motion` safety net in `styles/global.css` already
+ * collapses it to instant, so no local override is needed here.
+ */
+
+.appEnter {
+  height: 100%;
+  animation: appEnterIn var(--motion-normal) var(--motion-ease);
+}
+
+@keyframes appEnterIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -78,7 +78,13 @@ export default function AdminAuthorizePage() {
 
   return (
     <section className={styles.root}>
-      <h1>Authorize new Admin</h1>
+      <div className={styles.headerText}>
+        <p className={styles.eyebrow}>Administrator Management</p>
+        <div className={styles.titleRow}>
+          <h1>Authorize new Admin</h1>
+          <span className={styles.headerMark} aria-hidden="true" />
+        </div>
+      </div>
       <form onSubmit={handleSubmit} noValidate className={styles.formCard}>
         {formError && <ErrorState message={formError} />}
 

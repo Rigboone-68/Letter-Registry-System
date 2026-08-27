@@ -46,8 +46,12 @@ export default function CategoryListPage() {
   return (
     <section className={styles.root}>
       <div className={styles.header}>
-        <div>
-          <h1>Categories</h1>
+        <div className={styles.headerText}>
+          <p className={styles.eyebrow}>Category Master Data</p>
+          <div className={styles.titleRow}>
+            <h1>Categories</h1>
+            <span className={styles.headerMark} aria-hidden="true" />
+          </div>
           {data && <p className={styles.count}>{data.total} total</p>}
         </div>
         <div className={styles.headerActions}>

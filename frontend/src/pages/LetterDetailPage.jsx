@@ -142,15 +142,18 @@ export default function LetterDetailPage() {
           <Link to="/app/letters" className={styles.backLink}>
             ← Back to registry
           </Link>
-          <h1>{letter.reference_number}</h1>
-          <StatusBadge value={letter.status} label={statusLabel(letter.status)} />
+          <p className={styles.eyebrow}>Registry Record</p>
+          <div className={styles.titleRow}>
+            <h1>{letter.reference_number}</h1>
+            <StatusBadge value={letter.status} label={statusLabel(letter.status)} />
+          </div>
         </div>
         <div className={styles.actions}>
           <Link to={`/app/letters/${id}/edit`} className={styles.editLink}>
             Edit
           </Link>
           {letter.status !== 'ARCHIVED' && (
-            <button type="button" onClick={() => setShowArchiveDialog(true)}>
+            <button type="button" className={styles.archiveButton} onClick={() => setShowArchiveDialog(true)}>
               Archive Letter
             </button>
           )}
@@ -159,22 +162,42 @@ export default function LetterDetailPage() {
 
       {archiveError && <ErrorState message={archiveError} />}
 
-      <dl className={styles.grid}>
-        <Field label="Subject" value={letter.subject} />
-        <Field label="Received" value={formatDateTime(letter.received_at)} />
-        <Field label="Recorded" value={formatDateTime(letter.created_at)} />
-        <Field label="Last updated" value={formatDateTime(letter.updated_at)} />
+      <div className={styles.dossier}>
+        <div className={styles.dossierSection}>
+          <h2 className={styles.dossierHeading}>Correspondence</h2>
+          <dl className={styles.grid}>
+            <Field label="Subject" value={letter.subject} />
+            <Field label="Received" value={formatDateTime(letter.received_at)} />
+            <Field label="Recorded" value={formatDateTime(letter.created_at)} />
+            <Field label="Last updated" value={formatDateTime(letter.updated_at)} />
+          </dl>
+        </div>
 
-        <Field label="Source" value={letter.source_name} />
-        <Field label="Source location" value={letter.source_location} />
+        <div className={styles.dossierSection}>
+          <h2 className={styles.dossierHeading}>Source</h2>
+          <dl className={styles.grid}>
+            <Field label="Source" value={letter.source_name} />
+            <Field label="Source location" value={letter.source_location} />
+          </dl>
+        </div>
 
-        <Field label="Sender name" value={letter.sender_name} />
-        <Field label="Sender designation" value={letter.sender_designation} />
-        <Field label="Sender's department" value={letter.sender_department} />
-        <Field label="Sender address" value={letter.sender_address} />
+        <div className={styles.dossierSection}>
+          <h2 className={styles.dossierHeading}>Sender</h2>
+          <dl className={styles.grid}>
+            <Field label="Sender name" value={letter.sender_name} />
+            <Field label="Sender designation" value={letter.sender_designation} />
+            <Field label="Sender's department" value={letter.sender_department} />
+            <Field label="Sender address" value={letter.sender_address} />
+          </dl>
+        </div>
 
-        <Field label="Reason" value={letter.reason} />
-      </dl>
+        <div className={styles.dossierSection}>
+          <h2 className={styles.dossierHeading}>Additional details</h2>
+          <dl className={styles.grid}>
+            <Field label="Reason" value={letter.reason} />
+          </dl>
+        </div>
+      </div>
 
       {letter.text_content && (
         <div className={styles.content}>
@@ -184,7 +207,14 @@ export default function LetterDetailPage() {
       )}
 
       <div className={styles.documentsSection}>
-        <h2>Documents</h2>
+        <div className={styles.sectionHeaderRow}>
+          <h2>Documents</h2>
+          {!documentsLoading && !documentsError && documents && (
+            <span className={styles.docCount}>
+              {documents.length} {documents.length === 1 ? 'attachment' : 'attachments'}
+            </span>
+          )}
+        </div>
         <DocumentUploadForm letterId={id} onUploadSuccess={handleUploadSuccess} />
         {documentsLoading && <LoadingState label="Loading documents..." />}
         {!documentsLoading && documentsError && (

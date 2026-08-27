@@ -155,6 +155,7 @@ export default function DepartmentDetailPage() {
         <Link to="/app/system/departments" className={styles.backLink}>
           ← Back to departments
         </Link>
+        <p className={styles.eyebrow}>Department Administration</p>
         <div className={styles.titleRow}>
           <h1>{department.name}</h1>
           <StatusBadge value={department.status} label={statusLabel(department.status)} domain="Department" />

@@ -33,6 +33,13 @@ const RECENT_LETTERS_PAGE_SIZE = 5
  * the implementation brief): a failed request in one never blocks or
  * hides the others. A failed request renders "Unavailable"
  * (`SummaryCard`) or the existing `ErrorState` — never a silent zero.
+ *
+ * Phase 5I.4A (docs/architecture/ui-design-system.md) is a visual-only
+ * recomposition into a header/metrics/activity/actions layout — no
+ * metric, request, role branch, or fetch above was added, removed, or
+ * reordered; every string the new header renders ("Registry Overview,"
+ * the subtitle) is a neutral section label, never a system-health or
+ * security claim this application has no data to back.
  */
 export default function DashboardPage() {
   const { user } = useAuth()
@@ -215,7 +222,16 @@ export default function DashboardPage() {
 
   return (
     <div className={styles.root}>
-      <h1>Dashboard</h1>
+      <header className={styles.header}>
+        <p className={styles.eyebrow}>Registry Overview</p>
+        <div className={styles.headerRow}>
+          <h1>Dashboard</h1>
+          <span className={styles.headerMark} aria-hidden="true" />
+        </div>
+        <p className={styles.subtitle}>
+          Current registry activity and quick actions for your role.
+        </p>
+      </header>
 
       <section aria-label="Summary" className={styles.cards}>
         {cards.map(({ key, ...card }) => (
@@ -223,19 +239,28 @@ export default function DashboardPage() {
         ))}
       </section>
 
-      <section className={styles.section}>
-        <h2>Recent Letters</h2>
-        <RecentLetters
-          letters={recentLetters.items}
-          loading={recentLetters.loading}
-          error={recentLetters.error}
-        />
-      </section>
+      <div className={styles.grid}>
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <h2>Recent Letters</h2>
+            {!recentLetters.loading && !recentLetters.error && (
+              <p className={styles.sectionMeta}>{recentLetters.items.length} shown</p>
+            )}
+          </div>
+          <RecentLetters
+            letters={recentLetters.items}
+            loading={recentLetters.loading}
+            error={recentLetters.error}
+          />
+        </section>
 
-      <section className={styles.section}>
-        <h2>Quick Actions</h2>
-        <QuickActions role={role} />
-      </section>
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <h2>Quick Actions</h2>
+          </div>
+          <QuickActions role={role} />
+        </section>
+      </div>
     </div>
   )
 }

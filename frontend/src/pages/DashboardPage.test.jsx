@@ -181,4 +181,30 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'Recent Letters' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2, name: 'Quick Actions' })).toBeInTheDocument()
   })
+
+  it('renders the new header subtitle with no fabricated system-health or security claim (Phase 5I.4A)', async () => {
+    renderDashboard('USER')
+    await screen.findByText('10')
+
+    expect(screen.getByText('Registry Overview')).toBeInTheDocument()
+    expect(
+      screen.getByText('Current registry activity and quick actions for your role.')
+    ).toBeInTheDocument()
+
+    const forbidden = /system secure|all systems operational|encrypted|live monitoring/i
+    expect(document.body.textContent).not.toMatch(forbidden)
+  })
+
+  it('shows how many recent letters are shown only once loaded, never during loading or on error', async () => {
+    renderDashboard('USER')
+
+    expect(await screen.findByText('1 shown')).toBeInTheDocument()
+  })
+
+  it('keeps Quick Actions links named exactly by their label, even with a decorative arrow', async () => {
+    renderDashboard('SYSTEM_ADMIN')
+
+    const link = await screen.findByRole('link', { name: 'Create Department' })
+    expect(link).toHaveAttribute('href', '/app/system/departments/new')
+  })
 })

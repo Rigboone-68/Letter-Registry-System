@@ -4,10 +4,37 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import DeactivatedAccountNotice from '../components/DeactivatedAccountNotice'
 import ErrorState from '../components/ErrorState'
 import PendingApprovalNotice from '../components/PendingApprovalNotice'
+import { APP_NAME, APP_SHORT_NAME, PRODUCTION_CREDIT } from '../constants/app'
 import { useAuth } from '../context/AuthContext'
 import { DEACTIVATED_MESSAGE, PENDING_APPROVAL_MESSAGE } from '../services/authService'
 import { validateLoginForm } from '../utils/formValidation'
 import styles from './AuthPages.module.css'
+
+/**
+ * The shared entrance chrome for every Login state (form, pending,
+ * deactivated) — Phase 5I.4E (docs/architecture/ui-design-system.md
+ * §28). Purely decorative/structural: the brand mark and
+ * `PRODUCTION_CREDIT` line are `aria-hidden`/plain text respectively,
+ * never affecting the accessible name or behavior of whatever real
+ * content (`children`) it wraps.
+ */
+function AuthShell({ children }) {
+  return (
+    <div className={styles.wrapper}>
+      <div className={styles.shell}>
+        <div className={styles.brand}>
+          <span className={styles.brandMark} aria-hidden="true" />
+          <div className={styles.brandCopy}>
+            <p className={styles.brandEyebrow}>{APP_SHORT_NAME} Operational Registry</p>
+            <p className={styles.brandName}>{APP_NAME}</p>
+          </div>
+        </div>
+        {children}
+        <p className={styles.credit}>{PRODUCTION_CREDIT}</p>
+      </div>
+    </div>
+  )
+}
 
 /**
  * Production login page (docs/architecture/frontend.md — Phase 5B §3-5).
@@ -85,27 +112,28 @@ export default function LoginPage() {
 
   if (accountNotice === 'pending') {
     return (
-      <div className={styles.wrapper}>
+      <AuthShell>
         <div className={styles.card}>
           <PendingApprovalNotice onBackToLogin={resetToForm} />
         </div>
-      </div>
+      </AuthShell>
     )
   }
 
   if (accountNotice === 'deactivated') {
     return (
-      <div className={styles.wrapper}>
+      <AuthShell>
         <div className={styles.card}>
           <DeactivatedAccountNotice onBackToLogin={resetToForm} />
         </div>
-      </div>
+      </AuthShell>
     )
   }
 
   return (
-    <div className={styles.wrapper}>
+    <AuthShell>
       <form className={styles.card} onSubmit={handleSubmit} noValidate aria-labelledby="login-heading">
+        <p className={styles.formEyebrow}>Account Access</p>
         <h1 id="login-heading">Sign in</h1>
 
         {restoreError && <ErrorState message={restoreError} onRetry={retryRestoreSession} />}
@@ -159,6 +187,6 @@ export default function LoginPage() {
           Need an account? <Link to="/signup">Sign up</Link>
         </p>
       </form>
-    </div>
+    </AuthShell>
   )
 }

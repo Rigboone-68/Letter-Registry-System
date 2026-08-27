@@ -1,3 +1,11 @@
+/**
+ * Registry-activity row treatment (Phase 5I.4A,
+ * docs/architecture/ui-design-system.md) — the same accent-bar-on-hover
+ * language `layouts/Sidebar.module.css`/`NotificationItem.module.css`
+ * already use, reused here rather than a third variant. No API request,
+ * filter, pagination, or Letter field was added.
+ */
+
 .list {
   list-style: none;
   margin: 0;
@@ -12,19 +20,28 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-sm);
-  padding: var(--space-sm) 0;
+  padding: var(--space-sm) var(--space-xs);
   border-bottom: 1px solid var(--color-border);
+  border-left: 3px solid transparent;
+  transition: background-color var(--motion-instant) var(--motion-ease),
+    border-color var(--motion-instant) var(--motion-ease);
 }
 
 .item:last-child {
   border-bottom: none;
 }
 
+.item:hover,
+.item:focus-within {
+  background: var(--color-bg);
+  border-left-color: var(--color-primary);
+}
+
 .link {
   display: flex;
   flex-direction: column;
   gap: var(--space-2xs);
-  color: var(--color-text);
+  color: var(--color-text-primary);
   text-decoration: none;
   min-width: 0;
 }
@@ -35,8 +52,9 @@
 }
 
 .reference {
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-bold);
   color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .subject {
@@ -58,6 +76,7 @@
 .date {
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 768px) {

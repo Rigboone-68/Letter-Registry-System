@@ -59,7 +59,13 @@ export default function ClassificationCreatePage() {
 
   return (
     <section className={styles.root}>
-      <h1>Create Classification</h1>
+      <div className={styles.headerText}>
+        <p className={styles.eyebrow}>Classification Master Data</p>
+        <div className={styles.titleRow}>
+          <h1>Create Classification</h1>
+          <span className={styles.headerMark} aria-hidden="true" />
+        </div>
+      </div>
       <form onSubmit={handleSubmit} noValidate className={styles.formCard}>
         {formError && <ErrorState message={formError} />}
 

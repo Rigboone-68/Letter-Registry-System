@@ -57,7 +57,13 @@ export default function CategoryCreatePage() {
 
   return (
     <section className={styles.root}>
-      <h1>Create Category</h1>
+      <div className={styles.headerText}>
+        <p className={styles.eyebrow}>Category Master Data</p>
+        <div className={styles.titleRow}>
+          <h1>Create Category</h1>
+          <span className={styles.headerMark} aria-hidden="true" />
+        </div>
+      </div>
       <form onSubmit={handleSubmit} noValidate className={styles.formCard}>
         {formError && <ErrorState message={formError} />}
 

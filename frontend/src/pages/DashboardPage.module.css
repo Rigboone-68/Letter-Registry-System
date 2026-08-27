@@ -1,18 +1,84 @@
+/**
+ * Dashboard visual transformation (Phase 5I.4A,
+ * docs/architecture/ui-design-system.md, "Precision Ledger"). A
+ * deliberate composition — header / metrics / activity+actions — not a
+ * restyle of independent cards. A single, restrained entrance fade on
+ * mount (`dashboardEnter`) is the only page-level motion; every other
+ * transition lives on the individual primitive it belongs to
+ * (`SummaryCard`/`RecentLetters`/`QuickActions`).
+ */
+
 .root {
   display: flex;
   flex-direction: column;
   gap: var(--space-lg);
+  animation: dashboardEnter var(--motion-normal) var(--motion-ease);
 }
 
-.root h1 {
+@keyframes dashboardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.headerRow h1 {
   margin: 0;
   font-size: var(--font-size-xl);
 }
 
+/* A thin precision line, not a logo — purely decorative. */
+.headerMark {
+  width: 24px;
+  height: 3px;
+  flex-shrink: 0;
+  background: var(--color-primary);
+}
+
+.subtitle {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: var(--space-md);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--space-md);
+  align-items: start;
 }
 
 .section {
@@ -22,9 +88,29 @@
   padding: var(--space-md);
 }
 
-.section h2 {
-  margin: 0 0 var(--space-md);
+.sectionHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.sectionHeader h2 {
+  margin: 0;
   font-size: var(--font-size-lg);
+}
+
+.sectionMeta {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 1024px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 768px) {

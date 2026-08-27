@@ -1,25 +1,104 @@
+/**
+ * Precision Ledger sidebar (Phase 5I.2,
+ * docs/architecture/ui-design-system.md §6/§27). Restrained geometry
+ * (rectangles/hairlines, no glow), a static CSS-only brand mark, and
+ * two independent visual states — desktop collapse and a mobile
+ * drawer — layered onto the same persistent-chrome, flat-bordered
+ * surface treatment the rest of the shell already uses (no shadow on
+ * the sidebar itself; a shadow appears only in the mobile-drawer state,
+ * where it genuinely floats above the page, matching the "flat vs.
+ * floating" hierarchy established in Phase 5I).
+ */
+
 .root {
-  width: 220px;
+  width: 240px;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
   background: var(--color-surface);
   border-right: 1px solid var(--color-border);
+  transition: width var(--motion-normal) var(--motion-ease);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
   padding: var(--space-md);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-md);
+  letter-spacing: 0.02em;
+}
+
+.brandMark {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border: 1.5px solid var(--color-primary);
+  border-radius: 3px;
+}
+
+.brandMark::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border: 1px solid var(--color-accent);
+  border-radius: 1px;
+}
+
+.brandLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collapseToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--font-size-md);
+  line-height: 1;
+}
+
+.collapseToggle:hover {
+  background: var(--color-bg);
 }
 
 .list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: var(--space-sm);
   display: flex;
   flex-direction: column;
   gap: var(--space-2xs);
+  overflow-y: auto;
 }
 
 .link {
-  display: block;
-  padding: var(--space-sm) var(--space-md);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-sm);
   border-radius: var(--radius-sm);
-  color: var(--color-text);
+  border-left: 3px solid transparent;
+  color: var(--color-text-primary);
   text-decoration: none;
   font-size: var(--font-size-sm);
 }
@@ -29,19 +108,108 @@
 }
 
 .linkActive {
-  background: var(--color-primary);
-  color: var(--color-primary-contrast);
+  background: var(--color-highlight-bg);
+  border-left-color: var(--color-primary);
+  font-weight: var(--font-weight-medium);
 }
 
-@media (max-width: 767px) {
-  .root {
-    width: 100%;
-    border-right: none;
-    border-bottom: 1px solid var(--color-border);
+/**
+ * Phase 5I.6A — a plain, unboxed icon container replacing the old
+ * bordered monogram "chip" (the bordered rectangle read as a text
+ * label, not an icon, which is exactly what this phase corrected).
+ * `color` is the one active-state mechanism the inline SVGs in
+ * `Sidebar.jsx` key off via `stroke="currentColor"` — no separate
+ * icon-specific active state.
+ */
+.linkGlyph {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+}
+
+.linkGlyph svg {
+  width: 100%;
+  height: 100%;
+}
+
+.linkActive .linkGlyph {
+  color: var(--color-primary);
+}
+
+.linkLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Desktop collapse (>=768px only — the mobile drawer below always
+   shows full labels regardless of this state; collapse is a
+   desktop-only affordance, per the approved design). */
+@media (min-width: 768px) {
+  .collapsed {
+    width: 64px;
   }
 
-  .list {
-    flex-direction: row;
-    flex-wrap: wrap;
+  .collapsed .brandLabel,
+  .collapsed .linkLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .collapsed .link {
+    justify-content: center;
+  }
+}
+
+/* Mobile drawer (<768px) — the same <nav> becomes a fixed, off-canvas
+   panel; `visibility` (delayed on close, immediate on open) keeps its
+   links out of the Tab order while closed, since `transform` alone
+   does not remove an off-screen element from keyboard reach. */
+@media (max-width: 767px) {
+  .root {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: 84vw;
+    max-width: 320px;
+    z-index: 200;
+    box-shadow: var(--shadow-md);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform var(--motion-normal) var(--motion-ease),
+      visibility 0s linear var(--motion-normal);
+  }
+
+  .mobileOpen {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform var(--motion-normal) var(--motion-ease), visibility 0s linear 0s;
+  }
+
+  .collapseToggle {
+    display: none;
+  }
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 150;
+}
+
+@media (min-width: 768px) {
+  .backdrop {
+    display: none;
   }
 }

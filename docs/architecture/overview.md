@@ -162,7 +162,35 @@ workflow a regular User goes through, not a separate one. As of Phase
 end-to-end — list/create/update/activate/deactivate, at
 `/app/system/categories*`/`/app/system/classifications*` — a frontend
 completion task, since the underlying backend API has existed
-unchanged since Phase 4B. As of Phase
+unchanged since Phase 4B. Phase 5I reviewed the entire frontend's visual
+design (colors, typography, navigation, loading, status presentation)
+against a "futuristic enterprise command center" direction and produced
+a proposal in `docs/architecture/ui-design-system.md`; Phase 5I.1 then
+implemented that proposal's global-foundation slice (design tokens,
+global CSS, a confirmed status-color bug fix), Phase 5I.2 implemented
+the App Shell & Navigation slice (Sidebar/Topbar redesign, a mobile
+drawer, the footer), Phase 5I.3 implemented the Core UI Primitives
+slice (shared button/table/dialog styling, a global form-control base,
+a StatusBadge shape layer), Phase 5I.4A visually transformed
+`/app/dashboard` itself (header/metrics/activity/actions composition),
+Phase 5I.4B visually transformed the Letter registry family
+(registry header, filter console, accent-barred table, record dossier),
+Phase 5I.4C visually transformed the entire administration
+workspace (Departments/Administrators/Users/Authorizations/Designations/
+Categories/Classifications) into one console-wide visual language,
+Phase 5I.4D visually transformed Documents (within the Letter dossier)
+and Notifications (Topbar panel, rows, and the full notification page),
+Phase 5I.4E visually transformed the unauthenticated Login/Signup
+entrance into one shared brand identity, Phase 5I.5 added the
+application's boot/loading identity (gated on `AuthContext`'s own
+existing `status === 'loading'` window, `AuthContext.jsx` itself
+untouched), Phase 5I.6 performed a final polish/handover audit
+across all nine prior phases (fixing one genuine defect —
+`NotificationBell`'s emoji icon — and confirming everything else
+either already consistent or intentional), and Phase 5I.6A replaced
+the Sidebar's 3-letter navigation monograms with actual geometric
+icons — none of these phases changes any role capability, metric, filter, or
+the role-to-navigation data described in this document. As of Phase
 4D, a System Admin can also upload, list, and download any Letter's
 documents regardless of department — the one place document access is
 deliberately *not* restricted the way Letter *creation* is (System Admin

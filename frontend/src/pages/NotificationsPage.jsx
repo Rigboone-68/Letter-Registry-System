@@ -20,6 +20,13 @@ import styles from './NotificationsPage.module.css'
  * list). No `is_read` filter exists on the backend (confirmed,
  * `docs/architecture/document-notification-ui.md` §2.1) — none is
  * offered here.
+ *
+ * Phase 5I.4D (docs/architecture/ui-design-system.md §12/§13) adds the
+ * same eyebrow/accent-line header language used across the rest of the
+ * application ("Operational Signals" — a concise, honest label for the
+ * feature that exists today, never a monitoring/security claim) — no
+ * unread filter, search, category, or bulk control was added; none of
+ * those exist in the backend contract.
  */
 export default function NotificationsPage() {
   const [page, setPage] = useState(1)
@@ -81,16 +88,25 @@ export default function NotificationsPage() {
   return (
     <section className={styles.root}>
       <div className={styles.header}>
-        <div>
-          <h1>Notifications</h1>
+        <div className={styles.headerText}>
+          <p className={styles.eyebrow}>Operational Signals</p>
+          <div className={styles.titleRow}>
+            <h1>Notifications</h1>
+            <span className={styles.headerMark} aria-hidden="true" />
+          </div>
           {data && <p className={styles.count}>{data.total} total</p>}
         </div>
         <div className={styles.headerActions}>
-          <button type="button" onClick={fetchNotifications}>
+          <button type="button" className={styles.refreshButton} onClick={fetchNotifications}>
             Refresh
           </button>
           {hasUnread && (
-            <button type="button" onClick={handleMarkAllRead} disabled={markingAll}>
+            <button
+              type="button"
+              className={styles.markAllButton}
+              onClick={handleMarkAllRead}
+              disabled={markingAll}
+            >
               {markingAll ? 'Marking…' : 'Mark all read'}
             </button>
           )}

@@ -23,6 +23,14 @@ const ACCEPT_ATTRIBUTE = ALLOWED_DOCUMENT_EXTENSIONS.map((extension) => `.${exte
  * "Replacement" is not a concept this form has any notion of — every
  * successful submission is simply another upload; the prior document
  * (if any) is never referenced, hidden, or implied to be superseded.
+ *
+ * Phase 5I.4D (docs/architecture/ui-design-system.md §7) adds a visual
+ * progress bar bound to the same real `progress` percentage the
+ * existing text already renders — it only ever appears when a real
+ * percentage is known (`progress != null`); the indeterminate case
+ * (`progress === null`, when `progressEvent.total` isn't reported)
+ * still falls back to text-only, exactly as before, with no fake or
+ * animated fill standing in for network state.
  */
 export default function DocumentUploadForm({ letterId, onUploadSuccess }) {
   const [file, setFile] = useState(null)
@@ -76,7 +84,10 @@ export default function DocumentUploadForm({ letterId, onUploadSuccess }) {
       {formError && <ErrorState message={formError} />}
 
       <div className={styles.field}>
-        <label htmlFor="document-file">Upload document</label>
+        <label htmlFor="document-file" className={styles.label}>
+          <span className={styles.labelIcon} aria-hidden="true" />
+          Upload document
+        </label>
         <input
           id="document-file"
           name="file"
@@ -99,9 +110,16 @@ export default function DocumentUploadForm({ letterId, onUploadSuccess }) {
       </div>
 
       {uploading && (
-        <p role="status" className={styles.progress}>
-          {progress != null ? `Uploading… ${progress}%` : 'Uploading…'}
-        </p>
+        <div className={styles.progressWrap}>
+          <p role="status" className={styles.progress}>
+            {progress != null ? `Uploading… ${progress}%` : 'Uploading…'}
+          </p>
+          {progress != null && (
+            <div className={styles.progressTrack} aria-hidden="true">
+              <div className={styles.progressFill} style={{ width: `${progress}%` }} />
+            </div>
+          )}
+        </div>
       )}
 
       <button type="submit" className={styles.submit} disabled={uploading}>

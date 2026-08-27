@@ -1,5 +1,7 @@
 .root {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
   padding: var(--space-2xs) var(--space-sm);
   border-radius: var(--radius-sm);
   font-size: var(--font-size-sm);
@@ -8,8 +10,23 @@
   white-space: nowrap;
 }
 
+/**
+ * A small, `aria-hidden` shape per tone (Phase 5I.3,
+ * docs/architecture/ui-design-system.md §12/§20) — a shape
+ * differentiator on top of color and text, never a replacement for
+ * either. `currentColor` means it always matches whatever text color
+ * the tone below already sets.
+ */
+.indicator {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: currentColor;
+}
+
 .positive {
-  background: var(--color-warning-bg);
+  background: var(--color-success-bg);
   color: var(--color-success);
   border-color: var(--color-success);
 }
@@ -26,8 +43,17 @@
   border-color: var(--color-warning-text);
 }
 
+.warning .indicator {
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+
 .negative {
   background: var(--color-danger-bg);
   color: var(--color-danger);
   border-color: var(--color-danger);
+}
+
+.negative .indicator {
+  border-radius: 1px;
 }

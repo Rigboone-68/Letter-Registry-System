@@ -1,22 +1,55 @@
+/**
+ * Precision Ledger metric card (Phase 5I.4A,
+ * docs/architecture/ui-design-system.md). One consistent treatment for
+ * every metric — never a bespoke style per card — a left accent bar,
+ * a small corner-bracket mark, and a restrained hover lift using the
+ * existing `--shadow-sm`/motion tokens. No chart, trend, delta, or
+ * fabricated comparison of any kind.
+ */
+
 .root {
-  background: var(--color-surface);
+  position: relative;
+  background: var(--color-surface-elevated);
   border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-primary);
   border-radius: var(--radius-md);
   padding: var(--space-md);
   min-width: 0;
+  transition: box-shadow var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
+}
+
+.root:hover,
+.root:focus-within {
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+.corner {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-top: 1.5px solid var(--color-border-strong);
+  border-right: 1.5px solid var(--color-border-strong);
 }
 
 .label {
   margin: 0 0 var(--space-xs);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
 }
 
 .value {
   margin: 0;
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-bold);
-  color: var(--color-text);
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .error {

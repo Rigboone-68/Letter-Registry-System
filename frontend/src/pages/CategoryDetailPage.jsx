@@ -155,6 +155,7 @@ export default function CategoryDetailPage() {
         <Link to="/app/system/categories" className={styles.backLink}>
           ← Back to categories
         </Link>
+        <p className={styles.eyebrow}>Category Master Data</p>
         <div className={styles.titleRow}>
           <h1>{category.name}</h1>
           <StatusBadge value={category.status} label={statusLabel(category.status)} domain="Category" />

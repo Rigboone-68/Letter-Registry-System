@@ -67,8 +67,12 @@ export default function UserAuthorizationsPage() {
   return (
     <section className={styles.root}>
       <div className={styles.header}>
-        <div>
-          <h1>User Authorizations</h1>
+        <div className={styles.headerText}>
+          <p className={styles.eyebrow}>Authorization Management</p>
+          <div className={styles.titleRow}>
+            <h1>User Authorizations</h1>
+            <span className={styles.headerMark} aria-hidden="true" />
+          </div>
           {data && <p className={styles.count}>{data.total} total</p>}
         </div>
         <div className={styles.headerActions}>

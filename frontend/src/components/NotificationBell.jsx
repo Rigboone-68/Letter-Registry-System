@@ -92,9 +92,10 @@ export default function NotificationBell() {
         aria-expanded={open}
         aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
       >
-        <span aria-hidden="true" className={styles.icon}>
-          🔔
-        </span>
+        {/* Phase 5I.6: a CSS-only outline glyph, not the raw emoji this
+            used to render — matches the restrained geometric icon
+            language everywhere else; purely decorative. */}
+        <span aria-hidden="true" className={styles.icon} />
         {unreadCount > 0 && (
           <span className={styles.badge} aria-hidden="true">
             {unreadCount > 99 ? '99+' : unreadCount}

@@ -3,9 +3,12 @@ import { useState } from 'react'
 import { LETTER_STATUS_OPTIONS } from '../services/letterService'
 import styles from './LetterFilters.module.css'
 
-const TEXT_FIELDS = [
+const CORRESPONDENCE_FIELDS = [
   { name: 'reference_number', label: 'Reference number' },
   { name: 'subject', label: 'Subject' },
+]
+
+const SENDER_SOURCE_FIELDS = [
   { name: 'sender_name', label: 'Sender name' },
   { name: 'sender_designation', label: 'Sender designation' },
   { name: 'sender_department', label: "Sender's department" },
@@ -49,6 +52,15 @@ const EMPTY_DRAFT = {
  * Local draft state only — nothing here triggers a request until Apply
  * is pressed (§9 of the brief: "avoid a request on every keystroke...
  * prefer explicit Apply for V1").
+ *
+ * Phase 5I.4B (docs/architecture/ui-design-system.md §4) recomposes this
+ * into a "Registry Search" console — the same 13 fields, now grouped
+ * into labeled `<fieldset>`s, with a purely decorative active-filter
+ * count (`activeCount`, computed by the caller from the exact same
+ * values this component already receives as `initialValues` — never a
+ * new filter, never a second source of truth). Every field's `name`/
+ * `id`/label text, the Apply/Clear behavior, and the draft-state model
+ * are unchanged.
  */
 export default function LetterFilters({
   initialValues,
@@ -57,6 +69,7 @@ export default function LetterFilters({
   categoryOptions,
   classificationOptions,
   departmentOptions,
+  activeCount = 0,
 }) {
   const [draft, setDraft] = useState({ ...EMPTY_DRAFT, ...initialValues })
 
@@ -75,111 +88,150 @@ export default function LetterFilters({
     onClear()
   }
 
+  function renderTextField(field) {
+    return (
+      <div className={styles.field} key={field.name}>
+        <label htmlFor={`filter-${field.name}`}>{field.label}</label>
+        <input
+          id={`filter-${field.name}`}
+          name={field.name}
+          type="text"
+          value={draft[field.name]}
+          onChange={handleChange}
+        />
+      </div>
+    )
+  }
+
+  const hasReferenceFilters = Boolean(categoryOptions || classificationOptions || departmentOptions)
+
   return (
     <form className={styles.root} onSubmit={handleSubmit} aria-label="Filter letters">
-      <div className={styles.grid}>
-        {TEXT_FIELDS.map((field) => (
-          <div className={styles.field} key={field.name}>
-            <label htmlFor={`filter-${field.name}`}>{field.label}</label>
+      <div className={styles.consoleHeader}>
+        <p className={styles.eyebrow}>Registry Search</p>
+        {activeCount > 0 && (
+          <span className={styles.activeBadge}>
+            {activeCount} active {activeCount === 1 ? 'filter' : 'filters'}
+          </span>
+        )}
+      </div>
+
+      <fieldset className={styles.group}>
+        <legend>Correspondence</legend>
+        <div className={styles.grid}>
+          {CORRESPONDENCE_FIELDS.map(renderTextField)}
+          <div className={styles.field}>
+            <label htmlFor="filter-status">Status</label>
+            <select id="filter-status" name="status" value={draft.status} onChange={handleChange}>
+              <option value="">Any</option>
+              {LETTER_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset className={styles.group}>
+        <legend>Sender &amp; source</legend>
+        <div className={styles.grid}>{SENDER_SOURCE_FIELDS.map(renderTextField)}</div>
+      </fieldset>
+
+      {hasReferenceFilters && (
+        <fieldset className={styles.group}>
+          <legend>Classification</legend>
+          <div className={styles.grid}>
+            {categoryOptions && (
+              <div className={styles.field}>
+                <label htmlFor="filter-category">Category</label>
+                <select
+                  id="filter-category"
+                  name="category_id"
+                  value={draft.category_id}
+                  onChange={handleChange}
+                >
+                  <option value="">Any</option>
+                  {categoryOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                      {option.status === 'INACTIVE' ? ' (inactive)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {classificationOptions && (
+              <div className={styles.field}>
+                <label htmlFor="filter-classification">Classification</label>
+                <select
+                  id="filter-classification"
+                  name="classification_id"
+                  value={draft.classification_id}
+                  onChange={handleChange}
+                >
+                  <option value="">Any</option>
+                  {classificationOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                      {option.status === 'INACTIVE' ? ' (inactive)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {departmentOptions && (
+              <div className={styles.field}>
+                <label htmlFor="filter-department">Department</label>
+                <select
+                  id="filter-department"
+                  name="department_id"
+                  value={draft.department_id}
+                  onChange={handleChange}
+                >
+                  <option value="">All departments</option>
+                  {departmentOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                      {option.status === 'INACTIVE' ? ' (inactive)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        </fieldset>
+      )}
+
+      <fieldset className={styles.group}>
+        <legend>Received date range</legend>
+        <div className={styles.grid}>
+          <div className={styles.field}>
+            <label htmlFor="filter-received-from">Received from</label>
             <input
-              id={`filter-${field.name}`}
-              name={field.name}
-              type="text"
-              value={draft[field.name]}
+              id="filter-received-from"
+              name="received_from"
+              type="date"
+              value={draft.received_from}
               onChange={handleChange}
             />
           </div>
-        ))}
 
-        <div className={styles.field}>
-          <label htmlFor="filter-status">Status</label>
-          <select id="filter-status" name="status" value={draft.status} onChange={handleChange}>
-            <option value="">Any</option>
-            {LETTER_STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {categoryOptions && (
           <div className={styles.field}>
-            <label htmlFor="filter-category">Category</label>
-            <select id="filter-category" name="category_id" value={draft.category_id} onChange={handleChange}>
-              <option value="">Any</option>
-              {categoryOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.name}
-                  {option.status === 'INACTIVE' ? ' (inactive)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {classificationOptions && (
-          <div className={styles.field}>
-            <label htmlFor="filter-classification">Classification</label>
-            <select
-              id="filter-classification"
-              name="classification_id"
-              value={draft.classification_id}
+            <label htmlFor="filter-received-to">Received to</label>
+            <input
+              id="filter-received-to"
+              name="received_to"
+              type="date"
+              value={draft.received_to}
               onChange={handleChange}
-            >
-              <option value="">Any</option>
-              {classificationOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.name}
-                  {option.status === 'INACTIVE' ? ' (inactive)' : ''}
-                </option>
-              ))}
-            </select>
+            />
           </div>
-        )}
-
-        {departmentOptions && (
-          <div className={styles.field}>
-            <label htmlFor="filter-department">Department</label>
-            <select
-              id="filter-department"
-              name="department_id"
-              value={draft.department_id}
-              onChange={handleChange}
-            >
-              <option value="">All departments</option>
-              {departmentOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.name}
-                  {option.status === 'INACTIVE' ? ' (inactive)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        <div className={styles.field}>
-          <label htmlFor="filter-received-from">Received from</label>
-          <input
-            id="filter-received-from"
-            name="received_from"
-            type="date"
-            value={draft.received_from}
-            onChange={handleChange}
-          />
         </div>
-
-        <div className={styles.field}>
-          <label htmlFor="filter-received-to">Received to</label>
-          <input
-            id="filter-received-to"
-            name="received_to"
-            type="date"
-            value={draft.received_to}
-            onChange={handleChange}
-          />
-        </div>
-      </div>
+      </fieldset>
 
       <div className={styles.actions}>
         <button type="submit" className={styles.apply}>

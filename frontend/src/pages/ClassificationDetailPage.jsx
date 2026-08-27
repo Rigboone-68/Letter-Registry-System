@@ -164,6 +164,7 @@ export default function ClassificationDetailPage() {
         <Link to="/app/system/classifications" className={styles.backLink}>
           ← Back to classifications
         </Link>
+        <p className={styles.eyebrow}>Classification Master Data</p>
         <div className={styles.titleRow}>
           <h1>{classification.name}</h1>
           <StatusBadge

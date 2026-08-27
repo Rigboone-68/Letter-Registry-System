@@ -1,41 +1,39 @@
+/**
+ * Consolidated onto the shared table primitives (Phase 5I.3,
+ * docs/architecture/ui-design-system.md §9/§25) — same base classes
+ * `DataTable.module.css` composes, plus the sortable-header treatment
+ * unique to this table (the only resource with backend-supported
+ * sorting). Visual only: no column, sort, filter, or pagination
+ * behavior changed.
+ *
+ * Phase 5I.4B adds one row-level accent (a left bar revealed on hover,
+ * the same technique `RecentLetters`/`NotificationItem` already use) —
+ * scoped to this file only, so the shared `DataTable` admin tables are
+ * unaffected — and tabular numerals on the reference number, since this
+ * is the registry's own flagship table.
+ */
+
 .scroller {
-  overflow-x: auto;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
+  composes: tableScroller from '../styles/primitives.module.css';
 }
 
 .table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--font-size-sm);
+  composes: table from '../styles/primitives.module.css';
   min-width: 640px;
 }
 
-.table th,
-.table td {
-  padding: var(--space-sm) var(--space-md);
-  text-align: left;
-  border-bottom: 1px solid var(--color-border);
-  white-space: nowrap;
-}
-
-.table thead th {
-  background: var(--color-bg);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-muted);
+.table tbody tr {
+  border-left: 3px solid transparent;
+  transition: border-color var(--motion-instant) var(--motion-ease);
 }
 
 .table tbody tr:hover {
-  background: var(--color-bg);
+  border-left-color: var(--color-primary);
 }
 
 .referenceCell {
-  font-weight: var(--font-weight-medium);
-}
-
-.referenceCell a {
-  color: var(--color-primary);
+  composes: tablePrimaryCell from '../styles/primitives.module.css';
+  font-variant-numeric: tabular-nums;
 }
 
 .sortButton {

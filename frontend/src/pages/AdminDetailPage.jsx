@@ -156,6 +156,7 @@ export default function AdminDetailPage() {
         <Link to="/app/system/admins" className={styles.backLink}>
           ← Back to administrators
         </Link>
+        <p className={styles.eyebrow}>Administrator Management</p>
         <div className={styles.titleRow}>
           <h1>{admin.full_name}</h1>
           <StatusBadge value={admin.status} label={statusLabel(admin.status)} domain="Admin" />

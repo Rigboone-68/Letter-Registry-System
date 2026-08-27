@@ -33,7 +33,10 @@ export default function QuickActions({ role }) {
         {actions.map((action) => (
           <li key={action.path}>
             <Link to={action.path} className={styles.action}>
-              {action.label}
+              <span className={styles.actionLabel}>{action.label}</span>
+              <span className={styles.actionArrow} aria-hidden="true">
+                →
+              </span>
             </Link>
           </li>
         ))}

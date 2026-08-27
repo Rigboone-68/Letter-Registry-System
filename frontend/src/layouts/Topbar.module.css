@@ -2,14 +2,58 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-sm) var(--space-lg);
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
+}
+
+.left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+/* Visible by default; hidden at desktop width via the `min-width`
+   query below — deliberately the inverse of the usual "hidden unless
+   narrow" phrasing, because this codebase's test environment (jsdom)
+   does not evaluate `@media` width queries at all (confirmed directly
+   this phase — a `max-width`-gated override never applies regardless
+   of `window.innerWidth`), so a `display: none` *base* rule would make
+   this control permanently untestable. A real browser still hides it
+   correctly at desktop width, since it does evaluate the query below. */
+.menuToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+@media (min-width: 768px) {
+  .menuToggle {
+    display: none;
+  }
+}
+
+.menuToggle:hover {
+  background: var(--color-bg);
 }
 
 .appName {
   font-weight: var(--font-weight-bold);
   font-size: var(--font-size-lg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .identity {
@@ -19,23 +63,40 @@
   font-size: var(--font-size-sm);
 }
 
+.divider {
+  width: 1px;
+  height: 1.5rem;
+  background: var(--color-border-subtle);
+}
+
+.identityText {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
 .name {
   font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
 }
 
 .role {
-  color: var(--color-text-muted);
-  text-transform: capitalize;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.7rem;
 }
 
 .logout {
-  border: 1px solid var(--color-border-strong);
-  background: transparent;
-  border-radius: var(--radius-sm);
-  padding: var(--space-xs) var(--space-sm);
-  cursor: pointer;
+  composes: btn btnSecondary from '../styles/primitives.module.css';
 }
 
-.logout:hover {
-  background: var(--color-bg);
+@media (max-width: 767px) {
+  .appName {
+    max-width: 40vw;
+  }
+
+  .divider {
+    display: none;
+  }
 }

@@ -1,29 +1,51 @@
+/**
+ * Precision Ledger action tiles (Phase 5I.4A,
+ * docs/architecture/ui-design-system.md) — one column of full-width
+ * tiles rather than inline-wrapped pill links, since this component
+ * now sits in the Dashboard's own narrower action column. The arrow is
+ * `aria-hidden`; the link's accessible name stays exactly the label
+ * text. Same actions, same routes, same role scoping as before.
+ */
+
 .list {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr;
   gap: var(--space-sm);
 }
 
 .action {
-  display: inline-block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
   padding: var(--space-sm) var(--space-md);
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border-strong);
-  color: var(--color-text);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
   text-decoration: none;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
+  transition: border-color var(--motion-instant) var(--motion-ease),
+    background-color var(--motion-instant) var(--motion-ease),
+    color var(--motion-instant) var(--motion-ease);
 }
 
-.action:hover {
+.action:hover,
+.action:focus-visible {
   border-color: var(--color-primary);
   color: var(--color-primary);
+  background: var(--color-highlight-bg);
 }
 
-.action:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: 2px;
+.actionArrow {
+  transition: transform var(--motion-instant) var(--motion-ease);
+}
+
+.action:hover .actionArrow,
+.action:focus-visible .actionArrow {
+  transform: translateX(2px);
 }

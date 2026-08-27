@@ -18,12 +18,31 @@ body,
 
 body {
   margin: 0;
-  background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-family);
   font-size: var(--font-size-md);
   line-height: var(--line-height-base);
   -webkit-font-smoothing: antialiased;
+
+  /* Global background — Phase 5I.1 (docs/architecture/ui-design-system.md
+     §5, "Precision Ledger" identity). A static, CSS-only atmospheric
+     wash: a faint radial highlight anchored top-left plus the existing
+     flat `--color-bg` everywhere else — never an animated gradient, and
+     never anything strong enough to affect the contrast of content
+     rendered on top of it, since every real surface (cards, tables,
+     dialogs, sidebar, topbar) is still opaque `--color-surface`/
+     `--color-surface-elevated`, unaffected by whatever sits behind it.
+     `background-attachment: fixed` keeps the wash static during scroll
+     rather than repeating or shifting per page — a deliberate,
+     restrained touch, not a decorative pattern. */
+  background-color: var(--color-bg);
+  background-image: radial-gradient(
+    ellipse 1100px 700px at 12% -10%,
+    rgba(31, 79, 216, 0.05),
+    transparent 60%
+  );
+  background-repeat: no-repeat;
+  background-attachment: fixed;
 }
 
 button,
@@ -36,12 +55,122 @@ a {
   color: var(--color-primary);
 }
 
-/* Accessible, visible focus state (§25 of docs/architecture/frontend.md)
-   — never remove the outline without replacing it with something at
-   least this visible. */
+/* Global interaction transitions — Phase 5I.1
+   (docs/architecture/ui-design-system.md §10). Deliberately narrow: only
+   the properties that are cheap to animate and never trigger layout
+   (color/background/border-color/opacity/box-shadow) — never
+   `transition: all`, and never a layout-affecting property like
+   `width`/`height`/`margin`. Applies globally so every existing
+   hover/focus/disabled state across every current component gets a
+   subtle, consistent transition without editing each component's own
+   CSS Module — a genuinely global foundation change, not a per-page
+   redesign. Fully disabled under reduced motion, below. */
+a,
+button,
+input,
+select,
+textarea {
+  transition-property: color, background-color, border-color, opacity, box-shadow;
+  transition-duration: var(--motion-instant);
+  transition-timing-function: var(--motion-ease);
+}
+
+/* Shared form-control base — Phase 5I.3
+   (docs/architecture/ui-design-system.md §25). Every form across this
+   application already wanted the exact same input/select/textarea
+   treatment — confirmed by comparing every page/component's own
+   `.field input, .field select, .field textarea` block; they were
+   near-identical, hand-duplicated across `AdminPages.module.css`,
+   `LetterFormPage.module.css`, `AuthPages.module.css`,
+   `LetterFilters.module.css`. Placed here rather than forced through
+   CSS Modules' `composes`, which cannot target a descendant selector
+   (only a class applied directly to the element) — a global
+   element-type rule is the one mechanism that reaches every existing
+   form with zero markup change anywhere. Deliberately excludes
+   `type=checkbox/radio/file`, which need native sizing, and
+   deliberately omits `width: 100%` — every existing `.field` wrapper is
+   already a flex column (`align-items: stretch` by default), so a
+   block-level control already fills it; adding an explicit width here
+   would risk changing `LetterFilters.module.css`'s own CSS-grid layout,
+   which never opted into that width and already works correctly
+   without it. */
+input:not([type='checkbox']):not([type='radio']):not([type='file']),
+select,
+textarea {
+  padding: var(--space-sm);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+input[aria-invalid='true'],
+select[aria-invalid='true'],
+textarea[aria-invalid='true'] {
+  border-color: var(--color-danger);
+}
+
+/* Native checkbox/radio theming — Phase 5I.3 (§8 of the same document).
+   `accent-color` themes the browser's own native control (check mark,
+   focus ring) without replacing it with a custom widget — every
+   checkbox (e.g. Classification's `restricts_access`) stays fully
+   native and keyboard-operable; only its color now matches the rest of
+   the palette, and its checked state is visually obvious without
+   relying on color alone (a native check mark is always drawn too). */
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--color-primary);
+}
+
+/* Accessible, visible focus state (§25 of docs/architecture/frontend.md;
+   strengthened Phase 5I.1, §7 of ui-design-system.md) — never remove the
+   outline without replacing it with something at least this visible.
+   The outline remains the primary, color-independent signal (a solid
+   2px ring, visible against both light and dark ancestors); the added
+   soft halo is a low-opacity reinforcement only, not a replacement —
+   removing it would still leave a fully compliant focus indicator. */
 :focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(31, 79, 216, 0.16);
+}
+
+/* Reduced-motion foundation — Phase 5I.1
+   (docs/architecture/ui-design-system.md §8/§16). Establishes the
+   global safety net now, before any new animation is added: every
+   animation/transition collapses to effectively instant, so a future
+   phase can introduce motion (the loading glyph, dialog open/close,
+   sidebar collapse, etc.) without having to remember a per-component
+   override — the end visual state is always reached, just without the
+   motion. This does not remove any existing behavior: the one animation
+   that exists today (`LoadingState`'s spinner) already has its own,
+   more specific `prefers-reduced-motion` rule
+   (`components/LoadingState.module.css`), which continues to apply
+   unchanged; this global rule is the backstop for everything else.
+   `transition-delay` is neutralized too — added in Phase 5I.2 once the
+   mobile nav drawer became this codebase's first transition to use a
+   delay (`layouts/Sidebar.module.css`'s open/close `visibility` timing)
+   — without this, a delayed property could still lag behind an
+   instantly-completed transition under reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 h1,

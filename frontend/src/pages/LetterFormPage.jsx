@@ -123,6 +123,12 @@ function FieldError({ name, fieldErrors }) {
  * `id`/`recipient_department_id`/`recorded_by`/`status`/`created_at`/
  * `updated_at` have no field in `EMPTY_FORM` at all — there is nothing
  * here for a client value to bind to even accidentally.
+ *
+ * Phase 5I.4B (docs/architecture/ui-design-system.md §8/§9) adds a
+ * header (eyebrow/accent line) and restyles the existing fieldset/
+ * legend/button treatment — every field, name, id, validation rule, and
+ * payload above is unchanged; the four fieldsets' own grouping and
+ * legend text are untouched.
  */
 export default function LetterFormPage() {
   const { id } = useParams()
@@ -312,7 +318,13 @@ export default function LetterFormPage() {
 
   return (
     <section className={styles.root}>
-      <h1>{isEdit ? 'Edit Letter' : 'Record New Letter'}</h1>
+      <header className={styles.header}>
+        <p className={styles.eyebrow}>{isEdit ? 'Registry Entry · Edit' : 'Registry Entry'}</p>
+        <div className={styles.titleRow}>
+          <h1>{isEdit ? 'Edit Letter' : 'Record New Letter'}</h1>
+          <span className={styles.headerMark} aria-hidden="true" />
+        </div>
+      </header>
 
       <form onSubmit={handleSubmit} noValidate className={styles.form}>
         {formError && <ErrorState message={formError} />}

@@ -1,56 +1,45 @@
 /**
- * Shared table styling for the Phase 5D administration tables
- * (DepartmentTable/AdminTable/UserTable/AuthorizationTable) — the same
- * visual structure `LetterTable.module.css` (Phase 5C) established,
- * without the sortable-header classes: none of these four resources
- * support backend sorting (docs/architecture/administration-ui.md
- * §11), so there is nothing to give an `aria-sort` treatment to.
+ * Shared table styling for every administration table (Department/
+ * Admin/User/Authorization tables since Phase 5D, Designation since
+ * Phase 5H, Category/Classification since Phase 5H.1) — consolidated
+ * onto the shared table primitives (Phase 5I.3,
+ * docs/architecture/ui-design-system.md §9/§25); `LetterTable.module.css`
+ * composes the exact same base classes, plus its own sortable-header
+ * extras none of these resources need (docs/architecture/
+ * administration-ui.md §11 — none of them support backend sorting).
+ *
+ * Phase 5I.4C (§10 — "administration tables should feel like one
+ * family") adds one row-level accent bar on hover here, in the single
+ * shared file every one of these seven tables already draws from — one
+ * edit, one consistent look across the whole console, rather than
+ * repeating it per resource the way `LetterTable.module.css` deliberately
+ * does on its own (the registry's own flagship table, kept visually
+ * distinct on purpose).
  */
 
 .scroller {
-  overflow-x: auto;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
+  composes: tableScroller from '../styles/primitives.module.css';
 }
 
 .table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--font-size-sm);
-  min-width: 480px;
+  composes: table from '../styles/primitives.module.css';
 }
 
-.table th,
-.table td {
-  padding: var(--space-sm) var(--space-md);
-  text-align: left;
-  border-bottom: 1px solid var(--color-border);
-  white-space: nowrap;
-}
-
-.table thead th {
-  background: var(--color-bg);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-muted);
+.table tbody tr {
+  border-left: 3px solid transparent;
+  transition: border-color var(--motion-instant) var(--motion-ease);
 }
 
 .table tbody tr:hover {
-  background: var(--color-bg);
+  border-left-color: var(--color-primary);
 }
 
 .primaryCell {
-  font-weight: var(--font-weight-medium);
-}
-
-.primaryCell a {
-  color: var(--color-primary);
+  composes: tablePrimaryCell from '../styles/primitives.module.css';
 }
 
 .actionsCell {
-  display: flex;
-  gap: var(--space-xs);
-  flex-wrap: wrap;
+  composes: tableActionsCell from '../styles/primitives.module.css';
 }
 
 .actionsCell button,
@@ -62,7 +51,14 @@
   cursor: pointer;
   font-size: var(--font-size-sm);
   text-decoration: none;
-  color: var(--color-text);
+  color: var(--color-text-primary);
+  transition: background-color var(--motion-instant) var(--motion-ease),
+    border-color var(--motion-instant) var(--motion-ease);
+}
+
+.actionsCell button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .actionsCell button:hover,

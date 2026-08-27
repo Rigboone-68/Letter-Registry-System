@@ -1,3 +1,11 @@
+/**
+ * Phase 5I.4E (docs/architecture/ui-design-system.md §28) adds one
+ * small `aria-hidden` color marker before each notice's heading
+ * (`.marker`/`.markerInfo`/`.markerDanger`) and composes `.action`
+ * from the shared button base — no state, wording, or behavior
+ * changed.
+ */
+
 .notice {
   display: flex;
   flex-direction: column;
@@ -7,8 +15,26 @@
 }
 
 .notice h1 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
   font-size: var(--font-size-lg);
   margin: 0;
+}
+
+.marker {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border-radius: 2px;
+}
+
+.markerInfo {
+  background: var(--color-info);
+}
+
+.markerDanger {
+  background: var(--color-danger);
 }
 
 .notice p {
@@ -17,16 +43,13 @@
 }
 
 .action {
-  padding: var(--space-sm) var(--space-md);
+  composes: btn from '../styles/primitives.module.css';
   background: transparent;
   color: var(--color-primary);
-  border: 1px solid var(--color-primary);
-  border-radius: var(--radius-sm);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
+  border-color: var(--color-primary);
 }
 
-.action:hover {
+.action:hover:not(:disabled) {
   background: var(--color-primary);
   color: var(--color-primary-contrast);
 }

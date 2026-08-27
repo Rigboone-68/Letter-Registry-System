@@ -1,3 +1,20 @@
+/**
+ * Record dossier (Phase 5I.4B, docs/architecture/ui-design-system.md
+ * §10/§11). The same eleven `LetterResponse` fields, now grouped into
+ * four labeled sections (Correspondence/Source/Sender/Additional
+ * details) instead of one flat 11-field grid, each with a small
+ * accent-barred section heading — the same "precision line" language
+ * used across the registry. `Category`/`Classification` are
+ * deliberately NOT added here: `LetterDetailPage` has no existing
+ * category/classification service call, and adding one would be a new
+ * fetch/role-branch, not a visual change — out of this phase's own
+ * "presentation only" boundary. No field, document API, or 404
+ * behavior changed. Phase 5I.4D adds a real, non-fabricated attachment
+ * count next to the "Documents" heading (see `.sectionHeaderRow`/
+ * `.docCount` below) — no document API, upload contract, or download
+ * behavior changed.
+ */
+
 .root {
   display: flex;
   flex-direction: column;
@@ -21,8 +38,24 @@
   text-decoration: none;
 }
 
-.header h1 {
-  margin: 0 0 var(--space-sm);
+.eyebrow {
+  margin: 0 0 var(--space-2xs);
+  font-size: 0.7rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.titleRow h1 {
+  margin: 0;
   font-size: var(--font-size-xl);
 }
 
@@ -32,28 +65,36 @@
   align-items: flex-start;
 }
 
-.actions button,
 .editLink {
-  padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-weight: var(--font-weight-medium);
-  text-decoration: none;
+  composes: btn btnPrimary from '../styles/primitives.module.css';
 }
 
-.editLink {
-  background: var(--color-primary);
-  color: var(--color-primary-contrast);
+.archiveButton {
+  composes: btn btnSecondary from '../styles/primitives.module.css';
 }
 
-.actions button {
-  background: transparent;
-  border: 1px solid var(--color-border-strong);
-  color: var(--color-text);
+.dossier {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
 }
 
-.actions button:hover {
-  background: var(--color-bg);
+.dossierSection {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+}
+
+.dossierHeading {
+  margin: 0 0 var(--space-md);
+  padding-left: var(--space-sm);
+  border-left: 3px solid var(--color-primary);
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
 }
 
 .grid {
@@ -61,10 +102,6 @@
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: var(--space-md) var(--space-lg);
   margin: 0;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-lg);
 }
 
 .field dt {
@@ -99,6 +136,24 @@
 .documentsSection h2 {
   margin: 0;
   font-size: var(--font-size-md);
+}
+
+/**
+ * Phase 5I.4D (docs/architecture/ui-design-system.md §4) — a real
+ * attachment count (`documents.length`, never fabricated) next to the
+ * existing "Documents" heading, matching the same header-chip language
+ * used elsewhere in the registry.
+ */
+.sectionHeaderRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.docCount {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
 }
 
 @media (max-width: 767px) {

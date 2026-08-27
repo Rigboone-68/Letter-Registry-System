@@ -40,8 +40,12 @@ export default function UserListPage() {
   return (
     <section className={styles.root}>
       <div className={styles.header}>
-        <div>
-          <h1>Users</h1>
+        <div className={styles.headerText}>
+          <p className={styles.eyebrow}>User Management</p>
+          <div className={styles.titleRow}>
+            <h1>Users</h1>
+            <span className={styles.headerMark} aria-hidden="true" />
+          </div>
           {data && <p className={styles.count}>{data.total} total</p>}
         </div>
         <div className={styles.headerActions}>

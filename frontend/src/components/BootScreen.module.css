@@ -1,0 +1,145 @@
+/**
+ * LRS Registry Glyph & boot identity (Phase 5I.5,
+ * docs/architecture/ui-design-system.md §29). The nested-square outer/
+ * inner border reuses the exact geometry of `layouts/Sidebar.module.css`'s
+ * `.brandMark`/`pages/AuthPages.module.css`'s `.brandMark`, scaled up
+ * once more as this screen's own identity anchor. The four corner
+ * ticks illuminate in sequence (a "registry scan," not a spinner) using
+ * a duration derived from the existing `--motion-slow` token via
+ * `calc()` — not a newly-invented raw duration — and the existing
+ * `--motion-ease` curve throughout. Reduced motion turns the sequence
+ * into one fully-lit, static mark (§11 of the brief: preserve the
+ * loading indication, remove the motion) rather than hiding it.
+ */
+
+.root {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-lg);
+  text-align: center;
+}
+
+.glyph {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  margin-bottom: var(--space-sm);
+}
+
+.glyphOuter {
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+}
+
+.glyphInner {
+  position: absolute;
+  inset: 14px;
+  border: 1.5px solid var(--color-accent);
+  border-radius: 1px;
+}
+
+.glyphCenter {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  transform: translate(-50%, -50%);
+  background: var(--color-primary);
+}
+
+.glyphTick {
+  position: absolute;
+  background: var(--color-primary);
+  animation: glyphScan calc(var(--motion-slow) * 4) var(--motion-ease) infinite;
+}
+
+.glyphTickTop,
+.glyphTickBottom {
+  left: 50%;
+  width: 2px;
+  height: 10px;
+  transform: translateX(-50%);
+}
+
+.glyphTickLeft,
+.glyphTickRight {
+  top: 50%;
+  width: 10px;
+  height: 2px;
+  transform: translateY(-50%);
+}
+
+.glyphTickTop {
+  top: -6px;
+  animation-delay: 0s;
+}
+
+.glyphTickRight {
+  right: -6px;
+  animation-delay: var(--motion-slow);
+}
+
+.glyphTickBottom {
+  bottom: -6px;
+  animation-delay: calc(var(--motion-slow) * 2);
+}
+
+.glyphTickLeft {
+  left: -6px;
+  animation-delay: calc(var(--motion-slow) * 3);
+}
+
+@keyframes glyphScan {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  12.5% {
+    opacity: 1;
+  }
+  25% {
+    opacity: 0.2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glyphTick {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.name {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+}
+
+.status {
+  margin: var(--space-xs) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.credit {
+  margin: var(--space-xl) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}

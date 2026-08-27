@@ -26,6 +26,25 @@
   --color-warning-text: #8a5a00;
   --color-focus-ring: #1f4fd8;
 
+  /* Color — Phase 5I.1 additions (docs/architecture/ui-design-system.md
+     §2). Additive only — every token above is untouched, and every
+     component still using one of the tokens above keeps working
+     unchanged. `--color-text-primary` is a deliberate alias for the
+     existing `--color-text`, not a replacement — introduced so new
+     code can adopt the `-primary`/`-secondary`/`-muted` naming
+     symmetry immediately, without forcing a mass rewrite of every
+     `.module.css` file that currently references `--color-text`
+     directly (out of this phase's own scope). */
+  --color-text-primary: var(--color-text);
+  --color-text-secondary: #3d4351;
+  --color-border-subtle: #e7ebf0;
+  --color-surface-elevated: #ffffff;
+  --color-accent: #0b8f8f;
+  --color-info: #1c6dd0;
+  --color-info-bg: #e8f1fc;
+  --color-success-bg: #e8f5ea;
+  --color-highlight-bg: #eef2fb;
+
   /* Spacing scale */
   --space-2xs: 2px;
   --space-xs: 4px;
@@ -55,6 +74,17 @@
   /* Elevation */
   --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.08);
   --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.12);
+
+  /* Motion — Phase 5I.1 (docs/architecture/ui-design-system.md §9/§15).
+     A small, closed set of durations plus the one easing curve every
+     future transition/animation should use — not a general animation
+     framework. `--motion-ease` is a "settle," not a bounce, matching
+     the "restrained" design direction. */
+  --motion-instant: 100ms;
+  --motion-fast: 150ms;
+  --motion-normal: 200ms;
+  --motion-slow: 350ms;
+  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
 
   /* Breakpoints — referenced in component CSS as literal values (CSS
      custom properties cannot be used inside @media queries), kept here

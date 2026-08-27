@@ -1,3 +1,11 @@
+/**
+ * Operational Signals page (Phase 5I.4D,
+ * docs/architecture/ui-design-system.md §12/§13) — the same eyebrow/
+ * accent-line/chip-count header language used across the rest of the
+ * application. No pagination, filter, mark-read, or request behavior
+ * changed.
+ */
+
 .root {
   display: flex;
   flex-direction: column;
@@ -11,17 +19,53 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-md);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
-.header h1 {
+.headerText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.titleRow h1 {
   margin: 0;
   font-size: var(--font-size-xl);
 }
 
+.headerMark {
+  width: 24px;
+  height: 3px;
+  flex-shrink: 0;
+  background: var(--color-primary);
+}
+
 .count {
-  margin: var(--space-2xs) 0 0;
-  color: var(--color-text-muted);
+  display: inline-block;
+  width: fit-content;
+  margin: 0;
+  padding: var(--space-2xs) var(--space-sm);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 .headerActions {
@@ -30,12 +74,9 @@
   gap: var(--space-sm);
 }
 
-.headerActions button {
-  padding: var(--space-sm) var(--space-md);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
+.refreshButton,
+.markAllButton {
+  composes: btn btnSecondary from '../styles/primitives.module.css';
 }
 
 .list {

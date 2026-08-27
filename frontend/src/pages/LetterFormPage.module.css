@@ -1,3 +1,14 @@
+/**
+ * Registry-entry workspace (Phase 5I.4B,
+ * docs/architecture/ui-design-system.md §8/§9). A header (eyebrow +
+ * accent line, matching the same pattern used across the registry),
+ * technical uppercase fieldset legends, and shared button primitives —
+ * visual only. The `.field input`/`.field select`/`.field textarea`
+ * block previously duplicated here comes from the global form-control
+ * base (`styles/global.css`, Phase 5I.3) instead. No field, id,
+ * validation rule, or payload changed.
+ */
+
 .root {
   max-width: 720px;
   display: flex;
@@ -5,9 +16,39 @@
   gap: var(--space-lg);
 }
 
-.root h1 {
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.titleRow h1 {
   margin: 0;
   font-size: var(--font-size-xl);
+}
+
+.headerMark {
+  width: 24px;
+  height: 3px;
+  flex-shrink: 0;
+  background: var(--color-primary);
 }
 
 .form {
@@ -28,8 +69,11 @@
 
 .fieldset legend {
   padding: 0 var(--space-xs);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
 }
 
 .field {
@@ -41,23 +85,6 @@
 .field label {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-}
-
-.field input,
-.field select,
-.field textarea {
-  padding: var(--space-sm);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  font: inherit;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.field input[aria-invalid='true'],
-.field select[aria-invalid='true'],
-.field textarea[aria-invalid='true'] {
-  border-color: var(--color-danger);
 }
 
 .fieldError {
@@ -77,24 +104,11 @@
 }
 
 .submit {
-  padding: var(--space-sm) var(--space-lg);
-  background: var(--color-primary);
-  color: var(--color-primary-contrast);
-  border: none;
-  border-radius: var(--radius-sm);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-}
-
-.submit:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+  composes: btn btnPrimary from '../styles/primitives.module.css';
+  padding: 0 var(--space-lg);
 }
 
 .cancel {
-  padding: var(--space-sm) var(--space-lg);
-  background: transparent;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
+  composes: btn btnSecondary from '../styles/primitives.module.css';
+  padding: 0 var(--space-lg);
 }

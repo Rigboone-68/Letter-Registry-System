@@ -16,11 +16,18 @@ import styles from './AccountStateNotice.module.css'
  * Deliberately does not imply the account was deleted, and does not
  * expose any administrative detail (who deactivated it, when, or why) —
  * none of that is available to the frontend (§9 of the brief).
+ *
+ * Phase 5I.4E (docs/architecture/ui-design-system.md §28) adds one
+ * `aria-hidden` color marker before the heading — purely decorative,
+ * the heading text itself remains the actual state signal.
  */
 export default function DeactivatedAccountNotice({ onBackToLogin }) {
   return (
     <div className={styles.notice} role="status">
-      <h1>Account deactivated</h1>
+      <h1>
+        <span className={`${styles.marker} ${styles.markerDanger}`} aria-hidden="true" />
+        Account deactivated
+      </h1>
       <p>
         Access to this account has been disabled. Your account record has not
         been deleted.

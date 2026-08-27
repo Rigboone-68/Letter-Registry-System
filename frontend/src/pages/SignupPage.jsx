@@ -3,12 +3,42 @@ import { Link, Navigate, useNavigate } from 'react-router-dom'
 
 import ErrorState from '../components/ErrorState'
 import PendingApprovalNotice from '../components/PendingApprovalNotice'
+import { APP_NAME, APP_SHORT_NAME, PRODUCTION_CREDIT } from '../constants/app'
 import { useAuth } from '../context/AuthContext'
 import * as authService from '../services/authService'
 import { validateSignupForm } from '../utils/formValidation'
 import styles from './AuthPages.module.css'
 
 const INITIAL_FORM = { full_name: '', email: '', password: '', password_confirm: '' }
+
+/**
+ * The shared entrance chrome for every Signup state (form, pending) —
+ * Phase 5I.4E (docs/architecture/ui-design-system.md §28), the exact
+ * same structure `LoginPage.jsx` defines, kept as its own local copy
+ * rather than a new shared component file (each page's own scope was
+ * already this self-contained pre-phase). Purely decorative/
+ * structural: the brand mark and `PRODUCTION_CREDIT` line are
+ * `aria-hidden`/plain text respectively, never affecting the
+ * accessible name or behavior of whatever real content (`children`)
+ * it wraps.
+ */
+function AuthShell({ children }) {
+  return (
+    <div className={styles.wrapper}>
+      <div className={styles.shell}>
+        <div className={styles.brand}>
+          <span className={styles.brandMark} aria-hidden="true" />
+          <div className={styles.brandCopy}>
+            <p className={styles.brandEyebrow}>{APP_SHORT_NAME} Operational Registry</p>
+            <p className={styles.brandName}>{APP_NAME}</p>
+          </div>
+        </div>
+        {children}
+        <p className={styles.credit}>{PRODUCTION_CREDIT}</p>
+      </div>
+    </div>
+  )
+}
 
 /**
  * Production signup page (docs/architecture/frontend.md — Phase 5B §6-8).
@@ -68,17 +98,18 @@ export default function SignupPage() {
 
   if (success) {
     return (
-      <div className={styles.wrapper}>
+      <AuthShell>
         <div className={styles.card}>
           <PendingApprovalNotice onBackToLogin={() => navigate('/login')} />
         </div>
-      </div>
+      </AuthShell>
     )
   }
 
   return (
-    <div className={styles.wrapper}>
+    <AuthShell>
       <form className={styles.card} onSubmit={handleSubmit} noValidate aria-labelledby="signup-heading">
+        <p className={styles.formEyebrow}>New Account Request</p>
         <h1 id="signup-heading">Create account</h1>
 
         {formError && <ErrorState message={formError} />}
@@ -171,6 +202,6 @@ export default function SignupPage() {
           Already have an account? <Link to="/login">Sign in</Link>
         </p>
       </form>
-    </div>
+    </AuthShell>
   )
 }

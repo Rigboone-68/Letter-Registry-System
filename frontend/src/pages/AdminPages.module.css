@@ -7,6 +7,21 @@
  * here across ten smaller pages instead of duplicated ten times, since
  * their layout needs are far more homogeneous than the three distinct
  * Letter page types were.
+ *
+ * Phase 5I.4C (docs/architecture/ui-design-system.md) adds the
+ * "System Administration Console" visual language on top: `.eyebrow`/
+ * `.headerMark`/`.headerText` (each resource's own eyebrow text is set
+ * per-page, in JSX — the CSS backing it is shared here once), a
+ * chip-style `.count` (same exact text as before, restyled only), and
+ * consistent button visuals on `.headerActions button`/
+ * `.actionsPanel button`/`.actionsPanel .primary` — kept as plain CSS
+ * rather than `composes`, since these are descendant selectors on bare
+ * `<button>` elements with no class of their own (`composes` cannot
+ * target a descendant selector), matching the same bounded exception
+ * already established for `Pagination.module.css`/`DataTable.module.css`
+ * in Phase 5I.3. Every resource covered by this file now shares one
+ * consistent header/button language instead of ten separately-styled
+ * pages.
  */
 
 .root {
@@ -21,6 +36,31 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-md);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.headerText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.headerMark {
+  width: 24px;
+  height: 3px;
+  flex-shrink: 0;
+  display: inline-block;
+  background: var(--color-primary);
 }
 
 .header h1 {
@@ -29,9 +69,15 @@
 }
 
 .count {
+  display: inline-block;
+  width: fit-content;
   margin: var(--space-2xs) 0 0;
-  color: var(--color-text-muted);
+  padding: var(--space-2xs) var(--space-sm);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 .headerActions {
@@ -41,20 +87,24 @@
 }
 
 .headerActions button {
-  padding: var(--space-sm) var(--space-md);
+  height: 2.25rem;
+  padding: 0 var(--space-md);
   background: var(--color-surface);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
+  transition: background-color var(--motion-instant) var(--motion-ease),
+    border-color var(--motion-instant) var(--motion-ease);
+}
+
+.headerActions button:hover {
+  background: var(--color-bg);
 }
 
 .createLink {
-  padding: var(--space-sm) var(--space-md);
-  background: var(--color-primary);
-  color: var(--color-primary-contrast);
-  border-radius: var(--radius-sm);
-  text-decoration: none;
-  font-weight: var(--font-weight-medium);
+  composes: btn btnPrimary from '../styles/primitives.module.css';
 }
 
 .filters {
@@ -80,14 +130,6 @@
   font-weight: var(--font-weight-medium);
 }
 
-.filters select,
-.filters input {
-  padding: var(--space-sm);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  font: inherit;
-}
-
 .formCard {
   max-width: 480px;
   display: flex;
@@ -110,22 +152,6 @@
   font-weight: var(--font-weight-medium);
 }
 
-.field input,
-.field select,
-.field textarea {
-  padding: var(--space-sm);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  font: inherit;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.field input[aria-invalid='true'],
-.field select[aria-invalid='true'] {
-  border-color: var(--color-danger);
-}
-
 .fieldError {
   color: var(--color-danger);
   font-size: var(--font-size-sm);
@@ -143,26 +169,13 @@
 }
 
 .submit {
-  padding: var(--space-sm) var(--space-lg);
-  background: var(--color-primary);
-  color: var(--color-primary-contrast);
-  border: none;
-  border-radius: var(--radius-sm);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-}
-
-.submit:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+  composes: btn btnPrimary from '../styles/primitives.module.css';
+  padding: 0 var(--space-lg);
 }
 
 .cancel {
-  padding: var(--space-sm) var(--space-lg);
-  background: transparent;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
+  composes: btn btnSecondary from '../styles/primitives.module.css';
+  padding: 0 var(--space-lg);
 }
 
 .detailCard {
@@ -229,14 +242,20 @@
 
 .actionsPanel button,
 .actionsPanel a {
-  padding: var(--space-sm) var(--space-md);
+  display: inline-flex;
+  align-items: center;
+  height: 2.25rem;
+  padding: 0 var(--space-md);
   border-radius: var(--radius-sm);
   cursor: pointer;
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   text-decoration: none;
   background: transparent;
   border: 1px solid var(--color-border-strong);
-  color: var(--color-text);
+  color: var(--color-text-primary);
+  transition: background-color var(--motion-instant) var(--motion-ease),
+    border-color var(--motion-instant) var(--motion-ease);
 }
 
 .actionsPanel button:hover,
@@ -244,10 +263,19 @@
   background: var(--color-bg);
 }
 
+.actionsPanel button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .actionsPanel .primary {
   background: var(--color-primary);
   color: var(--color-primary-contrast);
   border-color: var(--color-primary);
+}
+
+.actionsPanel .primary:hover {
+  background: var(--color-primary-hover);
 }
 
 @media (max-width: 767px) {

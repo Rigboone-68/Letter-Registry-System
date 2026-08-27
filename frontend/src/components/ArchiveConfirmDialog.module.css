@@ -1,61 +1,31 @@
+/**
+ * Consolidated onto the shared dialog/button primitives (Phase 5I.3,
+ * docs/architecture/ui-design-system.md §15/§25) — this file was
+ * previously a near-byte-identical duplicate of
+ * `ConfirmDialog.module.css`; both now compose the same base classes
+ * instead of hand-declaring the same backdrop/panel/button rules twice.
+ * The confirm button stays primary-toned (not danger), unchanged from
+ * before — archiving is a reversible, non-destructive status
+ * transition, and this component's own docstring is explicit that it
+ * never says "delete" or "permanent."
+ */
+
 .backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-lg);
-  z-index: 100;
+  composes: dialogBackdrop from '../styles/primitives.module.css';
 }
 
 .dialog {
-  width: 100%;
-  max-width: 420px;
-  background: var(--color-surface);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
-  padding: var(--space-xl);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-}
-
-.dialog h2 {
-  margin: 0;
-  font-size: var(--font-size-lg);
-}
-
-.dialog p {
-  margin: 0;
-  color: var(--color-text-muted);
+  composes: dialogPanel from '../styles/primitives.module.css';
 }
 
 .actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-sm);
+  composes: dialogActions from '../styles/primitives.module.css';
 }
 
 .cancel {
-  padding: var(--space-sm) var(--space-md);
-  background: transparent;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
+  composes: btn btnSecondary from '../styles/primitives.module.css';
 }
 
 .confirm {
-  padding: var(--space-sm) var(--space-md);
-  background: var(--color-primary);
-  color: var(--color-primary-contrast);
-  border: none;
-  border-radius: var(--radius-sm);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-}
-
-.confirm:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+  composes: btn btnPrimary from '../styles/primitives.module.css';
 }

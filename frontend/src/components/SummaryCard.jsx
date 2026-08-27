@@ -13,10 +13,15 @@ import styles from './SummaryCard.module.css'
  * dashboard.md §20) — the caller decides what counts as one widget
  * (e.g. Total/Active/Archived Letters share one fetch and therefore one
  * loading/error state, passed to all three cards at once).
+ *
+ * `.corner` (Phase 5I.4A, docs/architecture/ui-design-system.md) is a
+ * small `aria-hidden` corner-bracket mark — purely decorative, never a
+ * replacement for the real label/value text.
  */
 export default function SummaryCard({ label, value, loading, error }) {
   return (
     <div className={styles.root}>
+      <span className={styles.corner} aria-hidden="true" />
       <p className={styles.label}>{label}</p>
       {loading && <p className={styles.value}>—</p>}
       {!loading && error && (

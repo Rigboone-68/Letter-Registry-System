@@ -20,4 +20,13 @@ describe('SummaryCard', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/unavailable/i)
     expect(screen.queryByText('0')).not.toBeInTheDocument()
   })
+
+  it('marks its corner mark as decorative, never replacing the label/value text (Phase 5I.4A)', () => {
+    const { container } = render(<SummaryCard label="Total Letters" value={42} loading={false} error={null} />)
+    const corner = container.querySelector('[aria-hidden="true"]')
+    expect(corner).toBeInTheDocument()
+    expect(corner).toHaveTextContent('')
+    expect(screen.getByText('Total Letters')).toBeInTheDocument()
+    expect(screen.getByText('42')).toBeInTheDocument()
+  })
 })

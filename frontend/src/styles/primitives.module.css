@@ -1,0 +1,215 @@
+/**
+ * Shared UI primitives (Phase 5I.3, docs/architecture/ui-design-system.md
+ * §25). Collapses the genuine CSS duplication the Phase 5I review found
+ * — dialog/table/button styling hand-written 2-5 times across
+ * `AdminPages.module.css`, `LetterFormPage.module.css`,
+ * `AuthPages.module.css`, `LetterFilters.module.css`,
+ * `DataTable.module.css`, `LetterTable.module.css`,
+ * `ConfirmDialog.module.css`, `ArchiveConfirmDialog.module.css` — into
+ * one shared file every one of those `composes` its base rules from via
+ * CSS Modules' native `composes` mechanism. Never a new generic
+ * component: every page keeps its own real `<button>`/`<table>`/
+ * `<form>` markup exactly as it already was; only the CSS backing a
+ * handful of already-existing class names is now written once.
+ *
+ * Form-control (input/select/textarea) consolidation deliberately
+ * lives in `global.css` instead of here — `composes` can only target a
+ * simple class already applied directly to an element, and most of
+ * this codebase styles form controls via a descendant selector
+ * (`.field input`) rather than a class on the control itself; a global
+ * element-type rule is the only mechanism that reaches every existing
+ * form with zero markup change. See `global.css`'s own comment.
+ */
+
+/* ---- Buttons ---- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  height: 2.25rem;
+  padding: 0 var(--space-md);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  text-decoration: none;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: color var(--motion-instant) var(--motion-ease),
+    background-color var(--motion-instant) var(--motion-ease),
+    border-color var(--motion-instant) var(--motion-ease),
+    box-shadow var(--motion-instant) var(--motion-ease),
+    opacity var(--motion-instant) var(--motion-ease),
+    transform var(--motion-instant) var(--motion-ease);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btnPrimary {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border-color: var(--color-primary);
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
+.btnSecondary {
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+}
+
+.btnSecondary:hover:not(:disabled) {
+  background: var(--color-bg);
+}
+
+.btnGhost {
+  background: transparent;
+  color: var(--color-text-primary);
+  border-color: transparent;
+}
+
+.btnGhost:hover:not(:disabled) {
+  background: var(--color-bg);
+  border-color: var(--color-border);
+}
+
+.btnDanger {
+  background: var(--color-danger);
+  color: var(--color-primary-contrast);
+  border-color: var(--color-danger);
+}
+
+.btnDanger:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+
+/* ---- Table ---- */
+
+.tableScroller {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.table th,
+.table td {
+  padding: var(--space-sm) var(--space-md);
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.table thead th {
+  background: var(--color-bg);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+}
+
+.table tbody tr {
+  transition: background-color var(--motion-instant) var(--motion-ease);
+}
+
+.table tbody tr:hover {
+  background: var(--color-bg);
+}
+
+.tablePrimaryCell {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.tablePrimaryCell a {
+  color: var(--color-primary);
+}
+
+.tableActionsCell {
+  display: flex;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+/* ---- Dialog ---- */
+
+.dialogBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-lg);
+  z-index: 100;
+  animation: dialogBackdropIn var(--motion-fast) var(--motion-ease);
+}
+
+.dialogPanel {
+  width: 100%;
+  max-width: 420px;
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  animation: dialogPanelIn var(--motion-normal) var(--motion-ease);
+}
+
+.dialogPanel h2 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+.dialogPanel p {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+@keyframes dialogBackdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dialogPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

@@ -10,11 +10,18 @@ import styles from './AccountStateNotice.module.css'
  * notification, or name an administrator to contact — none of that is
  * something the backend tells the frontend, so none of it is invented
  * here (§8 of the brief).
+ *
+ * Phase 5I.4E (docs/architecture/ui-design-system.md §28) adds one
+ * `aria-hidden` color marker before the heading — purely decorative,
+ * the heading text itself remains the actual state signal.
  */
 export default function PendingApprovalNotice({ onBackToLogin }) {
   return (
     <div className={styles.notice} role="status">
-      <h1>Account pending approval</h1>
+      <h1>
+        <span className={`${styles.marker} ${styles.markerInfo}`} aria-hidden="true" />
+        Account pending approval
+      </h1>
       <p>
         Your account has been created successfully. It must be approved by an
         administrator before you can sign in.

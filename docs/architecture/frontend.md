@@ -732,6 +732,90 @@ against adding one without cause; nothing in the confirmed screen set
 learning-curve cost over a small, hand-rolled token system for an
 internal operational tool of this scope.
 
+**Phase 5I** (`docs/architecture/ui-design-system.md`) took this exact
+token file as its starting point and proposed a detailed extension —
+additional color/typography/spacing/shape/motion tokens, a navigation/
+loading/status-system redesign, and a fix for a confirmed color-token
+bug found by direct inspection (the ACTIVE badge and the unread-
+notification row both incorrectly reused `--color-warning-bg`) — all
+still with zero new dependencies, consistent with this section's own
+conclusion. **Phase 5I.1** then implemented the global-foundation slice
+of that proposal directly in this file and in `global.css`: the
+additive color/motion tokens and the ACTIVE/unread bug fix are now live
+(see `ui-design-system.md`'s own "Phase 5I.1" section for the exact
+diff). **Phase 5I.2** implemented the App Shell & Navigation slice —
+`Sidebar`/`Topbar` visually redesigned, a mobile drawer added, the
+AJ-OVA Labs footer wired into `AppShell` — with `navigationConfig.js`'s
+own role-to-navigation data untouched (see §5-§8/§13/§19 of this
+document, still accurate as written). **Phase 5I.3** implemented the
+Core UI Primitives slice — a new shared `styles/primitives.module.css`
+(button/table/dialog base classes, consumed via CSS Modules'
+`composes`), a global form-control base in `global.css` (§26 of this
+section's own recommendation, extended), a `StatusBadge` shape layer,
+and an `EmptyState` glyph — deliberately excluding Dashboard, Letter
+pages, Administration pages, Documents, the Notification panel, and
+Authentication pages, each reserved for its own later phase. **Phase
+5I.4A** then implemented the first screen-level transformation —
+`/app/dashboard`, recomposed into a header/metrics/registry-activity/
+quick-actions layout (§27 of the design system document) — with every
+metric, fetch, and role-based branch this section's own §7-§17
+description already covers left completely unchanged. **Phase 5I.4B**
+then transformed the Letter registry family — `LetterListPage`/
+`LetterFormPage`/`LetterDetailPage`/`LetterFilters`/`LetterTable`
+(§5-§12 of this document) — into a registry header, a "Registry
+Search" filter console, an accent-barred table, and a four-section
+record dossier; every field, filter key, URL parameter, sort field,
+payload, and role branch this section already describes is unchanged.
+**Phase 5I.4C** then transformed the entire administration workspace
+(§4-§8 of this document — Departments/Administrators/Users/
+Authorizations/Designations/Categories/Classifications) into one
+console-wide visual language, achieved mainly by enhancing the two
+shared files (`AdminPages.module.css`/`DataTable.module.css`) nearly
+every one of those pages already used, plus a genuinely restructured
+`AdminTransferDialog` whose required wording is confirmed byte-for-byte
+unchanged. **Phase 5I.4D** then transformed Documents (within the
+Letter dossier — a real, non-fabricated attachment count and a
+percentage-bound upload progress bar) and Notifications (the Topbar
+panel, notification rows, and the full notification page — an
+"Operational Signals" eyebrow, a CSS-only connector to the bell, one
+more static unread signal, and the same chip-count header language
+used elsewhere); `NotificationBell` was audited and found already at
+the target bar, left unmodified. **Phase 5I.4E** then transformed the
+unauthenticated entrance (`LoginPage`/`SignupPage`, and the
+`PendingApprovalNotice`/`DeactivatedAccountNotice` states) — a static
+brand mark reusing the Sidebar's nested-square geometry, the existing
+`APP_NAME` and previously-unrendered `PRODUCTION_CREDIT` constants,
+and an eyebrow label distinguishing the two forms; the submit button
+now composes the shared button primitives, completing the one
+consolidation Phase 5I.3 explicitly deferred for this file. Every
+field, validation rule, and redirect this section already describes is
+unchanged; `AuthContext.jsx` was not modified. **Phase 5I.5** then
+implemented the boot/loading identity — a new `BootScreen` component,
+gated at `App.jsx` using `AuthContext`'s own existing `status ===
+'loading'` window rather than a duplicated timer, presenting a
+CSS-only "LRS Registry Glyph" (the same nested-square geometry as
+Sidebar/Auth, plus four sequentially-illuminating ticks) and a
+truthful `role="status"` message. `ProtectedRoute`/`RootRedirect`'s
+own `status === 'loading'` branches, `LoadingState`, and every other
+existing loading moment in the application are unchanged;
+`AuthContext.jsx` was read but not modified. **Phase 5I.6** then closed
+the visual arc with a final polish/handover audit across all nine
+prior phases — a codebase-wide search across visual consistency,
+branding, motion, responsive behavior, accessibility, and the security
+boundary, fixing exactly one genuine defect found (`NotificationBell`'s
+emoji icon, replaced with a CSS-only outline, zero behavior change)
+and documenting several other candidates confirmed correct rather than
+changed. Manual browser verification was not performed — no
+browser-automation tool is available in this environment. The Phase
+5I visual architecture is now considered closed. **Phase 5I.6A** then
+made one small, targeted correction the audit's own manual review
+surfaced — the Sidebar's navigation "icons" were actually 3-letter
+monograms; replaced with 9 small inline SVG icons that follow the same
+existing `.linkActive .linkGlyph` active-state color rule rather than
+a second mechanism. `navigationConfig.js`, routes, labels,
+permissions, and Sidebar collapse/mobile-drawer behavior are all
+unchanged.
+
 ## 27. Dashboard assessment (not implemented, evaluated only)
 
 What's derivable from **already-confirmed endpoints, no new backend

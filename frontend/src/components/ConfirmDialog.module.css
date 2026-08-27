@@ -1,34 +1,20 @@
+/**
+ * Consolidated onto the shared dialog/button primitives (Phase 5I.3,
+ * docs/architecture/ui-design-system.md §15/§25) — `AdminTransferDialog`
+ * already reuses this exact file directly (`import styles from
+ * './ConfirmDialog.module.css'`), so it inherits every change here with
+ * no edit of its own. Backdrop/panel entrance motion now comes from the
+ * shared `dialogBackdropIn`/`dialogPanelIn` keyframes (opacity + a small
+ * translate/scale, both already covered by the existing global
+ * `prefers-reduced-motion` safety net — no per-dialog override needed).
+ */
+
 .backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-lg);
-  z-index: 100;
+  composes: dialogBackdrop from '../styles/primitives.module.css';
 }
 
 .dialog {
-  width: 100%;
-  max-width: 420px;
-  background: var(--color-surface);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
-  padding: var(--space-xl);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-}
-
-.dialog h2 {
-  margin: 0;
-  font-size: var(--font-size-lg);
-}
-
-.dialog p {
-  margin: 0;
-  color: var(--color-text-muted);
+  composes: dialogPanel from '../styles/primitives.module.css';
 }
 
 .error {
@@ -36,42 +22,51 @@
   color: var(--color-danger);
 }
 
+/**
+ * Phase 5I.4C — `AdminTransferDialog`-only sections (§6 of the design
+ * system document): a bordered "current state" block and a quieter
+ * consequences paragraph, giving a high-impact action clearer visual
+ * hierarchy than a flat stack of `<p>` tags.
+ */
+.currentInfo {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm) var(--space-md);
+}
+
+.currentInfoLabel {
+  margin: 0 0 var(--space-2xs);
+  font-size: 0.7rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.currentInfoValue {
+  margin: 0;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.consequences {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
 .actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-sm);
+  composes: dialogActions from '../styles/primitives.module.css';
 }
 
 .cancel {
-  padding: var(--space-sm) var(--space-md);
-  background: transparent;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
+  composes: btn btnSecondary from '../styles/primitives.module.css';
 }
 
 .confirm {
-  padding: var(--space-sm) var(--space-md);
-  background: var(--color-primary);
-  color: var(--color-primary-contrast);
-  border: none;
-  border-radius: var(--radius-sm);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
+  composes: btn btnPrimary from '../styles/primitives.module.css';
 }
 
 .confirmCaution {
-  padding: var(--space-sm) var(--space-md);
-  background: var(--color-danger);
-  color: var(--color-primary-contrast);
-  border: none;
-  border-radius: var(--radius-sm);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-}
-
-.confirm:disabled,
-.confirmCaution:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+  composes: btn btnDanger from '../styles/primitives.module.css';
 }

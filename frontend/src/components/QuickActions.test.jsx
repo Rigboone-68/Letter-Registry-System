@@ -56,4 +56,13 @@ describe('QuickActions', () => {
     const { container } = renderWithRouter(undefined)
     expect(container).toBeEmptyDOMElement()
   })
+
+  it('keeps the decorative directional arrow out of the link\'s accessible name (Phase 5I.4A)', () => {
+    const { container } = renderWithRouter('USER')
+
+    const link = screen.getByRole('link', { name: 'Record a Letter' })
+    const arrow = container.querySelector('[aria-hidden="true"]')
+    expect(arrow).toBeInTheDocument()
+    expect(link).toHaveAccessibleName('Record a Letter')
+  })
 })

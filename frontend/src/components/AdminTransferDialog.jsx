@@ -20,6 +20,13 @@ import styles from './ConfirmDialog.module.css'
  * already recorded keep the department they were recorded under
  * forever — `Letter.recipient_department_id` is captured once, at
  * recording time, and never re-derived from the recorder later.
+ *
+ * Phase 5I.4C (docs/architecture/ui-design-system.md §6) gives this
+ * high-impact action clearer visual separation — a bordered "current
+ * department" block, the department field, then the consequences
+ * paragraph — reordered for hierarchy only; its wording is byte-for-byte
+ * unchanged (a test asserts the exact phrase "does not move or reassign
+ * any historical record" verbatim), and no business semantics changed.
  */
 export default function AdminTransferDialog({
   currentDepartmentName,
@@ -68,13 +75,11 @@ export default function AdminTransferDialog({
         onClick={(event) => event.stopPropagation()}
       >
         <h2 id="transfer-dialog-title">Transfer to a different department</h2>
-        <p>Current department: {currentDepartmentName ?? 'None'}</p>
-        <p>
-          This changes only this Admin's current department going forward. Letters
-          they've already recorded remain attached to the department they belonged
-          to when recorded — this action does not move or reassign any historical
-          record.
-        </p>
+
+        <div className={styles.currentInfo}>
+          <p className={styles.currentInfoLabel}>Current department</p>
+          <p className={styles.currentInfoValue}>{currentDepartmentName ?? 'None'}</p>
+        </div>
 
         <div>
           <label htmlFor="transfer-department">New department</label>
@@ -89,6 +94,13 @@ export default function AdminTransferDialog({
             required
           />
         </div>
+
+        <p className={styles.consequences}>
+          This changes only this Admin's current department going forward. Letters
+          they've already recorded remain attached to the department they belonged
+          to when recorded — this action does not move or reassign any historical
+          record.
+        </p>
 
         {error && (
           <p role="alert" className={styles.error}>

@@ -67,6 +67,13 @@ function toLookupMap(items) {
  * department id to a name, so those columns/filters are only ever
  * rendered for a SYSTEM_ADMIN viewer, who is the only caller for whom
  * the underlying request would actually succeed.
+ *
+ * Phase 5I.4B (docs/architecture/ui-design-system.md) is a visual-only
+ * recomposition of the header/filter/sort/table/pagination presentation
+ * — every filter key, URL parameter, sort field, and request shape
+ * above is unchanged; `activeCount` passed to `LetterFilters` is purely
+ * decorative (a real count of already-computed `activeFilters`, never a
+ * new filter concept).
  */
 export default function LetterListPage() {
   const { user } = useAuth()
@@ -201,12 +208,20 @@ export default function LetterListPage() {
   return (
     <section className={styles.root}>
       <div className={styles.header}>
-        <div>
-          <h1>{isSystemAdmin ? 'Letters — all departments' : 'Letters'}</h1>
+        <div className={styles.headerText}>
+          <p className={styles.eyebrow}>Letter Registry</p>
+          <div className={styles.titleRow}>
+            <h1>{isSystemAdmin ? 'Letters — all departments' : 'Letters'}</h1>
+            <span className={styles.headerMark} aria-hidden="true" />
+          </div>
           {data && <p className={styles.count}>{data.total} total</p>}
         </div>
         <div className={styles.headerActions}>
-          <button type="button" onClick={() => setRefreshToken((token) => token + 1)}>
+          <button
+            type="button"
+            className={styles.refreshButton}
+            onClick={() => setRefreshToken((token) => token + 1)}
+          >
             Refresh
           </button>
           {canCreate && (
@@ -225,6 +240,7 @@ export default function LetterListPage() {
         categoryOptions={referenceData.categories}
         classificationOptions={referenceData.classifications}
         departmentOptions={isSystemAdmin ? referenceData.departments : null}
+        activeCount={Object.keys(activeFilters).length}
       />
 
       <div className={styles.sortRow}>
@@ -247,6 +263,7 @@ export default function LetterListPage() {
         </select>
         <button
           type="button"
+          className={styles.sortToggle}
           onClick={() =>
             updateParams((next) => {
               next.set('sort_order', sortOrder === 'asc' ? 'desc' : 'asc')
