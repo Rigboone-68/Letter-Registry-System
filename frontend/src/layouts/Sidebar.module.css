@@ -39,21 +39,18 @@
   letter-spacing: 0.02em;
 }
 
+/**
+ * Phase 6B — the actual Government of Balochistan emblem replaces the
+ * CSS-drawn nested-square placeholder mark. `object-fit: contain`
+ * (never `cover`) so the crest is never cropped; a fixed height keeps
+ * it "recognizable... while fitting naturally" rather than enormous.
+ */
 .brandMark {
-  position: relative;
-  width: 20px;
-  height: 20px;
+  height: 22px;
+  width: auto;
+  max-width: 24px;
   flex-shrink: 0;
-  border: 1.5px solid var(--color-primary);
-  border-radius: 3px;
-}
-
-.brandMark::after {
-  content: '';
-  position: absolute;
-  inset: 4px;
-  border: 1px solid var(--color-accent);
-  border-radius: 1px;
+  object-fit: contain;
 }
 
 .brandLabel {

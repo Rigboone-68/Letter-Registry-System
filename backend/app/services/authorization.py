@@ -49,10 +49,14 @@ from typing import TYPE_CHECKING, Optional
 from sqlalchemy import ColumnElement, or_
 
 from app.models.classification import Classification
-from app.models.enums import ActiveStatus, UserRole
+from app.models.enums import ActiveStatus, LetterDirection, UserRole
 from app.models.letter import Letter
 from app.models.user import User
-from app.services.exceptions import ClassifiedAccessDeniedError, DepartmentAccessDeniedError
+from app.services.exceptions import (
+    ClassifiedAccessDeniedError,
+    DepartmentAccessDeniedError,
+    LetterNotDispatchedToCallerError,
+)
 
 if TYPE_CHECKING:
     from app.models.letter_document import LetterDocument
@@ -109,6 +113,36 @@ def assert_letter_access(user: User, letter: Letter) -> None:
         and letter.recorded_by != user.id
     ):
         raise ClassifiedAccessDeniedError()
+
+
+def assert_dispatch_recipient_access(user: User, letter: Letter) -> None:
+    """Raise `LetterNotDispatchedToCallerError` unless `user` may "Record"
+    `letter` as incoming correspondence (Phase 6A,
+    docs/architecture/correspondence.md §7). Returns normally when
+    allowed.
+
+    This is a **new, additive** check — it never replaces or is called
+    instead of `assert_letter_access`. The two exist for genuinely
+    different questions: `assert_letter_access` asks "can this user see
+    this letter in their own registry" (answered by
+    `letter.recipient_department_id`, unchanged by this phase);
+    this function asks "may this user's department record *this outgoing
+    letter* as their own incoming correspondence" (answered by
+    `letter.dispatch_department_id`, a field `assert_letter_access` never
+    looks at). A SYSTEM_ADMIN is *not* given a blanket pass here, unlike
+    every other resource-level check in this module — SYSTEM_ADMIN has no
+    `department_id` of its own to record correspondence into, the same
+    structural fact that already excludes it from `POST /letters`
+    (`require_user_or_admin`).
+    """
+    if (
+        letter.direction != LetterDirection.OUTGOING
+        or user.department_id is None
+        or letter.dispatch_department_id != user.department_id
+    ):
+        raise LetterNotDispatchedToCallerError()
+    if user.department is not None and user.department.status != ActiveStatus.ACTIVE:
+        raise LetterNotDispatchedToCallerError()
 
 
 def can_view_letter(user: User, letter: Letter) -> bool:

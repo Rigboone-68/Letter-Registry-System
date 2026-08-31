@@ -287,6 +287,55 @@ class InvalidDateRangeError(ServiceError):
     request — see app/services/letter_service.py:list_letters."""
 
 
+# --- Correspondence direction / diary number (Phase 6A) ---------------------
+
+
+class DispatchDepartmentRequiredError(ServiceError):
+    """`direction == OUTGOING` but no `dispatch_department_id` was
+    supplied — every outgoing letter must name a destination department.
+    See app/services/letter_service.py:create_letter."""
+
+
+class DispatchDepartmentNotAllowedError(ServiceError):
+    """`dispatch_department_id` was supplied for an `INCOMING` letter —
+    only an `OUTGOING` letter has a dispatch destination; rejecting this
+    combination outright keeps the two directions unambiguous rather than
+    silently ignoring a field that implies the caller meant something
+    else."""
+
+
+class DispatchDepartmentNotFoundError(ServiceError):
+    """`dispatch_department_id` was supplied but does not reference an
+    existing `Department` row."""
+
+
+class DispatchDepartmentNotActiveError(ServiceError):
+    """`dispatch_department_id` was supplied and exists, but that
+    department is `INACTIVE` — dispatching new correspondence to a
+    retired department is rejected as a data-quality guard, the same
+    reasoning as `SourceDepartmentNotActiveError`."""
+
+
+class SelfDispatchNotAllowedError(ServiceError):
+    """`dispatch_department_id` equals the recording User/Admin's own
+    department — a department cannot dispatch correspondence to itself.
+    A conservative, documented validation choice (not requested verbatim
+    in the brief, not required to reverse if ever unwanted) — see
+    docs/architecture/correspondence.md §6."""
+
+
+class LetterNotDispatchedToCallerError(ServiceError):
+    """The "Record" action's target letter either isn't `OUTGOING` or
+    wasn't dispatched to the calling User/Admin's own department — see
+    app/services/authorization.py:assert_dispatch_recipient_access. The
+    API layer maps this to the same 404 as `LetterNotFoundError`
+    (enumeration-prevention, the same convention every other
+    department-scoped 404 in this codebase already follows): a caller
+    outside the dispatch relationship must not be able to distinguish
+    "no such letter" from "a letter that exists but wasn't sent to my
+    department"."""
+
+
 # --- Document management (Phase 4D implementation) --------------------------
 #
 # Authorization for a document is never a separate check — every path below

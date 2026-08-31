@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import ArchiveConfirmDialog from '../components/ArchiveConfirmDialog'
 import DocumentList from '../components/DocumentList'
@@ -53,9 +53,24 @@ function Field({ label, value }) {
  * `app/services/letter_service.py:_get_for_access`) and is rendered
  * here as the same generic "Letter not found," with no distinguishing
  * language of any kind.
+ *
+ * Phase 6A (docs/architecture/correspondence.md §9) adds a
+ * Correspondence Direction section: Direction, Diary/Dispatch Number,
+ * and — deliberately plain text, never a clickable cross-department
+ * link — "Received via dispatch from" (derived entirely from this
+ * letter's own already-copied `source_name`, never a fetch of the
+ * originating outgoing letter, which this department cannot access;
+ * see docs/architecture/correspondence.md §11 for why). "Continuation
+ * of," in contrast, *is* a real link — a continuation only ever points
+ * at a letter within the caller's own department (enforced server-side
+ * at creation, `LetterService.create_letter`), so it's always safe to
+ * navigate. "Create response" starts a new letter pre-linked to this
+ * one via `navigate(..., { state })` — never a query string, so nothing
+ * sensitive appears in the URL/browser history.
  */
 export default function LetterDetailPage() {
   const { id } = useParams()
+  const navigate = useNavigate()
 
   const [letter, setLetter] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -171,6 +186,44 @@ export default function LetterDetailPage() {
             <Field label="Recorded" value={formatDateTime(letter.created_at)} />
             <Field label="Last updated" value={formatDateTime(letter.updated_at)} />
           </dl>
+        </div>
+
+        <div className={styles.dossierSection}>
+          <h2 className={styles.dossierHeading}>Correspondence Direction</h2>
+          <dl className={styles.grid}>
+            <Field label="Direction" value={letter.direction === 'OUTGOING' ? 'Outgoing / Dispatch' : 'Incoming / Diary'} />
+            <Field
+              label={letter.direction === 'OUTGOING' ? 'Dispatch number' : 'Diary number'}
+              value={letter.diary_number}
+            />
+            {letter.recorded_from_letter_id && (
+              <Field label="Received via dispatch from" value={letter.source_name} />
+            )}
+            {letter.continuation_of_letter_id && (
+              <div className={styles.field}>
+                <dt>Continuation of</dt>
+                <dd>
+                  <Link to={`/app/letters/${letter.continuation_of_letter_id}`}>View original letter</Link>
+                </dd>
+              </div>
+            )}
+          </dl>
+          {letter.direction === 'INCOMING' && (
+            <button
+              type="button"
+              className={styles.archiveButton}
+              onClick={() =>
+                navigate('/app/letters/new', {
+                  state: {
+                    continuationOfLetterId: letter.id,
+                    continuationOfReference: letter.reference_number,
+                  },
+                })
+              }
+            >
+              Create response
+            </button>
+          )}
         </div>
 
         <div className={styles.dossierSection}>

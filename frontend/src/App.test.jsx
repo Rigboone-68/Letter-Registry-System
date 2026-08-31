@@ -63,13 +63,13 @@ describe('App boot lifecycle', () => {
 
     render(<App />)
 
-    expect(screen.getByRole('status')).toHaveTextContent('Loading Letter Registry System')
+    expect(screen.getByRole('status')).toHaveTextContent('Loading Daak Management System')
     expect(screen.queryByText('Routed Application')).not.toBeInTheDocument()
 
     resolveUser(ACTIVE_USER)
 
     await waitFor(() => expect(screen.getByText('Routed Application')).toBeInTheDocument())
-    expect(screen.queryByText('Loading Letter Registry System')).not.toBeInTheDocument()
+    expect(screen.queryByText('Loading Daak Management System')).not.toBeInTheDocument()
   })
 
   it('renders the application once an unauthenticated session resolves, with no artificial delay', async () => {

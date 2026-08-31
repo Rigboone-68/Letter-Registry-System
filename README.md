@@ -1,8 +1,109 @@
-# Letter Registry System (LRS)
+# Daak Management System (DMS)
 
 **A Production of AJ-Labs**
 
-> **Current status: Phase 5I.6A — Sidebar icon identity correction
+Renamed from "Letter Registry System"/"LRS" in Phase 6B — see
+`docs/architecture/ui-design-system.md`'s own "Phase 6B" section for
+the full rename record. Every historical phase description below that
+mentions "Letter Registry System" is describing this same project
+under its former name at the time each phase was built, not a
+different product.
+
+> **Project status: implementation complete — final handover phase
+> (Phase 6D final polish) done.** A live, real-database verification
+> (two throwaway accounts, two clearly-labeled test letters, cleaned up
+> afterward) confirmed every dashboard aggregate figure matches the
+> actual Letter Registry exactly; a genuine gap found during that
+> review (the trend chart's x-axis labeling only the first/last month
+> once a third month of data exists) was fixed and covered by two new
+> regression tests. No browser-automation tool exists in this
+> environment, so pixel-level visual verification was not claimed —
+> exact manual steps are documented in `docs/architecture/dashboard.md`'s
+> own "Phase 6D" §35 for a final local check. **No further
+> implementation phase is planned.** Outstanding, deliberately deferred
+> items (a Department × Direction chart, a dashboard date-range control,
+> an audit read API, a Designation edit/detail page) are named in the
+> phase table below, not hidden. Nothing has been committed or pushed —
+> that remains a separate, explicit action.
+>
+> **Current status: Phase 6D — Dashboard Operational Graphs complete
+> (frontend only).** The Dashboard's eight role-dependent KPI cards are
+> gone, replaced by four graphs answering the supervisor's own
+> confirmed questions: Incoming vs. Outgoing correspondence, which
+> departments are receiving the most, which are sending the most, and
+> how activity is trending by month — all built from Phase 6C's
+> `GET /letters/aggregate`, with no backend change needed. No chart
+> library was installed — every visualization is plain CSS bars or a
+> small hand-written SVG line plot, evaluated deliberately against the
+> existing "Precision Ledger" design language rather than assumed.
+> Every chart fails independently, states an explicit empty state
+> rather than a misleading zero-looking graph, and exposes its data as
+> real, always-visible text (never a tooltip-only value) — a
+> department/direction cross-tabulation was evaluated and left out,
+> since it would need a two-dimensional aggregate the backend
+> deliberately doesn't provide. Two small headline figures (Total
+> Letters, Unread Notifications) remain; the old SYSTEM_ADMIN/ADMIN
+> administration cards do not, since they answered an administration
+> question, not the confirmed correspondence-volume one. Full reasoning
+> in `docs/architecture/dashboard.md`'s own "Phase 6D" section. Phase
+> 6C — Dashboard Analytics API complete
+> (backend only).** A new `GET /api/v1/letters/aggregate` endpoint
+> answers Incoming-vs-Outgoing counts, category/classification/
+> department/dispatch-department breakdowns, and day/week/month
+> correspondence trends — one `GROUP BY` query per request, reusing
+> the exact same `letter_visibility_filter`/department-derivation
+> authorization logic `GET /letters` already uses, with zero new
+> migration or index needed (every grouped/filtered column was already
+> indexed). Date-bucket dimensions order chronologically for trend
+> charts; every other dimension orders by count, matching a prior
+> review's own design with one deliberate, reasoned correction. No
+> dashboard chart or frontend file was touched this phase — full
+> reasoning, including which of Phase 6A's new fields were and weren't
+> used as dimensions, in `docs/architecture/dashboard-analytics-api.md`'s
+> own "Phase 6C" section. Phase 6B — Daak Management System Branding &
+> Authentication Redesign complete.** The application's visible name
+> changed from "Letter Registry System"/"LRS" to "Daak Management
+> System"/"DMS" — a codebase-wide search found exactly one place that
+> string was defined (`constants/app.js`'s `APP_NAME`), so changing it
+> once propagated everywhere it's rendered (Sidebar, Topbar, Boot
+> screen, Login/Signup); two non-JS spots (`index.html`'s `<title>`,
+> `.env.example`'s default) needed a manual edit. The actual
+> Government of Balochistan logo (`govt_bal.webp`) now appears in the
+> Sidebar, on Login/Signup, and on the boot screen — always decorative
+> (`alt=""`), since the adjacent visible brand text already names the
+> identity, never with an invented "Official Government Portal"/
+> "Secure Government Network" claim. Login/Signup now use a real
+> split-screen layout — the supplied `front_page.jpeg` filling the left
+> ~58% of the viewport, the existing form untouched on the right —
+> extracted into one shared `AuthShell` component (previously
+> duplicated per-page) once the layout grew a genuine two-pane
+> structure; every field, validation rule, and redirect is
+> byte-for-byte unchanged. The footer is now visibly smaller, same
+> unchanged wording, same single instance. Full reasoning in
+> `docs/architecture/ui-design-system.md`'s own "Phase 6B" section.
+> Phase 6A — Incoming/Outgoing Correspondence, Diary
+> Number & Letter Continuation implemented.** A department can now
+> record a letter as Outgoing/Dispatch to a named destination
+> department (notified automatically); the destination department gets
+> a one-click "Record" action that auto-copies every field into their
+> own Incoming/Diary letter (idempotent — a database-enforced partial
+> unique index prevents duplicates even under a race); the original
+> department then gets a receipt-confirmation notification; and a
+> response is a new, separate Letter linked via
+> `continuation_of_letter_id`, never an overwrite. A new, department-
+> and-direction-scoped `diary_number` (a real Postgres row-locked
+> sequence, `SELECT ... FOR UPDATE`) is now shown prominently alongside
+> the existing, still-non-unique `reference_number`. The entire
+> existing security boundary (`assert_letter_access`,
+> `letter_visibility_filter`, `assert_department_access`) is completely
+> unchanged — `recipient_department_id` still means exactly what it
+> always meant; one new, additive authorization check
+> (`assert_dispatch_recipient_access`) independently re-verifies the
+> dispatch relationship server-side on every "Record" call, never
+> trusting that a notification implies authorization. Full reasoning
+> for every business-rule decision (and what remains genuinely
+> undecided) in `docs/architecture/correspondence.md`. Phase 5I.6A —
+> Sidebar icon identity correction
 > complete (the 3-letter navigation monograms `DAS`/`LET`/`DOC`/etc.,
 > a Phase 5I.2 placeholder that read as text labels rather than icons,
 > replaced with 9 small inline-SVG geometric icons — grid/envelope/
@@ -517,15 +618,22 @@ backend.
 | **5I.5** | Boot & Loading Experience: a new `BootScreen` component/CSS module and a small gate in `App.jsx`, using `AuthContext`'s own existing `status === 'loading'` window (never a duplicated timer, never a new loading flag) to render a distinctive "Precision Ledger" identity moment — a CSS-only "LRS Registry Glyph" (the existing nested-square brand geometry plus four ticks that illuminate in sequence, a duration derived via `calc()` from the existing `--motion-slow` token) and a real, truthful `role="status"` message ("Loading Letter Registry System") — instead of the bare spinner every other loading moment already uses (deliberately left unreplaced). `ProtectedRoute`/`RootRedirect`'s own `status === 'loading'` branches are untouched. No artificial delay, fake progress, or fake initialization step was added; `AuthContext.jsx` was read but not modified; zero new dependencies. Test suite grown to 363 frontend tests (50 files) / 487 backend tests, run 3 consecutive times with identical results. | **Complete** |
 | **5I.6** | Final Polish, Manual E2E & Handover Audit: the closing audit across all nine prior visual phases — a full documentation re-read, a full screen inventory, and a codebase-wide search (hardcoded colors, `transition: all`, `outline: none`, stray `console.log`/`setTimeout`, every animation's reduced-motion coverage, every breakpoint, every emoji, branding-string consistency, and the full JWT/token/localStorage/role/department-id/recipient/storage-path/signed-URL security pattern set) combined with targeted reads. One genuine defect found and fixed: `NotificationBell`'s 🔔 emoji — the one full-color, OS-rendered pictograph in the entire application — replaced with a CSS-only bell outline, zero behavior change (confirmed by its own 9 existing tests passing unmodified). Several other candidates were reviewed and confirmed intentional or already correct, not defects (documented in full in `docs/architecture/ui-design-system.md`'s own "Phase 5I.6" section) — including `NotificationPanel`'s deliberate `outline: none` on its non-Tab-reachable container, a one-pixel breakpoint-naming nitpick with no visible consequence, and the Boot screen's deliberately simpler background versus Authentication's. Manual browser verification was **not performed** — no browser-automation tool is available in this environment. Test suite unchanged at 363 frontend tests (50 files) / 487 backend tests, run 3 consecutive times with identical results. The Phase 5I visual architecture (5I.1–5I.6) is now considered closed. | **Complete** |
 | **5I.6A** | Sidebar Icon Identity Correction: a targeted fix found during final visual verification — the Sidebar's navigation "icons" (Phase 5I.2) were actually 3-letter monograms, a deliberate placeholder that manual review confirmed read as text labels, not icons. Replaced with 9 small inline SVG icons (Dashboard/Letters/Documents/Notifications/Departments/Administrators/Designations/Categories/Classifications, plus a `Users` icon the brief's own suggested mapping omitted), each using `stroke="currentColor"` so its color follows the existing `.linkActive .linkGlyph` active-state rule rather than a second mechanism; the bordered "chip" container was replaced with a plain 18×18px unboxed icon box. `navigationConfig.js`, routes, labels, permissions, active-route logic, and collapse/mobile-drawer behavior all confirmed unchanged via `git diff`; zero new dependencies. Test suite grown to 364 frontend tests (50 files, +1) / 487 backend tests, run 3 consecutive times with identical results (one incidental backend flake reproduced as passing on rerun, confirmed unrelated). | **Complete** |
-| 6 | Additional notification triggers, audit read API, dashboard analytics (if a specific breakdown/trend is ever confirmed wanted), a Designation edit/detail page | Not started |
+| **6A** | Incoming/Outgoing Correspondence, Diary Number & Letter Continuation: `Letter` gains `direction` (`INCOMING`/`OUTGOING`, defaulted so every historical row reads as `INCOMING`, its true unchanged meaning), `dispatch_department_id` (the destination for an outgoing letter — `recipient_department_id` keeps meaning "owning department" for both directions, so the entire existing security boundary needed zero changes), a department-and-direction-scoped `diary_number` (a real row-locked Postgres sequence), and two self-referential relationship fields (`recorded_from_letter_id`, database-uniquely-constrained for duplicate protection; `continuation_of_letter_id`, unbounded). New `POST /letters/{id}/record` action endpoint auto-copies every field from an outgoing letter into a new incoming one (idempotent, race-safe), triggering a receipt-confirmation notification back to the sender. A response is created through the existing `POST /letters` with `continuation_of_letter_id` set — never a separate endpoint, never an overwrite. One new, additive authorization function (`assert_dispatch_recipient_access`) independently re-verifies the dispatch relationship server-side; a real bug (a notification linking its own recipient to a letter they couldn't open) was found and fixed during this phase's own testing. Every business-rule decision (uniqueness scope, field reuse, what's still PENDING BUSINESS CLARIFICATION) documented in `docs/architecture/correspondence.md`. Backend test suite grown to 510 tests (+23), frontend to 382 tests (+18), migration upgrade/downgrade/upgrade verified with zero drift. Manual E2E: not performed (no browser-automation tool available). | **Complete** |
+| **6B** | Daak Management System Branding & Authentication Redesign: the application's visible name changed from "Letter Registry System"/"LRS" to "Daak Management System"/"DMS" — one constant (`APP_NAME`/`APP_SHORT_NAME`) propagates the rename everywhere it's rendered; two non-JS spots (`index.html` title, `.env.example` default) updated by hand. The actual Government of Balochistan logo (`govt_bal.webp`, moved byte-for-byte into `frontend/src/assets/`) replaces the old CSS-drawn placeholder mark in the Sidebar, Login/Signup, and the boot screen — always decorative (`alt=""`), never a new "Official Government Portal"/"Secure Government Network" claim. Login/Signup redesigned into a real split-screen layout (the supplied `front_page.jpeg` filling ~58% of the viewport, the untouched form on the right), with the previously per-page-duplicated `AuthShell` extracted into one shared component; every field, validation rule, and redirect confirmed byte-for-byte unchanged. Footer visually reduced, same wording, same single instance. No Phase 6A functionality touched (confirmed via unchanged 510-test backend suite). Frontend test suite grown to 386 tests (+4), run 3 consecutive times with identical results. Manual E2E: not performed (no browser-automation tool available). Full record in `docs/architecture/ui-design-system.md`'s own "Phase 6B" section. | **Complete** |
+| **6C** | Dashboard Analytics API (backend only): a confirmed supervisor requirement — the operational Phase 5F dashboard's KPI cards are hard for non-technical users to interpret without a visual breakdown — reactivated Phase 5G's own previously-deferred design. New `GET /api/v1/letters/aggregate` endpoint, `group_by` ∈ {status, category, classification, department, dispatch_department, direction, day, week, month}, reusing every existing `GET /letters` filter plus Phase 6A's `direction`/`dispatch_department_id`. Filter-building logic extracted into one shared `_build_filter_conditions` used by both `list_letters` and the new aggregate query — no second, divergent filter implementation. Authorization is a direct, unmodified reuse of `letter_visibility_filter`/department-derivation — no new authorization path. Of Phase 6A's five new fields, `direction` and `dispatch_department_id` became a filter and a dimension each; `diary_number`/`recorded_from_letter_id`/`continuation_of_letter_id` were deliberately left out (documented reasoning, not an oversight) — none is a meaningful grouping dimension. Date-bucket dimensions order chronologically ascending (for trend charts); every other dimension keeps Phase 5G's original count-descending order — a deliberate, reasoned correction to the prior design, not a blind port. Zero new migration or index needed (`alembic check`: no drift) — every grouped/filtered column was already indexed. 15 new backend tests (role-scoping, the classified-record security regression, ordering, empty-result shape, invalid date range); full suite grown to 525 tests, run twice consecutively with zero regressions (one unrelated, pre-existing flaky test in `test_security.py` diagnosed and disclosed, not modified — out of this phase's scope). No frontend file, dashboard chart, or `DashboardPage.jsx` change — explicitly backend-only. Full record in `docs/architecture/dashboard-analytics-api.md`'s own "Phase 6C" section. | **Complete (backend only)** |
+| **6D** | Dashboard Operational Graphs (frontend only): the supervisor explicitly requested the KPI-card presentation itself be replaced, not merely extended — the eight role-dependent SummaryCards are gone. Four new charts consume Phase 6C's `GET /letters/aggregate` directly: Incoming vs. Outgoing (`group_by=direction`), Letters Received by Department (`group_by=department`), Letters Sent by Department (`group_by=dispatch_department` — the real Phase 6A dispatch target, never `source_department_id`), and Correspondence Activity Over Time (`group_by=month`, two bounded direction-filtered requests merged client-side by date key, never a two-dimensional backend aggregate). `package.json` was inspected first — no chart library exists, and none was installed; every chart is plain CSS proportional-width bars (`HorizontalBarChart`, reused for all three bar-shaped graphs) or a small hand-written SVG line plot (`CorrespondenceTrendChart`), a deliberate evaluation against the existing "Precision Ledger" design language, not an assumption. Every chart's label and count is real, always-visible text — never a tooltip-only value — and fails/empties/loads independently of the others. Department × Direction cross-tabulation was evaluated and explicitly left out (DEFERRED — needs a two-dimensional aggregate endpoint the backend deliberately doesn't provide). Two small headline figures remain (Total Letters, Unread Notifications); the old SYSTEM_ADMIN/ADMIN administration cards do not, since Departments/Administrators/Users screens already show that data and it doesn't answer the confirmed correspondence-volume question. No backend file touched — the Phase 6C contract was sufficient as published. 23 new component/helper tests plus a full `DashboardPage.test.jsx` rewrite (not a weakening); full frontend suite grown to 409 tests (54 files), run 3 consecutive times with identical results; production build confirmed to include the new components' actual rendered output. Manual browser verification: dev-server boot and bundle-content checks only — full visual/responsive/role verification not performed (no browser-automation tool available). **Final polish pass (same phase, no Phase 6E)**: a live, real-database verification created two throwaway accounts and two clearly-labeled test letters through the running API, hand-computed every expected chart value, and confirmed the actual `GET /letters/aggregate` response matched exactly across every dimension and role-scoping case, then cleaned up (archived the letters, deactivated the accounts). This surfaced one genuine, previously-latent defect — `CorrespondenceTrendChart`'s x-axis labeled only the first/last month, invisible with the real data's 1-2 months but would have hidden every month in between once a third appeared — fixed with 2 new regression tests; frontend suite grown to 411 tests, run 3 consecutive times; backend re-confirmed at 525 tests, unaffected. This is the project's final implementation phase. Full record in `docs/architecture/dashboard.md`'s own "Phase 6D" §35. | **Complete (frontend only) — final phase** |
+| Future | Additional notification triggers, an audit read API, Department × Direction analytics (requires a two-dimensional aggregate endpoint), a dashboard date-range control (if a specific default/preset is ever confirmed wanted), a Designation edit/detail page | Not started |
 
 See `docs/PROJECT_STATUS.md` for what Phase 5H, 5H.1, 5I, 5I.1, 5I.2,
-5I.3, 5I.4A, 5I.4B, 5I.4C, 5I.4D, 5I.4E, 5I.5, 5I.6, and 5I.6A delivered,
+5I.3, 5I.4A, 5I.4B, 5I.4C, 5I.4D, 5I.4E, 5I.5, 5I.6, 5I.6A, 6A, 6B, 6C,
+and 6D delivered,
 `docs/architecture/source-designation.md`
-§26 for the Phase 5H implementation record, and
+§26 for the Phase 5H implementation record,
+`docs/architecture/correspondence.md` for the full Phase 6A
+implementation record, and
 `docs/architecture/ui-design-system.md` for the Phase 5I visual
 architecture review and the Phase
-5I.1/5I.2/5I.3/5I.4A/5I.4B/5I.4C/5I.4D/5I.4E/5I.5/5I.6/5I.6A
+5I.1/5I.2/5I.3/5I.4A/5I.4B/5I.4C/5I.4D/5I.4E/5I.5/5I.6/5I.6A/6B
 implementation records. The next phase begins only when explicitly
 instructed.
 

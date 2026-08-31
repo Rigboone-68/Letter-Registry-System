@@ -21,11 +21,20 @@
   width: 100%;
 }
 
+/**
+ * Phase 6B — reduced to a slim, subtle strip rather than a full-height
+ * footer bar: tighter vertical padding (`--space-2xs` instead of
+ * `--space-sm`) and a shorter line-height, so it reads as a quiet
+ * credit line rather than a dominant chrome element. Still present on
+ * every authenticated screen, still exactly once (`AppShell.test.jsx`
+ * confirms this), still the unchanged `PRODUCTION_CREDIT` text.
+ */
 .footer {
-  padding: var(--space-sm) var(--space-lg);
+  padding: var(--space-2xs) var(--space-lg);
   border-top: 1px solid var(--color-border-subtle);
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+  line-height: 1.3;
   text-align: center;
 }
 
@@ -35,6 +44,6 @@
   }
 
   .footer {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-2xs) var(--space-md);
   }
 }

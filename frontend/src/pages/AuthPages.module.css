@@ -1,118 +1,23 @@
 /**
- * Precision Ledger authentication entrance (Phase 5I.4E,
+ * Precision Ledger authentication form card (Phase 5I.4E,
  * docs/architecture/ui-design-system.md §28). Login and Signup share
- * this one file and the same wrapper/shell/brand/card structure —
- * only each form's own eyebrow label ("Account Access" vs. "New
- * Account Request") tells the two apart, deliberately not a second
- * design system (§5 of the brief). The brand mark reuses the exact
- * nested-square geometry `layouts/Sidebar.module.css` established in
- * Phase 5I.2 (a border rectangle with an inset accent-colored border),
- * scaled up as the one static brand element for this screen — the
- * animated boot/loading glyph is explicitly deferred to
- * "Phase 5I.5 — Boot & Loading Experience" and is not implemented
- * here. The background grid is a static, `pointer-events: none`
- * decoration masked to a soft radial fade — never animated, never
- * strong enough to affect the card's contrast, matching this file's
- * own "restrained futuristic" brief (§11: no particle systems, no
- * video, no heavy blur/glow). Every field/button/link keeps its exact
- * existing behavior, name, and event handler — only presentation
- * changed. `.field input`'s own border/padding/`[aria-invalid]`
- * overrides were removed as part of this phase: `global.css`'s Phase
- * 5I.3 form-control base and its own `input[aria-invalid='true']`
- * rule already cover both identically, completing the consolidation
- * this file was deliberately deferred from in Phase 5I.3's own scope
- * note.
+ * this one file for the form card itself — only each form's own
+ * eyebrow label ("Account Access" vs. "New Account Request") tells
+ * the two apart, deliberately not a second design system (§5 of the
+ * brief). Every field/button/link keeps its exact existing behavior,
+ * name, and event handler — only presentation changed. `.field
+ * input`'s own border/padding/`[aria-invalid]` overrides were removed
+ * as part of Phase 5I.4E: `global.css`'s Phase 5I.3 form-control base
+ * and its own `input[aria-invalid='true']` rule already cover both
+ * identically.
+ *
+ * Phase 6B moved the surrounding shell (background, split-screen
+ * image pane, brand mark/logo, credit line — previously `.wrapper`/
+ * `.shell`/`.brand`/`.brandMark`/`.brandCopy`/`.brandEyebrow`/
+ * `.brandName` here) into `components/AuthShell.module.css` once that
+ * chrome grew a genuine split-screen layout and its own shared
+ * component; this file now holds only the card's own internals.
  */
-
-.wrapper {
-  position: relative;
-  min-height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-lg);
-  overflow: hidden;
-}
-
-.wrapper::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image: linear-gradient(var(--color-border-subtle) 1px, transparent 1px),
-    linear-gradient(90deg, var(--color-border-subtle) 1px, transparent 1px);
-  background-size: 48px 48px;
-  mask-image: radial-gradient(ellipse 900px 620px at 50% 15%, black, transparent 72%);
-  -webkit-mask-image: radial-gradient(ellipse 900px 620px at 50% 15%, black, transparent 72%);
-  opacity: 0.7;
-  pointer-events: none;
-}
-
-.shell {
-  position: relative;
-  width: 100%;
-  max-width: 400px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-lg);
-  animation: shellIn var(--motion-normal) var(--motion-ease);
-}
-
-@keyframes shellIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-}
-
-.brandMark {
-  position: relative;
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  border: 2px solid var(--color-primary);
-  border-radius: var(--radius-sm);
-}
-
-.brandMark::after {
-  content: '';
-  position: absolute;
-  inset: 7px;
-  border: 1.5px solid var(--color-accent);
-  border-radius: 1px;
-}
-
-.brandCopy {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.brandEyebrow {
-  margin: 0;
-  font-size: 0.7rem;
-  font-weight: var(--font-weight-bold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-text-secondary);
-}
-
-.brandName {
-  margin: 0;
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-text-primary);
-}
 
 .card {
   position: relative;
@@ -183,19 +88,8 @@
   color: var(--color-text-muted);
 }
 
-.credit {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  text-align: center;
-}
-
 @media (max-width: 420px) {
   .card {
     padding: var(--space-lg);
-  }
-
-  .brandName {
-    font-size: var(--font-size-md);
   }
 }

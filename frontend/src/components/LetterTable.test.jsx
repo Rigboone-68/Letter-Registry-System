@@ -74,4 +74,23 @@ describe('LetterTable', () => {
     renderTable()
     expect(screen.getByRole('link', { name: 'REF-001' })).toHaveAttribute('href', '/app/letters/l1')
   })
+
+  it('renders the direction and diary/dispatch number for each letter (Phase 6A)', () => {
+    renderTable({
+      letters: [
+        { ...LETTERS[0], direction: 'INCOMING', diary_number: '4' },
+        { ...LETTERS[0], id: 'l2', reference_number: 'REF-002', direction: 'OUTGOING', diary_number: '9' },
+      ],
+    })
+
+    expect(screen.getByText('Incoming')).toBeInTheDocument()
+    expect(screen.getByText('Outgoing')).toBeInTheDocument()
+    expect(screen.getByText('4')).toBeInTheDocument()
+    expect(screen.getByText('9')).toBeInTheDocument()
+  })
+
+  it('shows a placeholder for a historical letter with no diary number', () => {
+    renderTable({ letters: [{ ...LETTERS[0], direction: 'INCOMING', diary_number: null }] })
+    expect(screen.getByRole('columnheader', { name: /diary\/dispatch/i })).toBeInTheDocument()
+  })
 })

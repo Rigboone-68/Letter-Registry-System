@@ -62,6 +62,23 @@ class LetterStatus(str, enum.Enum):
     ARCHIVED = "ARCHIVED"
 
 
+class LetterDirection(str, enum.Enum):
+    """Correspondence direction (Phase 6A,
+    docs/architecture/correspondence.md §2). Every Letter recorded before
+    this phase represents the same thing: something that arrived at the
+    recording department and was entered into that department's own
+    registry — exactly what `INCOMING` describes, which is why the
+    migration backfills every historical row to this value via a plain
+    `server_default`, not a business guess. `OUTGOING` is the new case: a
+    department records correspondence it is sending to another department
+    (`Letter.dispatch_department_id`), owned by (visible to) the sending
+    department until the destination department explicitly records its
+    own `INCOMING` counterpart (`Letter.recorded_from_letter_id`)."""
+
+    INCOMING = "INCOMING"
+    OUTGOING = "OUTGOING"
+
+
 class ActiveStatus(str, enum.Enum):
     """Shared active/inactive status for reference entities (Department,
     Category, Classification). These entities are never physically deleted —
@@ -79,3 +96,4 @@ authorization_status_enum = SAEnum(AuthorizationStatus, name="authorization_stat
 authorization_purpose_enum = SAEnum(AuthorizationPurpose, name="authorization_purpose")
 letter_status_enum = SAEnum(LetterStatus, name="letter_status")
 active_status_enum = SAEnum(ActiveStatus, name="active_status")
+letter_direction_enum = SAEnum(LetterDirection, name="letter_direction")

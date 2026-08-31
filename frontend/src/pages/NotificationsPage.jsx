@@ -5,6 +5,7 @@ import ErrorState from '../components/ErrorState'
 import LoadingState from '../components/LoadingState'
 import NotificationItem from '../components/NotificationItem'
 import Pagination from '../components/Pagination'
+import * as letterService from '../services/letterService'
 import * as notificationService from '../services/notificationService'
 import styles from './NotificationsPage.module.css'
 
@@ -27,6 +28,14 @@ import styles from './NotificationsPage.module.css'
  * feature that exists today, never a monitoring/security claim) — no
  * unread filter, search, category, or bulk control was added; none of
  * those exist in the backend contract.
+ *
+ * Phase 6A (docs/architecture/correspondence.md §9) adds `onRecord`,
+ * passed straight through to each `NotificationItem` — the actual
+ * `POST /letters/{id}/record` call lives here (mirroring `handleMarkRead`
+ * above), but this page never needs to update its own `data` state in
+ * response: recording never changes the *notification* row itself
+ * (unlike mark-read), only creates a separate Letter, which
+ * `NotificationItem` tracks locally.
  */
 export default function NotificationsPage() {
   const [page, setPage] = useState(1)
@@ -65,6 +74,10 @@ export default function NotificationsPage() {
     } finally {
       setMarkingId(null)
     }
+  }
+
+  async function handleRecord(notification) {
+    return letterService.recordFromDispatch(notification.letter_id)
   }
 
   async function handleMarkAllRead() {
@@ -129,6 +142,7 @@ export default function NotificationsPage() {
                 notification={notification}
                 onMarkRead={handleMarkRead}
                 marking={markingId === notification.id}
+                onRecord={handleRecord}
               />
             ))}
           </ul>

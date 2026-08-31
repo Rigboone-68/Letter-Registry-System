@@ -1,0 +1,134 @@
+/**
+ * Precision Ledger trend treatment (Phase 6D) — a calm two-line plot,
+ * no gradient fill, no glow, no animation beyond the shared
+ * `--motion-*` tokens. Incoming uses the existing primary blue; a
+ * dashed outgoing line uses the existing accent teal, so the two are
+ * distinguished by line style as well as color (never color alone).
+ */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.description {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.legendSwatch {
+  width: 24px;
+  height: 12px;
+  overflow: visible;
+  flex-shrink: 0;
+}
+
+.plot {
+  width: 100%;
+  height: 180px;
+  display: block;
+}
+
+.incomingLine {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 2;
+}
+
+.outgoingLine {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.incomingMarker {
+  fill: var(--color-primary);
+}
+
+.outgoingMarker {
+  fill: var(--color-accent);
+}
+
+.axisLabels {
+  position: relative;
+  height: 18px;
+  margin-top: var(--space-2xs);
+}
+
+.axisLabel {
+  position: absolute;
+  top: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+/* The first/last tick would otherwise hang off the plot's edge — anchor
+   them inward instead of centering on a point that sits at the very
+   boundary. */
+.axisLabel[data-anchor='start'] {
+  transform: translateX(0);
+}
+
+.axisLabel[data-anchor='end'] {
+  transform: translateX(-100%);
+}
+
+.dataTable {
+  margin-top: var(--space-xs);
+}
+
+.dataTable summary {
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--color-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.dataTable table {
+  margin-top: var(--space-sm);
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.tableCaption {
+  text-align: left;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-xs);
+}
+
+.dataTable th,
+.dataTable td {
+  text-align: left;
+  padding: var(--space-2xs) var(--space-sm);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.dataTable td {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 768px) {
+  .plot {
+    height: 140px;
+  }
+}

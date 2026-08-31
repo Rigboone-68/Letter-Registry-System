@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -228,6 +228,124 @@ describe('LetterFormPage — create', () => {
     await screen.findByLabelText(/source department/i)
     expect(screen.queryByLabelText(/^category$/i)).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/^classification$/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('LetterFormPage — correspondence direction (Phase 6A)', () => {
+  const OTHER_DEPARTMENT = { id: 'dept-2', name: 'S&IT', status: 'ACTIVE' }
+
+  beforeEach(() => {
+    vi.resetAllMocks()
+    mockUseAuth.mockReturnValue({ user: USER_ROLE })
+    departmentService.list.mockResolvedValue({ items: [DEPARTMENT, OTHER_DEPARTMENT], total: 2 })
+    designationService.list.mockResolvedValue({ items: [DESIGNATION], total: 1 })
+  })
+
+  it('defaults to Incoming / Diary and never requires a dispatch department by default', async () => {
+    letterService.create.mockResolvedValue({ ...EDIT_LETTER, id: 'new-id' })
+    renderCreate()
+
+    expect(await screen.findByLabelText(/^direction/i)).toHaveValue('INCOMING')
+    expect(screen.queryByLabelText(/dispatch to department/i)).not.toBeInTheDocument()
+
+    await fillRequiredFields()
+    await userEvent.click(screen.getByRole('button', { name: /record letter/i }))
+
+    await waitFor(() => expect(letterService.create).toHaveBeenCalled())
+    const payload = letterService.create.mock.calls[0][0]
+    expect(payload.direction).toBe('INCOMING')
+    expect(payload).not.toHaveProperty('dispatch_department_id')
+  })
+
+  it('reveals a Dispatch to Department selector when Outgoing is chosen, and requires it', async () => {
+    renderCreate()
+    await screen.findByLabelText(/source department/i)
+
+    await userEvent.selectOptions(screen.getByLabelText(/^direction/i), 'OUTGOING')
+    expect(await screen.findByLabelText(/dispatch to department/i)).toBeInTheDocument()
+
+    await fillRequiredFields()
+    await userEvent.click(screen.getByRole('button', { name: /record letter/i }))
+
+    expect(await screen.findByText(/dispatch department is required/i)).toBeInTheDocument()
+    expect(letterService.create).not.toHaveBeenCalled()
+  })
+
+  it('excludes the recorder\'s own department from the dispatch selector', async () => {
+    // `DEPARTMENT.id` ('dept-1') must match the recorder's own
+    // `department_id` here — unlike `USER_ROLE`'s generic 'd1', which
+    // no fixture in this file is ever cross-referenced against.
+    mockUseAuth.mockReturnValue({ user: { ...USER_ROLE, department_id: 'dept-1' } })
+    renderCreate()
+    await userEvent.selectOptions(await screen.findByLabelText(/^direction/i), 'OUTGOING')
+    const dispatchSelect = await screen.findByLabelText(/dispatch to department/i)
+
+    expect(within(dispatchSelect).queryByRole('option', { name: 'Ministry of Finance' })).not.toBeInTheDocument()
+    expect(within(dispatchSelect).getByRole('option', { name: 'S&IT' })).toBeInTheDocument()
+  })
+
+  it('submits direction and dispatch_department_id together for an outgoing letter', async () => {
+    letterService.create.mockResolvedValue({ ...EDIT_LETTER, id: 'new-id' })
+    renderCreate()
+
+    await userEvent.selectOptions(await screen.findByLabelText(/^direction/i), 'OUTGOING')
+    await userEvent.selectOptions(await screen.findByLabelText(/dispatch to department/i), 'dept-2')
+    await fillRequiredFields()
+    await userEvent.click(screen.getByRole('button', { name: /record letter/i }))
+
+    await waitFor(() => expect(letterService.create).toHaveBeenCalled())
+    const payload = letterService.create.mock.calls[0][0]
+    expect(payload.direction).toBe('OUTGOING')
+    expect(payload.dispatch_department_id).toBe('dept-2')
+  })
+
+  it('pre-selects Outgoing and silently carries continuation_of_letter_id when reached via "Create response"', async () => {
+    letterService.create.mockResolvedValue({ ...EDIT_LETTER, id: 'new-id' })
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/app/letters/new',
+            state: { continuationOfLetterId: 'original-1', continuationOfReference: 'REF-100' },
+          },
+        ]}
+      >
+        <Routes>
+          <Route path="/app/letters/new" element={<LetterFormPage />} />
+          <Route path="/app/letters/:id" element={<div>Detail Page</div>} />
+        </Routes>
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByLabelText(/^direction/i)).toHaveValue('OUTGOING')
+    expect(screen.getByText(/responding to letter ref-100/i)).toBeInTheDocument()
+
+    await userEvent.selectOptions(screen.getByLabelText(/dispatch to department/i), 'dept-2')
+    await fillRequiredFields()
+    await userEvent.click(screen.getByRole('button', { name: /record letter/i }))
+
+    await waitFor(() => expect(letterService.create).toHaveBeenCalled())
+    expect(letterService.create.mock.calls[0][0].continuation_of_letter_id).toBe('original-1')
+  })
+
+  it('never sends direction, dispatch_department_id, or continuation_of_letter_id on edit', async () => {
+    letterService.get.mockResolvedValue(EDIT_LETTER)
+    letterService.update.mockResolvedValue({ ...EDIT_LETTER, subject: 'Updated subject' })
+    renderEdit()
+    await screen.findByDisplayValue('REF-001')
+
+    expect(screen.queryByLabelText(/^direction/i)).not.toBeInTheDocument()
+
+    const subjectInput = screen.getByLabelText(/^subject/i)
+    await userEvent.clear(subjectInput)
+    await userEvent.type(subjectInput, 'Updated subject')
+    await userEvent.click(screen.getByRole('button', { name: /save changes/i }))
+
+    await waitFor(() => expect(letterService.update).toHaveBeenCalled())
+    const payload = letterService.update.mock.calls[0][1]
+    expect(payload).not.toHaveProperty('direction')
+    expect(payload).not.toHaveProperty('dispatch_department_id')
+    expect(payload).not.toHaveProperty('continuation_of_letter_id')
   })
 })
 

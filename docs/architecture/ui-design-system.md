@@ -2975,3 +2975,121 @@ no browser-automation tool is available in this environment.
 **Not done this phase**: no other Sidebar behavior, Topbar icon
 (`☰`/`✕`, already confirmed monochrome and consistent in Phase 5I.6),
 or navigation data changed.
+
+## Phase 6B — Daak Management System Branding & Authentication Redesign: Implementation Record
+
+The application's visible name and identity, plus a split-screen
+Login/Signup redesign — implemented after, and independent of, Phase
+6A's functional correspondence work, which this phase does not touch.
+
+**Application name — one source, confirmed before changing anything**:
+a codebase-wide search found exactly one place the literal string
+"Letter Registry System" was defined — `constants/app.js`'s `APP_NAME`
+— every consumer (`Sidebar`, `Topbar` via `APP_NAME`, `AuthShell`,
+`BootScreen`, `LetterFormPage`'s `title={APP_NAME}`) already imported
+it rather than hardcoding it, so changing the one constant (now
+"Daak Management System", `APP_SHORT_NAME` now "DMS") propagated
+everywhere the name is rendered. Two non-JS occurrences needed a
+manual edit, since neither can reference a JS constant:
+`frontend/index.html`'s `<title>` and `frontend/.env.example`'s
+documented default. Two test files hardcoded the literal old string in
+their own assertions (`App.test.jsx`, `BootScreen.test.jsx`) and were
+updated to match — not weakened, still asserting the exact rendered
+text. The backend's own `APP_NAME` setting (FastAPI/Swagger `title=`
+only, never seen by an end user of the application) was deliberately
+left untouched — out of this phase's explicitly frontend-scoped
+brief. `Letter`/`Letter Registry`/`correspondence` — the actual
+business-domain terminology — appear nowhere near this rename and are
+completely unaffected.
+
+**Assets — used exactly as supplied, never regenerated**: `govt_bal.webp`
+(400×340, the official Government of Balochistan emblem) and
+`front_page.jpeg` (736×1104, the supplied institutional photograph)
+were located at the repository root, moved byte-for-byte (MD5-verified
+before and after) into `frontend/src/assets/` — the project's own
+documented location for "static images... bundled by Vite" — and
+re-exported once from `constants/app.js` (`GOVT_LOGO_SRC`/
+`AUTH_BACKGROUND_SRC`), the same "one source" convention `APP_NAME`
+already established. The root-level duplicates were removed once the
+copies were verified identical. Neither file's bytes, dimensions, or
+format were altered — confirmed by the production build re-emitting
+them at their original sizes (22.24 KB / 108.61 KB) under new,
+content-hashed filenames.
+
+**The government logo — real, everywhere the brand identity appears,
+always decorative**: replaces the old CSS-drawn nested-square
+placeholder mark in the Sidebar header, the authentication shell, and
+(newly) the boot screen. Every placement uses `alt=""` — in each
+location, the adjacent visible or `sr-only` `APP_NAME`/`APP_SHORT_NAME`
+text already fully names the application's identity, so a second
+screen-reader announcement of the same fact would be redundant (the
+brief's own explicit guidance, applied identically in all three
+places). `object-fit: contain` (never `cover`) everywhere the logo
+appears, so the crest itself is never cropped; sized modestly (22–40px
+tall depending on context) rather than enormous. No "Official
+Government Portal"/"Secure Government Network"/"Government
+Certified"/"Encrypted Government System" language was added anywhere
+— a forbidden-language grep across every changed file confirms zero
+matches; the logo itself is the identity, per the brief's own framing.
+
+**Login/Signup — a real split-screen layout, not a floating card**: the
+previously-duplicated, per-page `AuthShell` (Phase 5I.4E) is now
+extracted into `components/AuthShell.jsx` — once its layout grew a
+genuine two-pane structure worth sharing properly, duplicating it
+across two files stopped being the smaller change. Left pane: the
+supplied photograph, `object-fit: cover`, `flex: 0 0 58%` (within the
+requested 55–60% range), `object-position: center` — the pane's own
+aspect ratio crops the image's left/right edges before its top/bottom
+at typical desktop proportions, keeping the photograph's own visual
+center always in frame without distortion. Right pane: the real
+government logo, brand text, the existing form card (`AuthPages.
+module.css`, now holding only the card's own internals since the
+surrounding chrome moved out), and the unchanged `PRODUCTION_CREDIT`
+line. Every field, validation rule, submit handler, loading state,
+error path, and redirect in `LoginPage.jsx`/`SignupPage.jsx` is
+byte-for-byte unchanged — confirmed by both pages' full existing test
+suites passing with zero modification. No password-visibility toggle
+was added (none existed before).
+
+**Responsive — the existing 768px breakpoint, not a new one**: below
+768px (the same breakpoint `Sidebar`/`Topbar` already use), the split
+collapses to a stacked layout — a 160px image header band above the
+form, never disappearing, never squeezing the form narrower than the
+viewport allows. No new breakpoint was introduced beyond the existing
+420px rule (kept, for the form card's own narrow-width padding).
+
+**Footer — smaller, same wording, same one instance**: `AppShell`'s
+footer padding reduced from `--space-sm` to `--space-2xs` vertically
+with a tighter line-height — visibly less dominant, still exactly the
+unchanged `PRODUCTION_CREDIT` text ("A Project by AJ-OVA Labs"), still
+rendered exactly once per authenticated screen (`AppShell.test.jsx`'s
+existing "exactly once" assertion passes unmodified). Login/Signup
+already render the same credit line via `AuthShell` — not a second,
+independent footer, the same single constant either way.
+
+**Security boundary**: no authentication logic, `AuthContext`
+behavior, validation rule, or redirect changed anywhere — grepped
+every changed file for JWT/token/localStorage patterns and for the
+five forbidden security-claim phrases above; the one JWT-related match
+is `LoginPage.jsx`'s own pre-existing comment stating the page *never*
+decodes one.
+
+**Tests**: `App.test.jsx`/`BootScreen.test.jsx` updated (2 hardcoded
+literal-string assertions, not weakened); a new `AuthShell.test.jsx`
+(4 tests) covers both images being decorative (`alt=""`), the brand
+identity text, the single credit line, and children rendering. Every
+other existing test file — `LoginPage`, `SignupPage`, `Sidebar`,
+`AppShell`, `routing` — passes with zero modification. Full suite: 51
+files / 386 tests (+1 file, +4 tests), run 3 consecutive times with
+identical results; `npm run build` succeeded (204 modules — the two
+new bundled asset files); backend `pytest tests/` — 510 passed,
+completely unaffected (no backend file touched, confirming Phase 6A's
+own functionality is untouched, per this phase's own explicit
+instruction).
+
+**Manual browser verification**: **not performed** — no
+browser-automation tool is available in this environment. The
+split-screen layout's actual visual balance (image crop framing,
+right-pane proportions at real viewport sizes) has not been visually
+confirmed in a running browser; every claim above is backed by
+automated tests and direct code/CSS inspection, not observation.

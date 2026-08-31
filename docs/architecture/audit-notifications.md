@@ -1267,7 +1267,13 @@ deleted afterward; `lrs_dev` confirmed back to its pre-verification state
 * **No notification triggers beyond "letter registered" exist** — every
   other candidate in §12 (document upload, classification/category
   change, user/admin/department lifecycle) remains unimplemented,
-  exactly as instructed.
+  exactly as instructed. **Superseded in one narrow respect by Phase
+  6A** (`docs/architecture/correspondence.md` §11): two new triggers,
+  `notify_letter_dispatched`/`notify_correspondence_recorded`, were
+  added for the new outgoing-correspondence workflow, reusing this
+  exact SAVEPOINT-wrapped, best-effort, "department's ACTIVE Admins"
+  pattern — still the same PROVISIONAL recipient strategy noted above,
+  not a new one.
 * **`UserAuthorization.expires_at` is still not enforced anywhere** — an
   "expired" audit event continues to depend on that being built first,
   which it wasn't (out of scope, unchanged from the review).

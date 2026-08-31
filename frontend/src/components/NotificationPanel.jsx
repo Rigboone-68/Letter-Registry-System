@@ -5,6 +5,7 @@ import EmptyState from './EmptyState'
 import ErrorState from './ErrorState'
 import LoadingState from './LoadingState'
 import NotificationItem from './NotificationItem'
+import * as letterService from '../services/letterService'
 import * as notificationService from '../services/notificationService'
 import styles from './NotificationPanel.module.css'
 
@@ -26,6 +27,11 @@ const PANEL_PAGE_SIZE = 10
  * heading, and a small CSS-only pointer connecting the panel visually
  * to the bell it opened from. Mark-read stays explicit-button-only;
  * nothing here marks a notification read on navigation.
+ *
+ * Phase 6A (docs/architecture/correspondence.md §9) adds `onRecord`,
+ * passed straight through to each `NotificationItem` — see
+ * `pages/NotificationsPage.jsx`'s own docstring for why this panel
+ * doesn't need to update `data` in response to a successful Record.
  */
 export default function NotificationPanel({ onClose, onUnreadCountChange }) {
   const [data, setData] = useState(null)
@@ -72,6 +78,10 @@ export default function NotificationPanel({ onClose, onUnreadCountChange }) {
     } finally {
       setMarkingId(null)
     }
+  }
+
+  async function handleRecord(notification) {
+    return letterService.recordFromDispatch(notification.letter_id)
   }
 
   async function handleMarkAllRead() {
@@ -128,6 +138,7 @@ export default function NotificationPanel({ onClose, onUnreadCountChange }) {
               onMarkRead={handleMarkRead}
               marking={markingId === notification.id}
               onNavigate={onClose}
+              onRecord={handleRecord}
             />
           ))}
         </ul>

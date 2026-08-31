@@ -1,13 +1,79 @@
-# LRS Frontend
+# DMS Frontend
 
-React + Vite client for the Letter Registry System. **Phase 5I.6A:
-Sidebar icon identity correction complete** — the navigation "icons"
-(3-letter monograms since Phase 5I.2) replaced with 9 small inline-SVG
-geometric icons (grid/envelope/document-stack/bell/building/shield/
-badge/folder/layers, plus a person icon for `Users`), each following
-the one existing active-state color rule rather than a new mechanism;
+React + Vite client for the Daak Management System (renamed from
+"Letter Registry System"/"LRS" in Phase 6B — see below).
+
+**Phase 6D: Dashboard Operational Graphs complete** — the Dashboard's
+eight role-dependent `SummaryCard`s are gone, replaced by four charts
+consuming Phase 6C's `GET /letters/aggregate` directly: Incoming vs.
+Outgoing, Letters Received by Department, Letters Sent by Department
+(the real Phase 6A dispatch target, never `source_department_id`), and
+Correspondence Activity Over Time (two bounded, direction-filtered
+`group_by=month` requests merged client-side by date key, never a
+two-dimensional backend aggregate — the API deliberately has none).
+`package.json` was checked first; no chart library exists, and a
+genuine evaluation found none was needed — every chart is plain CSS
+proportional-width bars (`HorizontalBarChart`, reused across all three
+bar-shaped graphs) or a small hand-written SVG line plot
+(`CorrespondenceTrendChart`), both fitting the existing "Precision
+Ledger" design language without adding a dependency. Every chart's
+label/count is real, always-visible text, never a tooltip-only value,
+and fails/empties/loads independently. Two small headline figures
+(Total Letters, Unread Notifications) remain; the retired
+administration cards do not. A Department × Direction cross-tab was
+evaluated and explicitly deferred — it would need a two-dimensional
+aggregate endpoint the backend doesn't provide. No backend file was
+touched. Frontend test suite grown to 409 tests (54 files). Full
+reasoning in `docs/architecture/dashboard.md`'s own "Phase 6D" section.
+
+**This is the project's final implementation phase — no Phase 6E.** A
+closing final-polish pass reviewed the dashboard above for genuine
+problems rather than redesigning it: a live verification against the
+real dev database (two throwaway accounts, two clearly-labeled test
+letters, both cleaned up afterward) hand-confirmed every chart's
+aggregate figures matched the actual registry exactly, and surfaced one
+real, previously-latent defect — `CorrespondenceTrendChart`'s x-axis
+labeled only the first and last month, which happened to cover every
+month that existed in the real data (1-2 months) but would have hidden
+every month in between once a third appeared. Fixed with two new
+regression tests; nothing else was changed. Frontend suite grown to 411
+tests, run 3 consecutive times with identical results. Full record,
+including the exact manual browser-verification steps for a local
+check, in `docs/architecture/dashboard.md`'s own "Phase 6D" §35.
+
+**Phase 6B:
+Daak Management System Branding & Authentication Redesign complete** —
+the application's visible name changed to "Daak Management System"/
+"DMS" from the one `APP_NAME`/`APP_SHORT_NAME` constant every screen
+already imported; the actual Government of Balochistan logo
+(`govt_bal.webp`, moved byte-for-byte into `frontend/src/assets/`)
+replaces the old CSS-drawn brand mark in the Sidebar, `AuthShell`, and
+`BootScreen` — always decorative (`alt=""`), since adjacent text
+already names the identity; Login/Signup redesigned into a real
+split-screen layout (the supplied `front_page.jpeg` filling ~58% of
+the viewport), with the previously per-page-duplicated shell chrome
+extracted into one shared `AuthShell` component; the footer visually
+reduced, same unchanged wording. Every authentication field,
+validation rule, and redirect confirmed byte-for-byte unchanged; no
+Phase 6A functionality was touched. Full reasoning in
+`docs/architecture/ui-design-system.md`'s own "Phase 6B" section. On
+top of Phase 6A's own
+Incoming/Outgoing Correspondence, Diary Number & Letter Continuation
+implementation — `LetterFormPage` gained a create-only Correspondence
+Direction control and a conditional Dispatch Department selector;
+`LetterDetailPage` gained a Correspondence Direction section and a
+"Create response" action; `NotificationItem` gained a `Record` button
+for `LETTER_DISPATCHED` notifications; `LetterTable`/`LetterFilters`
+gained a Direction badge/filter and a Diary/Dispatch Number column.
+Full reasoning for every business-rule decision in
+`docs/architecture/correspondence.md`. On top of Phase 5I.6A's Sidebar
+icon identity correction (the navigation "icons," 3-letter monograms
+since Phase 5I.2, replaced with 9 small inline-SVG geometric icons —
+grid/envelope/document-stack/bell/building/shield/badge/folder/layers,
+plus a person icon for `Users` — each following the one existing
+active-state color rule rather than a new mechanism;
 `navigationConfig.js`/routes/labels/permissions untouched — see
-"Visual design system" below. On top of Phase 5I.6's Final Polish,
+"Visual design system" below), and Phase 5I.6's Final Polish,
 Manual E2E & Handover Audit (the closing audit across all nine prior
 visual phases, fixing one genuine defect — `NotificationBell`'s emoji
 icon replaced with a CSS-only outline, zero behavior change — and
@@ -628,6 +694,65 @@ enterprise command center" direction — no code was changed by it. Phase
   5I.6" section. Manual browser verification was **not performed** — no
   browser-automation tool is available in this environment. The Phase
   5I visual architecture (5I.1 through 5I.6) is now considered closed.
+* **Phase 6B (Daak Management System Branding & Authentication
+  Redesign)** — the application's visible identity. A codebase-wide
+  search found exactly one place "Letter Registry System" was
+  defined (`constants/app.js`'s `APP_NAME`) — every screen already
+  imported it rather than hardcoding it, so renaming it once (to
+  "Daak Management System"/"DMS") renamed the app everywhere it's
+  shown; `index.html`'s `<title>` and `.env.example`'s default needed
+  a manual edit since neither can reference a JS constant. The actual
+  Government of Balochistan logo (`govt_bal.webp`, located at the
+  repo root, MD5-verified and moved byte-for-byte into
+  `frontend/src/assets/`) replaces the old CSS-drawn nested-square
+  placeholder mark in the Sidebar header, `AuthShell`, and
+  `BootScreen` — every placement `alt=""`, since adjacent visible or
+  `sr-only` brand text already fully names the identity in each of
+  those three places; no "Official Government Portal"/"Secure
+  Government Network" language was added. Login/Signup redesigned
+  into a real split-screen layout — the supplied `front_page.jpeg`
+  filling the left ~58% of the viewport (`object-fit: cover`, never
+  distorted), the existing, completely unmodified form on the right —
+  with the previously per-page-duplicated `AuthShell` extracted into
+  its own shared component (`components/AuthShell.jsx`) now that its
+  layout is genuinely worth sharing. Below the existing 768px
+  breakpoint the layout stacks (a short image header band, never
+  hidden, never squeezing the form). The footer's padding was
+  tightened for a visibly smaller footprint — same unchanged
+  `PRODUCTION_CREDIT` wording, same single instance. No authentication
+  field, validation rule, or redirect changed; no Phase 6A
+  functionality was touched (confirmed via an unchanged 510-test
+  backend suite). Full reasoning in
+  `docs/architecture/ui-design-system.md`'s own "Phase 6B" section.
+* **Phase 6A (Incoming/Outgoing Correspondence, Diary Number & Letter
+  Continuation)** — the first functional (not visual) enhancement since
+  the Phase 5I visual arc closed. `LetterFormPage` gained a
+  **create-only** Correspondence Direction control (Incoming/Diary vs.
+  Outgoing/Dispatch) and, only when Outgoing is chosen, a "Dispatch to
+  Department" selector (reusing `DepartmentSelector`, the recorder's
+  own department excluded from the option list); neither field nor
+  `continuation_of_letter_id` is ever sent on edit — there is no field
+  for any of them on `LetterUpdate`. `LetterDetailPage` gained a
+  Correspondence Direction section (Direction, Diary/Dispatch Number,
+  and — deliberately plain text, never a link — "Received via dispatch
+  from," since the originating outgoing letter belongs to a different
+  department this one cannot open; "Continuation of," in contrast, *is*
+  a real link, since a continuation only ever references a letter
+  within the caller's own department) and a "Create response" action
+  that navigates to the create form with `continuationOfLetterId`
+  carried via router `state`, never a query string. `NotificationItem`
+  gained its one type-specific branch: a `LETTER_DISPATCHED`
+  notification's own `letter_id` is the inaccessible outgoing letter,
+  so it renders a `Record` button (calling the new
+  `letterService.recordFromDispatch`) instead of a dead Letter link,
+  showing a real link to the newly recorded incoming letter on success.
+  `LetterTable`/`LetterFilters` gained an always-rendered Direction
+  badge/Diary-Dispatch-Number column and a Direction filter. Full
+  reasoning for every business-rule decision (Diary Number's scope,
+  why fields are copied verbatim, why self-dispatch is rejected, what
+  remains genuinely undecided) in `docs/architecture/correspondence.md`.
+  Test suite grown to 382 frontend tests (50 files, +18) / 510 backend
+  tests, run 3 consecutive times with identical results.
 * **Phase 5I.6A (Sidebar Icon Identity Correction)** — a targeted fix
   found during Phase 5I.6's own manual review: the Sidebar's navigation
   "icons" were actually 3-letter monograms (`DAS`/`LET`/`DOC`/etc.), a
@@ -666,6 +791,22 @@ enterprise command center" direction — no code was changed by it. Phase
   `docs/architecture/ui-design-system.md`'s own "Phase 5I.1"/"Phase
   5I.2"/"Phase 5I.3"/"Phase 5I.4A"/"Phase 5I.4B"/"Phase 5I.4C"/"Phase
   5I.4D"/"Phase 5I.4E"/"Phase 5I.5"/"Phase 5I.6"/"Phase 5I.6A" sections.
+  Phase 6A's own full implementation record — including every
+  business-rule decision and what remains PENDING BUSINESS
+  CLARIFICATION — lives in `docs/architecture/correspondence.md`
+  instead, not in this document. Phase 6B's own full implementation
+  record lives in `docs/architecture/ui-design-system.md`'s own
+  "Phase 6B" section, appended after "Phase 5I.6A". **Phase 6C
+  (Dashboard Analytics API) touched no frontend file at all** — it
+  added a new backend-only `GET /api/v1/letters/aggregate` endpoint;
+  its own full implementation record lives in
+  `docs/architecture/dashboard-analytics-api.md`'s own "Phase 6C"
+  section, not in this document. **Phase 6D (Dashboard Operational
+  Graphs)** then consumed that endpoint from the frontend — its own
+  full implementation record, including the chart-library evaluation,
+  the KPI-removal reasoning, and the Department × Direction deferral,
+  lives in `docs/architecture/dashboard.md`'s own "Phase 6D" section,
+  not in this document.
 
 ## Source layout
 
@@ -675,15 +816,15 @@ enterprise command center" direction — no code was changed by it. Phase
 | `src/App.jsx` | Provides `AuthProvider` and mounts the router; since Phase 5I.5, gates on `AuthContext`'s own existing `status === 'loading'` value to render `BootScreen` instead of `RouterProvider` for that one genuine initialization window — no duplicated timer, `AuthContext.jsx` itself unchanged |
 | `src/routes/` | `router` (route tree), `ProtectedRoute` (authentication guard), `RoleGuard` (role-based navigation convenience, not security) |
 | `src/context/` | `AuthContext` — the one authentication state mechanism |
-| `src/services/` | `apiClient.js` (the one Axios instance), `authService.js` (login/signup/me), `letterService.js` (Phase 5C), `categoryService.js`/`classificationService.js` (Phase 5C: thin, SYSTEM_ADMIN-only `list()`-only reference-data wrappers; extended to the full create/read/update/activate/deactivate set in Phase 5H.1), `departmentService.js` (Phase 5C reference-data + Phase 5D full CRUD/lifecycle; `list()` readable by any role since Phase 5H), `adminService.js`/`userService.js` (Phase 5D), `documentService.js`/`notificationService.js` (Phase 5E), `designationService.js` (Phase 5H), `tokenStorage.js` (isolated token access), `errorNormalization.js` — no `dashboardService.js` exists; the Dashboard (Phase 5F) composes these same modules directly |
+| `src/services/` | `apiClient.js` (the one Axios instance), `authService.js` (login/signup/me), `letterService.js` (Phase 5C; gained `direction`/`dispatch_department_id`/`continuation_of_letter_id` in `CREATE_FIELDS` and a new `recordFromDispatch(outgoingLetterId)` in Phase 6A), `categoryService.js`/`classificationService.js` (Phase 5C: thin, SYSTEM_ADMIN-only `list()`-only reference-data wrappers; extended to the full create/read/update/activate/deactivate set in Phase 5H.1), `departmentService.js` (Phase 5C reference-data + Phase 5D full CRUD/lifecycle; `list()` readable by any role since Phase 5H), `adminService.js`/`userService.js` (Phase 5D), `documentService.js`/`notificationService.js` (Phase 5E), `designationService.js` (Phase 5H), `tokenStorage.js` (isolated token access), `errorNormalization.js` — no `dashboardService.js` exists; the Dashboard (Phase 5F) composes these same modules directly |
 | `src/navigation/` | `navigationConfig.js` — role → nav item mapping, data only; `Dashboard` is the first entry for every role since Phase 5F, `Designations` is a SYSTEM_ADMIN-only entry since Phase 5H, otherwise unchanged since Phase 5A — its Departments/Administrators/Users/Notifications/Categories/Classifications entries already pointed at the eventual routes (the Categories/Classifications routes rendered `PlaceholderPage` until Phase 5H.1 wired in real pages) |
-| `src/layouts/` | `AppShell`/`Sidebar`/`Topbar` — the authenticated app's chrome; `Topbar` renders `NotificationBell` since Phase 5E; visually redesigned in Phase 5I.2 (collapsible `Sidebar` with a mobile-drawer mode, a `Topbar` hamburger toggle, the AJ-OVA Labs footer rendered once in `AppShell`) — `navigationConfig.js`'s own role-derived data is unchanged; `Sidebar`'s nav "icons" were 3-letter monograms until Phase 5I.6A replaced them with small inline SVG icons |
-| `src/pages/` | `LoginPage`/`SignupPage` (auth/account UX, Phase 5B), `LetterListPage`/`LetterFormPage`/`LetterDetailPage` (Letter registry, Phase 5C; `LetterDetailPage` gained a real Documents section in Phase 5E; `LetterFormPage` gained Source Department/Designation selectors in Phase 5H; all three visually transformed in Phase 5I.4B — a registry header, and `LetterDetailPage` recomposed into a four-section record dossier — with every field/payload/role branch unchanged), `DepartmentListPage`/`DepartmentCreatePage`/`DepartmentDetailPage`/`AdminListPage`/`AdminAuthorizePage`/`AdminDetailPage`/`UserListPage`/`UserAuthorizePage`/`UserAuthorizationsPage`/`UserDetailPage` (administration, Phase 5D; all ten gained the shared console eyebrow/accent-line header in Phase 5I.4C, via `AdminPages.module.css`, with every payload/role branch unchanged), `NotificationsPage` (Phase 5E, at `/app/notifications`), `DashboardPage` (Phase 5F, at `/app/dashboard`; visually recomposed into a header/metrics/activity/actions layout in Phase 5I.4A, with every metric and fetch unchanged), `DesignationListPage` (Phase 5H, at `/app/system/designations`; gained the same console header in Phase 5I.4C), `CategoryListPage`/`CategoryCreatePage`/`CategoryDetailPage`/`ClassificationListPage`/`ClassificationCreatePage`/`ClassificationDetailPage` (Phase 5H.1, at `/app/system/categories*`/`/app/system/classifications*`; all six gained the same console header in Phase 5I.4C), `RootRedirect`, `PlaceholderPage` (every remaining unbuilt business feature screen renders this generic placeholder — still used for `/app/documents`) |
-| `src/components/` | `LoadingState`/`ErrorState`/`EmptyState` — reusable primitives (`EmptyState` gained a small CSS-only document glyph in Phase 5I.3); `BootScreen` (Phase 5I.5) — the application's one-time boot/loading identity, rendered by `App.jsx` only, not a general-purpose loading primitive (`LoadingState` remains that); `PendingApprovalNotice`/`DeactivatedAccountNotice` — account-state notices; `LetterTable`/`LetterFilters`/`Pagination`/`ArchiveConfirmDialog` — Letter registry components (Phase 5C; table/button styling consolidated onto shared primitives in Phase 5I.3; `LetterTable` gained a row accent bar and `LetterFilters` was recomposed into a grouped "Registry Search" console in Phase 5I.4B, with every filter/sort/column behavior unchanged); `StatusBadge` (Phase 5C, extended in Phase 5D, gained an `aria-hidden` shape-per-tone indicator in Phase 5I.3); `ConfirmDialog`/`AdminTransferDialog`/`DepartmentSelector`/`DepartmentForm`/`DepartmentTable`/`AdminTable`/`UserTable`/`AuthorizationTable` — administration components (Phase 5D, `DepartmentSelector` reused for Source Department in Phase 5H; `ConfirmDialog`/`ArchiveConfirmDialog` gained a shared entrance animation in Phase 5I.3; `AdminTransferDialog` gained real visual separation between current-department/target-department/consequences in Phase 5I.4C, with its required wording confirmed byte-for-byte unchanged; every admin table shares one row-accent-bar-on-hover via `DataTable.module.css`, also Phase 5I.4C); `DocumentUploadForm`/`DocumentList`/`NotificationBell`/`NotificationPanel`/`NotificationItem` — documents/notifications components (Phase 5E; `NotificationItem`'s unread state gained a left accent bar in Phase 5I.3; `NotificationBell`'s icon was a raw emoji until Phase 5I.6 replaced it with a CSS-only outline, its only change since Phase 5E); `SummaryCard`/`RecentLetters`/`QuickActions` — dashboard components (Phase 5F; unified onto one accent-bar/corner-mark card treatment, existing accent-bar-on-hover row language, and decorative-arrow tiles respectively in Phase 5I.4A); `DesignationTable` — Designation management component (Phase 5H); `CategoryForm`/`CategoryTable`/`ClassificationForm`/`ClassificationTable` — Category/Classification management components (Phase 5H.1); all of the above tables gained the same Phase 5I.4C row-accent-bar-on-hover via `DataTable.module.css` |
+| `src/layouts/` | `AppShell`/`Sidebar`/`Topbar` — the authenticated app's chrome; `Topbar` renders `NotificationBell` since Phase 5E; visually redesigned in Phase 5I.2 (collapsible `Sidebar` with a mobile-drawer mode, a `Topbar` hamburger toggle, the AJ-OVA Labs footer rendered once in `AppShell`) — `navigationConfig.js`'s own role-derived data is unchanged; `Sidebar`'s nav "icons" were 3-letter monograms until Phase 5I.6A replaced them with small inline SVG icons; `Sidebar`'s own brand mark was a CSS-drawn nested square until Phase 6B replaced it with the actual Government of Balochistan logo (decorative, `alt=""`); `AppShell`'s footer padding was tightened for a smaller visual footprint in Phase 6B, same unchanged wording/single instance |
+| `src/pages/` | `LoginPage`/`SignupPage` (auth/account UX, Phase 5B; both now render the shared `AuthShell` split-screen layout, extracted to `components/AuthShell.jsx` in Phase 6B — every field/validation/redirect unchanged), `LetterListPage`/`LetterFormPage`/`LetterDetailPage` (Letter registry, Phase 5C; `LetterDetailPage` gained a real Documents section in Phase 5E; `LetterFormPage` gained Source Department/Designation selectors in Phase 5H; all three visually transformed in Phase 5I.4B — a registry header, and `LetterDetailPage` recomposed into a four-section record dossier — with every field/payload/role branch unchanged; `LetterFormPage` gained a create-only Correspondence Direction/Dispatch Department control and `LetterDetailPage` gained a Correspondence Direction section and "Create response" action in Phase 6A), `DepartmentListPage`/`DepartmentCreatePage`/`DepartmentDetailPage`/`AdminListPage`/`AdminAuthorizePage`/`AdminDetailPage`/`UserListPage`/`UserAuthorizePage`/`UserAuthorizationsPage`/`UserDetailPage` (administration, Phase 5D; all ten gained the shared console eyebrow/accent-line header in Phase 5I.4C, via `AdminPages.module.css`, with every payload/role branch unchanged), `NotificationsPage` (Phase 5E, at `/app/notifications`), `DashboardPage` (Phase 5F, at `/app/dashboard`; visually recomposed into a header/metrics/activity/actions layout in Phase 5I.4A, with every metric and fetch unchanged), `DesignationListPage` (Phase 5H, at `/app/system/designations`; gained the same console header in Phase 5I.4C), `CategoryListPage`/`CategoryCreatePage`/`CategoryDetailPage`/`ClassificationListPage`/`ClassificationCreatePage`/`ClassificationDetailPage` (Phase 5H.1, at `/app/system/categories*`/`/app/system/classifications*`; all six gained the same console header in Phase 5I.4C), `RootRedirect`, `PlaceholderPage` (every remaining unbuilt business feature screen renders this generic placeholder — still used for `/app/documents`) |
+| `src/components/` | `LoadingState`/`ErrorState`/`EmptyState` — reusable primitives (`EmptyState` gained a small CSS-only document glyph in Phase 5I.3); `BootScreen` (Phase 5I.5) — the application's one-time boot/loading identity, rendered by `App.jsx` only, not a general-purpose loading primitive (`LoadingState` remains that); `BootScreen` gained the actual Government of Balochistan logo above its existing glyph in Phase 6B, decorative (`alt=""`); `AuthShell` (Phase 6B) — the shared Login/Signup split-screen chrome (institutional photograph, government logo, brand text, credit line), extracted from its two previously-duplicated per-page copies once the layout grew a genuine two-pane structure; `PendingApprovalNotice`/`DeactivatedAccountNotice` — account-state notices; `LetterTable`/`LetterFilters`/`Pagination`/`ArchiveConfirmDialog` — Letter registry components (Phase 5C; table/button styling consolidated onto shared primitives in Phase 5I.3; `LetterTable` gained a row accent bar and `LetterFilters` was recomposed into a grouped "Registry Search" console in Phase 5I.4B, with every filter/sort/column behavior unchanged; `LetterTable` gained an always-rendered Direction badge/Diary-Dispatch-Number column and `LetterFilters` gained a Direction filter in Phase 6A); `StatusBadge` (Phase 5C, extended in Phase 5D, gained an `aria-hidden` shape-per-tone indicator in Phase 5I.3); `ConfirmDialog`/`AdminTransferDialog`/`DepartmentSelector`/`DepartmentForm`/`DepartmentTable`/`AdminTable`/`UserTable`/`AuthorizationTable` — administration components (Phase 5D, `DepartmentSelector` reused for Source Department in Phase 5H; `ConfirmDialog`/`ArchiveConfirmDialog` gained a shared entrance animation in Phase 5I.3; `AdminTransferDialog` gained real visual separation between current-department/target-department/consequences in Phase 5I.4C, with its required wording confirmed byte-for-byte unchanged; every admin table shares one row-accent-bar-on-hover via `DataTable.module.css`, also Phase 5I.4C); `DocumentUploadForm`/`DocumentList`/`NotificationBell`/`NotificationPanel`/`NotificationItem` — documents/notifications components (Phase 5E; `NotificationItem`'s unread state gained a left accent bar in Phase 5I.3; `NotificationBell`'s icon was a raw emoji until Phase 5I.6 replaced it with a CSS-only outline, its only change since Phase 5E; `NotificationItem` gained a `Record` button for `LETTER_DISPATCHED` notifications in Phase 6A — its one type-specific branch, since that notification's own `letter_id` isn't directly accessible to this department); `SummaryCard`/`RecentLetters`/`QuickActions` — dashboard components (Phase 5F; unified onto one accent-bar/corner-mark card treatment, existing accent-bar-on-hover row language, and decorative-arrow tiles respectively in Phase 5I.4A; `SummaryCard` usage on the Dashboard reduced from eight cards to two headline figures in Phase 6D); `HorizontalBarChart`/`CorrespondenceTrendChart` — Dashboard chart components (Phase 6D), plain CSS/SVG, no charting dependency; `DesignationTable` — Designation management component (Phase 5H); `CategoryForm`/`CategoryTable`/`ClassificationForm`/`ClassificationTable` — Category/Classification management components (Phase 5H.1); all of the above tables gained the same Phase 5I.4C row-accent-bar-on-hover via `DataTable.module.css` |
 | `src/styles/` | `tokens.css` (design tokens — extended in Phase 5I.1 with text-secondary/border-subtle/surface-elevated/accent/info/success-bg/highlight-bg color tokens and a 5-value motion-timing scale, additive only, every Phase 5A token unchanged), `global.css` (minimal reset, `.sr-only` utility since Phase 5D; Phase 5I.1 added a static atmospheric background wash, a global reduced-motion safety net, a narrow global interaction-transition rule, and a strengthened `:focus-visible` treatment; Phase 5I.3 added the shared input/select/textarea/checkbox base every form now inherits with zero markup change), `primitives.module.css` (Phase 5I.3 — shared button/table/dialog base classes every consuming CSS Module reaches via `composes`, not a new component) |
 | `src/test/` | `setup.js` — Vitest/Testing-Library wiring, shared by every test file |
-| `src/utils/` | `formValidation.js` — lightweight, dependency-free form validation (auth forms, `validateLetterForm` since Phase 5C — extended in Phase 5H with an `{isEdit}` option and Source Department/Designation required-on-create checks, `validateDepartmentForm`/`validateAdminAuthorizeForm`/`validateUserAuthorizeForm` since Phase 5D, `validateDocumentFile` since Phase 5E, `validateDesignationForm` since Phase 5H, `validateCategoryForm`/`validateClassificationForm` since Phase 5H.1); `statusLabels.js` (Phase 5D) — human-readable labels for the raw enum values `StatusBadge` renders |
-| `src/assets/`, `src/hooks/`, `src/constants/` | Still mostly placeholders (`constants/app.js` has real content); populated as feature work needs them |
+| `src/utils/` | `formValidation.js` — lightweight, dependency-free form validation (auth forms, `validateLetterForm` since Phase 5C — extended in Phase 5H with an `{isEdit}` option and Source Department/Designation required-on-create checks, `validateDepartmentForm`/`validateAdminAuthorizeForm`/`validateUserAuthorizeForm` since Phase 5D, `validateDocumentFile` since Phase 5E, `validateDesignationForm` since Phase 5H, `validateCategoryForm`/`validateClassificationForm` since Phase 5H.1); `statusLabels.js` (Phase 5D) — human-readable labels for the raw enum values `StatusBadge` renders; `aggregateChartHelpers.js` (Phase 6D) — pure functions turning a `GET /letters/aggregate` bucket list into chart-ready shapes (direction ordering, department-name resolution, month-label formatting, two-series trend merging); no React, no Axios |
+| `src/assets/`, `src/hooks/`, `src/constants/` | `src/hooks/` still a placeholder; `constants/app.js` has real content (`APP_NAME`/`APP_SHORT_NAME` — "Daak Management System"/"DMS" since Phase 6B — plus `GOVT_LOGO_SRC`/`AUTH_BACKGROUND_SRC`, re-exporting the two supplied brand assets); `src/assets/` now holds those two real, unmodified files (`govt_bal.webp`, `front_page.jpeg`, Phase 6B) instead of being empty |
 
 ## Conventions
 
@@ -844,9 +985,50 @@ Icon Identity Correction (Phase 5I.6A): no existing test needed a
 change — none of `Sidebar.test.jsx`'s assertions ever queried the
 glyph's own content, only each link's accessible name; one new
 regression test was added confirming every navigation link renders a
-decorative, `aria-hidden` `<svg>` icon. The API
+decorative, `aria-hidden` `<svg>` icon. Incoming/Outgoing
+Correspondence (Phase 6A): 18 new tests added across
+`LetterFormPage.test.jsx` (direction default, dispatch-department
+requirement and exclusion of the recorder's own department,
+continuation pre-fill via navigation state, confirmation that none of
+the three new fields are ever sent on edit), `LetterDetailPage.test.jsx`
+(direction/diary display, the plain-text-vs-real-link distinction, and
+"Create response" navigation), `NotificationItem.test.jsx` (the Record
+button's loading/success/error states), and `LetterTable.test.jsx`
+(the Direction badge and Diary/Dispatch Number columns) — every
+pre-existing assertion in all four files continues to pass unmodified.
+Daak Management System Branding & Authentication Redesign (Phase 6B):
+`App.test.jsx`/`BootScreen.test.jsx` updated two hardcoded
+literal-string assertions to match the renamed application (not
+weakened — still asserting the exact rendered text); a new
+`AuthShell.test.jsx` (4 tests) covers both images being decorative
+(`alt=""`), the brand identity text, the single credit line, and
+children rendering. Every other existing test file — `LoginPage`,
+`SignupPage`, `Sidebar`, `AppShell`, `routing` — passes with zero
+modification. The API
 layer is
 mocked in every test; none of these tests requires a running backend.
+
+Dashboard Operational Graphs (Phase 6D): 23 new tests across
+`HorizontalBarChart.test.jsx` (8), `CorrespondenceTrendChart.test.jsx`
+(7), and `aggregateChartHelpers.test.js` (8) — loading/error/empty
+states, real-text label/count rendering, backend-order preservation,
+long-label non-truncation, and the accessible legend/table content.
+`DashboardPage.test.jsx` was rewritten (16 tests removed, 14 added,
+not a net weakening) to match the removed KPI cards and new charts —
+covering the two remaining headline figures, confirmation that the
+retired administration cards render for no role, that every chart
+requests `letterService.aggregate()` (never `/letters` pagination,
+never a `department_id` parameter), department-name resolution,
+independent per-chart failure, and that Recent Letters/Quick
+Actions/notification behavior is unchanged. Full suite: 409 tests (54
+files), run 3 consecutive times with identical results.
+
+Dashboard final polish (Phase 6D, final phase): 2 more tests in
+`CorrespondenceTrendChart.test.jsx` (9 total) — a regression test
+confirming a 3-month series labels its middle month on the x-axis, not
+just the first/last, and a test confirming a 12-month series thins its
+labels rather than overlapping every one. Full suite: 411 tests (54
+files), run 3 consecutive times with identical results.
 
 Vitest's per-test timeout is raised to 10 seconds (`vite.config.js`,
 Phase 5F) — the 5-second default started intermittently missing on

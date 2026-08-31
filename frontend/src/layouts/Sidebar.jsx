@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
-import { APP_NAME, APP_SHORT_NAME } from '../constants/app'
+import { APP_NAME, APP_SHORT_NAME, GOVT_LOGO_SRC } from '../constants/app'
 import { useAuth } from '../context/AuthContext'
 import { getNavigationForRole } from '../navigation/navigationConfig'
 import styles from './Sidebar.module.css'
@@ -204,7 +204,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile = () => {} }
       >
         <div className={styles.header}>
           <span className={styles.brand} title={APP_NAME}>
-            <span className={styles.brandMark} aria-hidden="true" />
+            <img src={GOVT_LOGO_SRC} alt="" className={styles.brandMark} />
             <span className={styles.brandLabel}>{APP_SHORT_NAME}</span>
             <span className="sr-only">{APP_NAME}</span>
           </span>

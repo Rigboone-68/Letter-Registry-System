@@ -23,6 +23,17 @@
   text-align: center;
 }
 
+/**
+ * Phase 6B — the actual Government of Balochistan emblem, `object-fit:
+ * contain` (never `cover`) so the crest is never cropped. Modest,
+ * fixed height; width follows the asset's own aspect ratio.
+ */
+.logo {
+  height: 40px;
+  width: auto;
+  object-fit: contain;
+}
+
 .glyph {
   position: relative;
   width: 64px;

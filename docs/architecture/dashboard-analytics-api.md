@@ -1,10 +1,13 @@
-# Backend Dashboard Aggregation & Analytics API — Architecture & Requirements Review (Phase 5G)
+# Backend Dashboard Aggregation & Analytics API — Architecture & Requirements Review (Phase 5G) + Implementation (Phase 6C)
 
-**Status: REVIEW ONLY. No backend or frontend code, migration, index, or
-test was written this phase.** Builds on Phase 5F (Dashboard &
-Operational Overview UI, implemented and committed at `1e5c8de`) —
-unchanged by this review. Repository confirmed clean before this
-review began.
+**Status: IMPLEMENTED (Phase 6C), BACKEND ONLY.** §1-§31 below are
+Phase 5G's original review-only findings, left unmodified as the
+historical record of the reasoning that preceded implementation. §32
+records what Phase 6C actually built, including a deliberate
+reassessment of several 5G conclusions against facts that changed in
+the interim (Phase 6A's correspondence-direction schema). Read §32
+first if you want the current state of this API; read §1-§31 for the
+original design reasoning, most of which held up unchanged.
 
 ## 0. How to read this document
 
@@ -792,3 +795,230 @@ session is identical except for this new documentation file and the
 five project documentation updates listed in §30. Phase 5G
 implementation begins only when explicitly instructed and only after
 at least one of §27's open business questions is resolved.
+
+---
+
+## 32. Phase 6C — Implementation record
+
+**Trigger**: a confirmed supervisor requirement resolved §27's first
+and most load-bearing open question — the operational-only Phase 5F
+dashboard's KPI cards are difficult for non-technical users to
+interpret without a visual breakdown; incoming-vs-outgoing counts,
+which departments are sending/receiving correspondence, correspondence
+activity over time, and department-level in/out activity are now a
+confirmed business need. This clears §28's own bar ("meaningful
+operational value... confirmed") for exactly the metrics named below —
+it does not clear it for anything §6 classified `E`, which remains
+deferred (audit analytics, document statistics, notification
+statistics, source/sender-department breakdowns — none of those were
+part of the confirmed requirement, so none were built).
+
+**Scope discipline honored**: this phase is explicitly **backend
+only**. No dashboard chart, no `DashboardPage.jsx` change, no
+`dashboardService.js`, no frontend file of any kind was touched. The
+brief's own instructions ("Do NOT implement dashboard charts or modify
+DashboardPage yet," "Do NOT modify Login/Signup branding," "Do NOT
+modify the footer," "Do NOT perform UI beautification," "Do NOT
+install dependencies") were all followed — confirmed by `git status`
+showing zero frontend files touched this phase (§32.7).
+
+### 32.1 Reassessment of Phase 6A's new fields against 5G's design
+
+Phase 6A added five new Letter fields after 5G was written:
+`direction`, `diary_number`, `dispatch_department_id`,
+`recorded_from_letter_id`, `continuation_of_letter_id`. Each was
+individually assessed against the confirmed requirement (§32) rather
+than blindly added or blindly ignored:
+
+| Field | Used this phase? | Reasoning |
+|---|---|---|
+| `direction` | **Yes** — new filter *and* new `group_by=direction` dimension | Directly answers the confirmed "Incoming vs Outgoing counts" requirement. Not present in 5G's original design (5G predates Phase 6A's correspondence model entirely) — this is a genuinely new dimension, not a mechanical port of 5G's plan. |
+| `dispatch_department_id` | **Yes** — new filter *and* new `group_by=dispatch_department` dimension | Answers "which departments are receiving correspondence [via dispatch]" — a question `department` (§32.2) cannot answer, since a dispatched-but-not-yet-recorded letter has no row owned by the receiving department yet. As a **filter**, safe for any role because it only narrows the caller's own already-visibility-scoped rows (§8/§9 still apply unmodified) — it can never be used to see another department's registry, since the base query is still scoped by `recipient_department_id`/`letter_visibility_filter` first. |
+| `diary_number` | **No** | It is a display/identifier field (the human-facing registry number), not a dimension or filter anyone would group correspondence *by* — grouping by a near-unique string would produce one bucket per letter, which is not an aggregate. No confirmed requirement named it. |
+| `recorded_from_letter_id` | **No** | An internal linkage id (which incoming copy came from which outgoing dispatch) — a per-record relationship, not a dashboard-level grouping dimension. No confirmed requirement named it. |
+| `continuation_of_letter_id` | **No** | Same reasoning as `recorded_from_letter_id` — a per-record thread link, not an aggregate dimension. No confirmed requirement named it. |
+
+This is a deliberate, reasoned exclusion, not an oversight — scope was
+kept to exactly what the confirmed requirement (§32) named, matching
+this project's own established discipline against speculative
+build-ahead.
+
+### 32.2 Reassessment of the `department` dimension's meaning
+
+5G's original design (§6, §13) implicitly assumed `department` meant
+"the department a letter belongs to," which was unambiguous before
+Phase 6A because every letter was incoming. Post-6A, `recipient_department_id`
+(the column `department` still groups by, unchanged) means "the owning
+department regardless of direction" — an INCOMING letter's own
+department, or an OUTGOING letter's *sending* department. This was
+**not** changed to avoid a second migration/behavior break in
+`list_letters`'s own identical column (§10's "exactly one authoritative
+expression" discipline extends to this reuse too), but its meaning is
+now explicitly documented as direction-agnostic ownership, disambiguated
+by pairing it with the new `direction` filter/dimension when a caller
+needs to distinguish "sent by this department" from "received into
+this department's own registry." `dispatch_department` (§32.1) is the
+answer for "received via dispatch, possibly not yet recorded" — a
+third, genuinely distinct question `department`+`direction` cannot
+answer.
+
+### 32.3 What was built
+
+One endpoint, exactly matching 5G's §12/§26 naming/versioning
+recommendation:
+
+```
+GET /api/v1/letters/aggregate?group_by={status|category|classification|department|dispatch_department|direction|day|week|month}
+  [&department_id=...]          (SYSTEM_ADMIN only, silently ignored otherwise — §8/§16 unchanged)
+  [&status=...] [&direction=...] [&category_id=...] [&classification_id=...]
+  [&dispatch_department_id=...] [&received_from=...] [&received_to=...]
+
+→ { "group_by": "...", "total": <int>, "buckets": [ { "key": <str|null>, "count": <int> } ] }
+```
+
+* `backend/app/repositories/letter_repository.py` — filter-building
+  logic extracted into `_build_filter_conditions(...)` exactly as §4
+  recommended, called by both `list_letters` and the new
+  `aggregate_letters`, so there is one authoritative filter
+  implementation, never two that could drift. New module-level
+  `GROUP_BY_COLUMNS` (string-keyed, matching the existing
+  `SORTABLE_COLUMNS` convention — the repository never imports from
+  `schemas/`) and `GROUP_BY_DATE_TRUNC` dicts. `aggregate_letters(...)`
+  builds one `SELECT <group_expr>, COUNT(*) ... GROUP BY <group_expr>`
+  statement, reusing `_build_filter_conditions` for the `WHERE` clause.
+* `backend/app/schemas/letter.py` — `LetterGroupByField` enum,
+  `LetterAggregateBucket`, `LetterAggregateResponse`, matching §13's
+  response shape exactly (`key`/`count` buckets, no resolved name, no
+  full nested object — §13's own instruction followed unmodified).
+* `backend/app/services/letter_service.py` — `aggregate_letters(...)`,
+  placed immediately after `list_letters`, reusing its exact
+  `SYSTEM_ADMIN ? department_id : user.department_id` derivation
+  (§8) and `letter_visibility_filter(user)` (§9/§10) unmodified — no
+  second authorization path was written. Reuses the existing
+  `InvalidDateRangeError` (§14's "reuse the existing error, not a new
+  validation path" instruction followed exactly).
+* `backend/app/api/v1/endpoints/letters.py` — `GET /letters/aggregate`,
+  registered **before** `GET /{letter_id}` (a static path must precede
+  a variable path segment at the same depth, or the UUID-typed path
+  param swallows it and produces a 422 — a real FastAPI routing
+  constraint verified by test). Uses `get_current_user` only, exactly
+  as §16 specified — no `require_admin`/`require_system_admin` gate.
+
+### 32.4 Deliberate departure from 5G's ordering rule
+
+5G's §13 specified "descending by count, ties broken by key ascending"
+as a blanket rule for every dimension. Phase 6C's brief explicitly
+required reassessing 5G's own recommendations rather than porting them
+uncritically, and this was the one case where blind reuse would have
+been wrong: a `day`/`week`/`month` trend chart needs its points **in
+date order**, not frequency order — a chart line plotted in
+count-descending order would be visually meaningless. Implemented as:
+date-bucket dimensions (`day`/`week`/`month`) order chronologically
+ascending; every other dimension (`status`/`category`/`classification`/
+`department`/`dispatch_department`/`direction`) keeps 5G's original
+count-descending, key-ascending rule, since those feed ranked bar/pie
+breakdowns where frequency order is the meaningful one. Both orderings
+remain fully deterministic (secondary sort key never omitted).
+
+### 32.5 Security re-verification
+
+Every threat in §23's table was re-tested against the real
+implementation, not just re-read:
+
+* Cross-department leakage / IDOR via `department_id` (#1, #4) —
+  `test_admin_department_id_parameter_is_silently_ignored_not_honored`,
+  `test_system_admin_can_filter_to_one_department`.
+* Classified-record leakage (#2) —
+  `test_classified_inaccessible_letters_are_excluded_from_every_bucket`
+  asserts a USER's aggregate `total` equals that same USER's own
+  `GET /letters` `total` for the identical implicit filter, with a
+  classified-and-hidden Letter present in the fixture — the exact
+  regression §24 called for.
+* Role escalation (#3) — `test_every_role_can_call_the_endpoint`
+  confirms USER/ADMIN/SYSTEM_ADMIN all succeed with no role-gating
+  dependency introduced.
+* `dispatch_department_id` filter scope (new threat surface post-6A,
+  not in 5G's original table since the field didn't exist yet) —
+  `test_dispatch_department_id_filter_never_expands_scope` confirms it
+  only narrows the caller's own already-visibility-scoped rows.
+* Pagination absence (§24's own explicit instruction) —
+  `test_never_paginated` asserts no `page`/`page_size`/`total_pages`
+  key exists on the response.
+
+No new authorization primitive was written; §10's "exactly one
+authoritative authorization expression" claim was verified to still
+hold, not just re-asserted.
+
+### 32.6 Migration / index review — reconfirmed
+
+**No migration was created this phase.** `alembic check` reports "No
+new upgrade operations detected" after implementation — confirming
+§25's finding still holds: every column this endpoint groups or
+filters by (`status`, `category_id`, `classification_id`,
+`recipient_department_id`, `dispatch_department_id`, `direction`,
+`received_at`) was already indexed, either by Phase 4-era migrations or
+Phase 6A's own migration (`dispatch_department_id`, `direction`) — no
+new index was needed.
+
+### 32.7 Testing and verification
+
+* `backend/tests/integration/test_letter_aggregation.py` (new, 15
+  tests) — every `group_by` dimension against known fixtures,
+  role-scoping (SYSTEM_ADMIN/ADMIN/USER), the classified-record
+  security regression (§32.5), the `dispatch_department` dimension's
+  implicit non-null filtering, the `dispatch_department_id` filter's
+  scope safety, chronological vs. count-descending ordering,
+  empty-result shape, and the existing `InvalidDateRangeError` → 422
+  path.
+* Full backend suite: 525 passed (510 pre-existing + 15 new), run
+  twice consecutively with zero regressions. One unrelated, pre-existing
+  flaky test was observed and diagnosed during this phase's
+  verification — `tests/unit/test_security.py::test_decode_access_token_rejects_tampered_signature`
+  intermittently fails because its own tamper simulation (flipping the
+  signature's last base64 character to a fixed `'A'`/`'B'`) can
+  coincidentally collide with the base64 padding-bit structure of HS256
+  signatures roughly 1-in-16 of the time, decoding to the same bytes as
+  the untampered signature and producing a false pass. This test was
+  not modified — it predates this phase, is unrelated to the aggregate
+  endpoint, and fixing test infrastructure was out of this phase's
+  scope. Left as a known, disclosed pre-existing issue for a future,
+  separate fix.
+* Manual verification against a running frontend was **not
+  performed** — this phase is backend-only and no UI consumes this
+  endpoint yet (§32's own scope discipline).
+
+### 32.8 Explicit scope confirmation (Phase 6C)
+
+Modified: `backend/app/repositories/letter_repository.py`,
+`backend/app/schemas/letter.py`, `backend/app/services/letter_service.py`,
+`backend/app/api/v1/endpoints/letters.py`. Created:
+`backend/tests/integration/test_letter_aggregation.py`,
+this section of this document, plus the lightweight documentation
+updates listed in the per-phase documentation set. **Not** touched:
+any frontend file, `DashboardPage.jsx`, any Login/Signup/branding/
+footer file, any `package.json`/dependency file, any migration file
+(none was needed — §32.6), any file unrelated to the aggregate
+endpoint. Not committed, not pushed, per this phase's own explicit
+instruction.
+
+### 32.9 Known limitations / deliberately deferred
+
+* No two-dimensional `group_by` (e.g. status × department in one
+  response) — not requested, and would materially complicate the
+  response shape (§13) for no confirmed need.
+* Audit-derived analytics remain **FUTURE**, unchanged from §5/§20 —
+  no audit read API exists yet.
+* `diary_number`/`recorded_from_letter_id`/`continuation_of_letter_id`
+  are deliberately not exposed as dimensions or filters (§32.1).
+* The `FILTER`-based Active/Archived consolidation §28 named as the
+  lowest-risk candidate was not implemented this phase — `group_by=status`
+  already answers that need in one round trip via the new endpoint,
+  making the standalone `FILTER` optimization moot.
+* Frontend consumption (an actual chart/widget) is explicitly the next
+  phase's work, not this one's (§32's scope discipline).
+
+**Update, Phase 6D**: the frontend consumption named above as deferred
+is now built — `docs/architecture/dashboard.md`'s own "Phase 6D"
+section. The endpoint was consumed exactly as published here; no
+backend deficiency was found, and no field/behavior described in this
+document changed.

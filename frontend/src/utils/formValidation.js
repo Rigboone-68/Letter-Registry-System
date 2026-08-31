@@ -93,7 +93,17 @@ const LETTER_REQUIRED_FIELDS = [
  * (docs/architecture/source-designation.md §9) at the frontend layer.
  */
 export function validateLetterForm(
-  { reference_number, subject, source_department_id, sender_name, designation_id, sender_department, received_at },
+  {
+    reference_number,
+    subject,
+    source_department_id,
+    sender_name,
+    designation_id,
+    sender_department,
+    received_at,
+    direction,
+    dispatch_department_id,
+  },
   { isEdit = false } = {}
 ) {
   const values = { reference_number, subject, sender_name, sender_department }
@@ -111,6 +121,13 @@ export function validateLetterForm(
     }
     if (isBlank(designation_id)) {
       errors.designation_id = 'Designation is required.'
+    }
+    // Correspondence direction (Phase 6A) is write-once at creation —
+    // there is no field for it on `LetterUpdate` at all, so this rule
+    // never applies on edit, mirroring Source Department/Designation
+    // above exactly.
+    if (direction === 'OUTGOING' && isBlank(dispatch_department_id)) {
+      errors.dispatch_department_id = 'Dispatch Department is required for outgoing correspondence.'
     }
   }
 

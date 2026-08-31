@@ -96,3 +96,13 @@ a.message:hover {
   flex-shrink: 0;
   white-space: nowrap;
 }
+
+/**
+ * Phase 6A — a Record failure is row-scoped, not worth the full
+ * `ErrorState` primitive at this size; `role="alert"` still announces
+ * it immediately, matching every other inline error in this app.
+ */
+.recordError {
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+}

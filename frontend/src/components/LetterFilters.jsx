@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { LETTER_STATUS_OPTIONS } from '../services/letterService'
+import { LETTER_DIRECTION_OPTIONS, LETTER_STATUS_OPTIONS } from '../services/letterService'
 import styles from './LetterFilters.module.css'
 
 const CORRESPONDENCE_FIELDS = [
@@ -25,6 +25,7 @@ const EMPTY_DRAFT = {
   source_name: '',
   source_location: '',
   status: '',
+  direction: '',
   category_id: '',
   classification_id: '',
   department_id: '',
@@ -125,6 +126,17 @@ export default function LetterFilters({
             <select id="filter-status" name="status" value={draft.status} onChange={handleChange}>
               <option value="">Any</option>
               {LETTER_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="filter-direction">Direction</label>
+            <select id="filter-direction" name="direction" value={draft.direction} onChange={handleChange}>
+              <option value="">Any</option>
+              {LETTER_DIRECTION_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>

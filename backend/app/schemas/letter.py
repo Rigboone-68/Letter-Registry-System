@@ -36,7 +36,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.enums import LetterStatus
+from app.models.enums import LetterDirection, LetterStatus
 
 
 class LetterSortField(str, enum.Enum):
@@ -57,6 +57,69 @@ class LetterSortField(str, enum.Enum):
 class SortOrder(str, enum.Enum):
     ASC = "asc"
     DESC = "desc"
+
+
+class LetterGroupByField(str, enum.Enum):
+    """The explicit `group_by` whitelist for `GET /letters/aggregate`
+    (Phase 6C, docs/architecture/dashboard-analytics-api.md's own
+    implementation record) — the same "reject anything outside a fixed
+    set with 422 before the service/repository layer ever runs"
+    discipline `LetterSortField` already established. Kept in sync by
+    hand with `app/repositories/letter_repository.py:GROUP_BY_COLUMNS`/
+    `GROUP_BY_DATE_TRUNC`, the same convention `LetterSortField` already
+    uses for `SORTABLE_COLUMNS`.
+
+    `DEPARTMENT` groups by the *owning* department (`recipient_department_id`)
+    for either correspondence direction — Phase 6A's own reassessment of
+    what this dimension means now that a department can both receive and
+    dispatch letters. `DISPATCH_DEPARTMENT` (new this phase) groups by
+    `dispatch_department_id`, the destination of an `OUTGOING` letter —
+    answers "which departments are receiving correspondence via
+    dispatch," a genuinely different question from `DEPARTMENT` narrowed
+    to `direction=INCOMING` (which answers "which departments have
+    recorded incoming correspondence in their own registry," regardless
+    of whether it arrived via the new dispatch workflow or the
+    traditional external-sender path). `DIRECTION` answers "how much
+    correspondence is Incoming vs. Outgoing" directly.
+    """
+
+    STATUS = "status"
+    CATEGORY = "category"
+    CLASSIFICATION = "classification"
+    DEPARTMENT = "department"
+    DISPATCH_DEPARTMENT = "dispatch_department"
+    DIRECTION = "direction"
+    DAY = "day"
+    WEEK = "week"
+    MONTH = "month"
+
+
+class LetterAggregateBucket(BaseModel):
+    """One `GROUP BY` result row. `key` is the raw grouping value — a
+    bare id (category/classification/department/dispatch_department), an
+    enum string (status/direction), or an ISO 8601 timestamp string
+    (day/week/month) — never a resolved display name (resolving an id to
+    a name remains the frontend's own existing job, matching
+    `docs/architecture/dashboard-analytics-api.md` §13). `None` when the
+    underlying column is legitimately unset for that row (e.g. a Letter
+    with no `category_id`) — a real, meaningful bucket, not an error."""
+
+    key: Optional[str] = None
+    count: int
+
+
+class LetterAggregateResponse(BaseModel):
+    """Response for `GET /letters/aggregate`. `total` is the sum of
+    every bucket's `count` — by construction, since every matching row
+    falls into exactly one bucket, this always equals what `GET
+    /letters`'s own `total` would return for the identical filter set,
+    without a second `COUNT` query. Never paginated — see
+    `app/repositories/letter_repository.py:aggregate_letters`'s own
+    docstring for why."""
+
+    group_by: LetterGroupByField
+    total: int
+    buckets: List[LetterAggregateBucket]
 
 
 def _require_non_blank(value: str) -> str:
@@ -95,6 +158,20 @@ class LetterCreate(BaseModel):
     classification_id: Optional[uuid.UUID] = None
     received_at: datetime
     text_content: Optional[str] = None
+
+    # Phase 6A (docs/architecture/correspondence.md §9). `direction`
+    # defaults to `INCOMING` — an old client that has never heard of this
+    # field gets exactly the same behavior it always had.
+    # `dispatch_department_id` is required (service-validated, not a
+    # Pydantic-level requirement, since it depends on `direction`) only
+    # when `direction == OUTGOING`. `continuation_of_letter_id` is valid
+    # for either direction — a response is typically OUTGOING, but
+    # nothing here forces that; the service verifies the caller can
+    # access the referenced letter, exactly like any other reference
+    # field.
+    direction: LetterDirection = LetterDirection.INCOMING
+    dispatch_department_id: Optional[uuid.UUID] = None
+    continuation_of_letter_id: Optional[uuid.UUID] = None
 
     @field_validator(
         "reference_number", "subject", "source_name", "sender_name",
@@ -184,6 +261,18 @@ class LetterResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # Phase 6A. `dispatch_department_id`/`recorded_from_letter_id`/
+    # `continuation_of_letter_id` are plain ids, resolved into a Letter/
+    # Department by the frontend through the existing, already-authorized
+    # `GET /letters/{id}` and `GET /departments` — this schema never
+    # exposes a related row's own sensitive fields (mirrors how
+    # `source_department_id` already works).
+    direction: LetterDirection
+    dispatch_department_id: Optional[uuid.UUID]
+    diary_number: Optional[str]
+    recorded_from_letter_id: Optional[uuid.UUID]
+    continuation_of_letter_id: Optional[uuid.UUID]
+
 
 class LetterListItem(BaseModel):
     """A lightweight registry-row shape for `GET /api/v1/letters`
@@ -218,6 +307,15 @@ class LetterListItem(BaseModel):
     status: LetterStatus
     created_at: datetime
     updated_at: datetime
+
+    # Phase 6A — the same three fields the registry row/table view needs
+    # to show a direction badge and the Diary/Dispatch Number prominently;
+    # `recorded_from_letter_id`/`continuation_of_letter_id` are left off
+    # this lightweight shape (a detail-page concern), matching this
+    # schema's existing `text_content`/`reason` exclusion.
+    direction: LetterDirection
+    dispatch_department_id: Optional[uuid.UUID]
+    diary_number: Optional[str]
 
 
 class LetterListResponse(BaseModel):

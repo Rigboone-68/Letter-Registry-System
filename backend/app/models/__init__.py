@@ -17,6 +17,7 @@ from app.models.department import Department
 from app.models.designation import Designation
 from app.models.letter import Letter
 from app.models.letter_document import LetterDocument
+from app.models.letter_sequence import LetterNumberSequence
 from app.models.notification import Notification
 from app.models.user import User
 from app.models.user_authorization import UserAuthorization
@@ -29,6 +30,7 @@ __all__ = [
     "Designation",
     "Letter",
     "LetterDocument",
+    "LetterNumberSequence",
     "Notification",
     "User",
     "UserAuthorization",

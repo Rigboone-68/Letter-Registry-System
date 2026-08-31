@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import DepartmentSelector from '../components/DepartmentSelector'
 import ErrorState from '../components/ErrorState'
@@ -10,6 +10,7 @@ import * as classificationService from '../services/classificationService'
 import * as departmentService from '../services/departmentService'
 import * as designationService from '../services/designationService'
 import * as letterService from '../services/letterService'
+import { LETTER_DIRECTION_OPTIONS } from '../services/letterService'
 import { validateLetterForm } from '../utils/formValidation'
 import styles from './LetterFormPage.module.css'
 
@@ -29,6 +30,10 @@ const EMPTY_FORM = {
   text_content: '',
   category_id: '',
   classification_id: '',
+  // Phase 6A — write-once at creation, never sent/shown on edit.
+  direction: 'INCOMING',
+  dispatch_department_id: '',
+  continuation_of_letter_id: '',
 }
 
 function toDatetimeLocalValue(isoString) {
@@ -129,15 +134,37 @@ function FieldError({ name, fieldErrors }) {
  * legend/button treatment — every field, name, id, validation rule, and
  * payload above is unchanged; the four fieldsets' own grouping and
  * legend text are untouched.
+ *
+ * Phase 6A (docs/architecture/correspondence.md §9) adds one new
+ * fieldset, **create only**: a Correspondence Direction control
+ * (Incoming/Diary vs Outgoing/Dispatch), and — only when Outgoing is
+ * selected — a "Dispatch to Department" selector reusing the same
+ * `DepartmentSelector` component Source Department already uses. Both
+ * are write-once: `direction`/`dispatch_department_id` have no field on
+ * `LetterUpdate` at all, so neither is rendered, validated, or sent on
+ * edit — the same "create-only" pattern Source Department/Designation
+ * already established. Reaching this page via a Letter Detail page's
+ * "Create response" link (`navigate(..., { state: { continuationOfLetterId,
+ * continuationOfReference } })`) pre-selects Outgoing and silently
+ * carries `continuation_of_letter_id` through to the payload — it is
+ * never a field the user edits directly, only ever set by that one
+ * navigation path.
  */
 export default function LetterFormPage() {
   const { id } = useParams()
   const isEdit = Boolean(id)
   const navigate = useNavigate()
+  const location = useLocation()
   const { user } = useAuth()
   const isSystemAdmin = user?.role === 'SYSTEM_ADMIN'
+  const continuationOfLetterId = !isEdit ? location.state?.continuationOfLetterId : undefined
+  const continuationOfReference = !isEdit ? location.state?.continuationOfReference : undefined
 
-  const [form, setForm] = useState(EMPTY_FORM)
+  const [form, setForm] = useState(() =>
+    continuationOfLetterId
+      ? { ...EMPTY_FORM, direction: 'OUTGOING', continuation_of_letter_id: continuationOfLetterId }
+      : EMPTY_FORM
+  )
   const [fieldErrors, setFieldErrors] = useState({})
   const [formError, setFormError] = useState(null)
   const [submitting, setSubmitting] = useState(false)
@@ -269,6 +296,17 @@ export default function LetterFormPage() {
       received_at: fromDatetimeLocalValue(form.received_at),
       text_content: form.text_content || null,
     }
+    if (!isEdit) {
+      // Write-once fields — never sent on edit (see this file's own
+      // module docstring); `LetterUpdate` has no field for any of them.
+      payload.direction = form.direction
+      if (form.direction === 'OUTGOING') {
+        payload.dispatch_department_id = form.dispatch_department_id || null
+      }
+      if (form.continuation_of_letter_id) {
+        payload.continuation_of_letter_id = form.continuation_of_letter_id
+      }
+    }
     if (isSystemAdmin && isEdit) {
       // Only ever sent when a value is actually chosen — the backend's
       // "omitted means unchanged" LetterUpdate semantics mean sending
@@ -328,6 +366,58 @@ export default function LetterFormPage() {
 
       <form onSubmit={handleSubmit} noValidate className={styles.form}>
         {formError && <ErrorState message={formError} />}
+
+        {continuationOfLetterId && (
+          <p className={styles.hint}>
+            Responding to {continuationOfReference ? `letter ${continuationOfReference}` : 'the original letter'}.
+            This will be recorded as a new, separate letter linked to it.
+          </p>
+        )}
+
+        {!isEdit && (
+          <fieldset className={styles.fieldset}>
+            <legend>Correspondence direction</legend>
+            <div className={styles.field}>
+              <label htmlFor="direction">Direction *</label>
+              <select
+                id="direction"
+                name="direction"
+                value={form.direction}
+                onChange={handleChange}
+                required
+              >
+                {LETTER_DIRECTION_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {form.direction === 'OUTGOING' && (
+              <div className={styles.field}>
+                <label htmlFor="dispatch_department_id">Dispatch to Department *</label>
+                <DepartmentSelector
+                  id="dispatch_department_id"
+                  name="dispatch_department_id"
+                  departments={departments.filter((department) => department.id !== user?.department_id)}
+                  value={form.dispatch_department_id}
+                  onChange={handleChange}
+                  activeOnly={false}
+                  required
+                  aria-invalid={Boolean(fieldErrors.dispatch_department_id)}
+                  aria-describedby={
+                    fieldErrors.dispatch_department_id ? 'dispatch_department_id-error' : undefined
+                  }
+                />
+                <p className={styles.hint}>
+                  The department this correspondence is being sent to. They will be notified and can
+                  record it as their own incoming correspondence.
+                </p>
+                <FieldError name="dispatch_department_id" fieldErrors={fieldErrors} />
+              </div>
+            )}
+          </fieldset>
+        )}
 
         <fieldset className={styles.fieldset}>
           <legend>Reference &amp; subject</legend>

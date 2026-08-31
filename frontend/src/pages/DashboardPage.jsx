@@ -1,123 +1,81 @@
 import { useCallback, useEffect, useState } from 'react'
 
+import CorrespondenceTrendChart from '../components/CorrespondenceTrendChart'
+import HorizontalBarChart from '../components/HorizontalBarChart'
 import QuickActions from '../components/QuickActions'
 import RecentLetters from '../components/RecentLetters'
 import SummaryCard from '../components/SummaryCard'
 import { useAuth } from '../context/AuthContext'
-import * as adminService from '../services/adminService'
 import * as departmentService from '../services/departmentService'
 import * as letterService from '../services/letterService'
 import * as notificationService from '../services/notificationService'
-import * as userService from '../services/userService'
+import { departmentBars, directionBars, mergeTrendSeries } from '../utils/aggregateChartHelpers'
 import styles from './DashboardPage.module.css'
 
 const RECENT_LETTERS_PAGE_SIZE = 5
 
 /**
- * Dashboard & Operational Overview (Phase 5F,
- * docs/architecture/dashboard.md). Implements only the metrics the
- * review classified as directly available or cheaply derivable from
- * existing, already-isolated endpoints (§3/§14) — no aggregate/
- * dashboard-specific backend endpoint exists or is called; every
- * request below is one an existing service module already exposes.
+ * Dashboard & Operational Overview — Phase 6D rework
+ * (docs/architecture/dashboard.md "Phase 6D" section). A confirmed
+ * supervisor requirement replaced the Phase 5F/5I KPI-card
+ * presentation with graphs, since numeric cards were difficult for
+ * non-technical staff to interpret at a glance. The eight role-
+ * dependent SummaryCards this page used to render are gone; only two
+ * small headline figures remain (Total Letters, Unread Notifications)
+ * — genuinely orienting numbers, not a shrunk-down copy of the old
+ * card wall. The previous SYSTEM_ADMIN/ADMIN administration cards
+ * (Active Departments, Pending Admin Approvals, Active Users, Pending
+ * User Approvals) are deliberately not reintroduced as charts — they
+ * answer an administration question, not the confirmed correspondence-
+ * volume question this phase's brief actually asked for, and the
+ * Departments/Administrators/Users screens already show that data.
  *
- * One dashboard, not three — every request except the administration
- * summary (§ below) is identical regardless of role, because the
- * backend itself already scopes the result (SYSTEM_ADMIN sees every
- * department, ADMIN/USER are narrowed server-side to their own). This
- * component never inspects `user.department_id` or sends it as a
- * parameter — department scoping is entirely the backend's decision
- * (§6 of the review).
+ * Four charts, each backed by exactly one (or, for the trend chart,
+ * two bounded) `GET /letters/aggregate` request (Phase 6C) — never the
+ * full Letter registry, never a client-side aggregation, never one
+ * request per department. Every chart fails independently: a failed
+ * request renders that chart's own `ErrorState`, never blanking the
+ * rest of the page. No chart is hidden by role — the aggregate API
+ * itself is the authorization boundary (SYSTEM_ADMIN unrestricted,
+ * ADMIN/USER server-scoped to their own department), so this component
+ * never inspects `user.department_id` or sends one as a parameter.
  *
- * Four independently-fetched, independently-failing widgets (§15/§20 of
- * the implementation brief): a failed request in one never blocks or
- * hides the others. A failed request renders "Unavailable"
- * (`SummaryCard`) or the existing `ErrorState` — never a silent zero.
- *
- * Phase 5I.4A (docs/architecture/ui-design-system.md) is a visual-only
- * recomposition into a header/metrics/activity/actions layout — no
- * metric, request, role branch, or fetch above was added, removed, or
- * reordered; every string the new header renders ("Registry Overview,"
- * the subtitle) is a neutral section label, never a system-health or
- * security claim this application has no data to back.
+ * Department × Direction (e.g. "which department sent the most
+ * Outgoing correspondence") is explicitly out of scope this phase —
+ * DEFERRED, requires a two-dimensional aggregate endpoint the backend
+ * deliberately does not provide (docs/architecture/
+ * dashboard-analytics-api.md §32.9).
  */
 export default function DashboardPage() {
   const { user } = useAuth()
   const role = user?.role
 
-  const [letterSummary, setLetterSummary] = useState({ loading: true, error: null, data: null })
-  const [adminSummary, setAdminSummary] = useState({ loading: role !== 'USER', error: null, data: null })
+  const [totalLetters, setTotalLetters] = useState({ loading: true, error: null, value: null })
   const [unreadCount, setUnreadCount] = useState({ loading: true, error: null, value: null })
   const [recentLetters, setRecentLetters] = useState({ loading: true, error: null, items: [] })
 
-  // Total/active/archived — the three cheapest possible Letter counts
-  // (docs/architecture/dashboard.md §3): one request each, `page_size: 1`,
-  // reading only `.total`, which the backend computes as a real SQL
-  // `COUNT` on the same department/classified-visibility-scoped
-  // statement as any other Letter query (§2.1/§7 of the review) — no
-  // frontend filtering of any kind is applied to these numbers.
-  const fetchLetterSummary = useCallback(() => {
-    setLetterSummary((previous) => ({ ...previous, loading: true, error: null }))
-    Promise.all([
-      letterService.list({ page_size: 1 }),
-      letterService.list({ status: 'ACTIVE', page_size: 1 }),
-      letterService.list({ status: 'ARCHIVED', page_size: 1 }),
-    ])
-      .then(([all, active, archived]) => {
-        setLetterSummary({
-          loading: false,
-          error: null,
-          data: { total: all.total, active: active.total, archived: archived.total },
-        })
-      })
-      .catch((normalizedError) => setLetterSummary({ loading: false, error: normalizedError, data: null }))
+  const [directionSummary, setDirectionSummary] = useState({ loading: true, error: null, buckets: [] })
+  const [departmentNames, setDepartmentNames] = useState({ loading: true, error: null, byId: new Map() })
+  const [receivedSummary, setReceivedSummary] = useState({ loading: true, error: null, buckets: [] })
+  const [sentSummary, setSentSummary] = useState({ loading: true, error: null, buckets: [] })
+  const [trendSummary, setTrendSummary] = useState({ loading: true, error: null, points: [] })
+
+  // Total Letters — the same cheap `page_size: 1`/`.total` request
+  // this page has always used (docs/architecture/dashboard.md §3),
+  // kept as the one headline figure that orients a reader before the
+  // charts below break it down further.
+  const fetchTotalLetters = useCallback(() => {
+    setTotalLetters((previous) => ({ ...previous, loading: true, error: null }))
+    letterService
+      .list({ page_size: 1 })
+      .then((response) => setTotalLetters({ loading: false, error: null, value: response.total }))
+      .catch((normalizedError) => setTotalLetters({ loading: false, error: normalizedError, value: null }))
   }, [])
 
-  // Role-scoped administration summary (docs/architecture/dashboard.md
-  // §14): SYSTEM_ADMIN sees active departments + pending Admin
-  // approvals, ADMIN sees active users (own department, server-derived)
-  // + pending User approvals, USER sees none of this — every
-  // SYSTEM_ADMIN-only/ADMIN-only endpoint below is exactly the one the
-  // existing Departments/Administrators/Users screens already call; no
-  // new endpoint, no cross-department parameter.
-  const fetchAdminSummary = useCallback(() => {
-    if (role === 'SYSTEM_ADMIN') {
-      setAdminSummary({ loading: true, error: null, data: null })
-      Promise.all([
-        departmentService.list({ status: 'ACTIVE' }),
-        adminService.list({ status: 'PENDING_APPROVAL' }),
-      ])
-        .then(([departments, admins]) => {
-          setAdminSummary({
-            loading: false,
-            error: null,
-            data: { activeDepartments: departments.total, pendingAdmins: admins.total },
-          })
-        })
-        .catch((normalizedError) => setAdminSummary({ loading: false, error: normalizedError, data: null }))
-      return
-    }
-    if (role === 'ADMIN') {
-      setAdminSummary({ loading: true, error: null, data: null })
-      Promise.all([userService.list({ status: 'ACTIVE' }), userService.list({ status: 'PENDING_APPROVAL' })])
-        .then(([users, pending]) => {
-          setAdminSummary({
-            loading: false,
-            error: null,
-            data: { activeUsers: users.total, pendingUsers: pending.total },
-          })
-        })
-        .catch((normalizedError) => setAdminSummary({ loading: false, error: normalizedError, data: null }))
-      return
-    }
-    setAdminSummary({ loading: false, error: null, data: null })
-  }, [role])
-
-  // A single, one-time fetch — never a second polling interval.
-  // `NotificationBell` (Phase 5E) already owns the recurring
-  // `/notifications/unread-count` poll for the Topbar badge; this is a
-  // separate, one-shot read of the same cheap endpoint on dashboard
-  // mount, not a duplicate timer (docs/architecture/dashboard.md §10/§19).
+  // A single, one-time fetch — `NotificationBell` already owns the
+  // recurring poll for the Topbar badge; this is a separate, one-shot
+  // read of the same cheap endpoint on dashboard mount, not a second
+  // polling loop.
   const fetchUnreadCount = useCallback(() => {
     setUnreadCount({ loading: true, error: null, value: null })
     notificationService
@@ -126,9 +84,6 @@ export default function DashboardPage() {
       .catch((normalizedError) => setUnreadCount({ loading: false, error: normalizedError, value: null }))
   }, [])
 
-  // Newest-first, limited to a handful of rows — the same request
-  // `LetterListPage` already makes, never the full registry
-  // (docs/architecture/dashboard.md §8/§16).
   const fetchRecentLetters = useCallback(() => {
     setRecentLetters((previous) => ({ ...previous, loading: true, error: null }))
     letterService
@@ -137,13 +92,75 @@ export default function DashboardPage() {
       .catch((normalizedError) => setRecentLetters({ loading: false, error: normalizedError, items: [] }))
   }, [])
 
-  useEffect(() => {
-    fetchLetterSummary()
-  }, [fetchLetterSummary])
+  // Graph 1 — Incoming vs. Outgoing (§4).
+  const fetchDirectionSummary = useCallback(() => {
+    setDirectionSummary((previous) => ({ ...previous, loading: true, error: null }))
+    letterService
+      .aggregate({ group_by: 'direction' })
+      .then((response) => setDirectionSummary({ loading: false, error: null, buckets: response.buckets }))
+      .catch((normalizedError) => setDirectionSummary({ loading: false, error: normalizedError, buckets: [] }))
+  }, [])
+
+  // Shared department-id → name lookup for Graphs 2 and 3 — one
+  // request, reused by both, never one request per department. Reuses
+  // the existing `GET /departments` endpoint the Letter form's Source
+  // Department selector already calls (readable by any authenticated
+  // role since Phase 5H).
+  const fetchDepartmentNames = useCallback(() => {
+    setDepartmentNames((previous) => ({ ...previous, loading: true, error: null }))
+    departmentService
+      .list()
+      .then((response) => {
+        const byId = new Map(response.items.map((department) => [department.id, department.name]))
+        setDepartmentNames({ loading: false, error: null, byId })
+      })
+      .catch((normalizedError) => setDepartmentNames({ loading: false, error: normalizedError, byId: new Map() }))
+  }, [])
+
+  // Graph 2 — Letters Received by Department (§5): `group_by=department`
+  // is `recipient_department_id` — the owning department regardless of
+  // direction (docs/architecture/dashboard-analytics-api.md §32.2).
+  const fetchReceivedSummary = useCallback(() => {
+    setReceivedSummary((previous) => ({ ...previous, loading: true, error: null }))
+    letterService
+      .aggregate({ group_by: 'department' })
+      .then((response) => setReceivedSummary({ loading: false, error: null, buckets: response.buckets }))
+      .catch((normalizedError) => setReceivedSummary({ loading: false, error: normalizedError, buckets: [] }))
+  }, [])
+
+  // Graph 3 — Letters Sent by Department (§6): `group_by=dispatch_department`
+  // is the real Phase 6A dispatch target, never `source_department_id`
+  // (which carries no authorization meaning and answers a different
+  // question — see docs/architecture/dashboard-analytics-api.md §6).
+  const fetchSentSummary = useCallback(() => {
+    setSentSummary((previous) => ({ ...previous, loading: true, error: null }))
+    letterService
+      .aggregate({ group_by: 'dispatch_department' })
+      .then((response) => setSentSummary({ loading: false, error: null, buckets: response.buckets }))
+      .catch((normalizedError) => setSentSummary({ loading: false, error: normalizedError, buckets: [] }))
+  }, [])
+
+  // Graph 4 — Correspondence Activity Over Time (§7): two bounded,
+  // direction-filtered `group_by=month` requests, merged client-side
+  // by date key only (never by re-counting Letters) — the Phase 6C API
+  // has no two-dimensional `group_by`, and this is the one safe way to
+  // compare Incoming vs Outgoing over time without one (see
+  // `mergeTrendSeries`, `utils/aggregateChartHelpers.js`).
+  const fetchTrendSummary = useCallback(() => {
+    setTrendSummary((previous) => ({ ...previous, loading: true, error: null }))
+    Promise.all([
+      letterService.aggregate({ group_by: 'month', direction: 'INCOMING' }),
+      letterService.aggregate({ group_by: 'month', direction: 'OUTGOING' }),
+    ])
+      .then(([incoming, outgoing]) => {
+        setTrendSummary({ loading: false, error: null, points: mergeTrendSeries(incoming.buckets, outgoing.buckets) })
+      })
+      .catch((normalizedError) => setTrendSummary({ loading: false, error: normalizedError, points: [] }))
+  }, [])
 
   useEffect(() => {
-    fetchAdminSummary()
-  }, [fetchAdminSummary])
+    fetchTotalLetters()
+  }, [fetchTotalLetters])
 
   useEffect(() => {
     fetchUnreadCount()
@@ -153,72 +170,34 @@ export default function DashboardPage() {
     fetchRecentLetters()
   }, [fetchRecentLetters])
 
-  const cards = [
-    {
-      key: 'total',
-      label: 'Total Letters',
-      value: letterSummary.data?.total,
-      loading: letterSummary.loading,
-      error: letterSummary.error,
-    },
-    {
-      key: 'active',
-      label: 'Active Letters',
-      value: letterSummary.data?.active,
-      loading: letterSummary.loading,
-      error: letterSummary.error,
-    },
-    {
-      key: 'archived',
-      label: 'Archived Letters',
-      value: letterSummary.data?.archived,
-      loading: letterSummary.loading,
-      error: letterSummary.error,
-    },
-    {
-      key: 'unread',
-      label: 'Unread Notifications',
-      value: unreadCount.value,
-      loading: unreadCount.loading,
-      error: unreadCount.error,
-    },
-  ]
+  useEffect(() => {
+    fetchDirectionSummary()
+  }, [fetchDirectionSummary])
 
-  if (role === 'SYSTEM_ADMIN') {
-    cards.push(
-      {
-        key: 'active-departments',
-        label: 'Active Departments',
-        value: adminSummary.data?.activeDepartments,
-        loading: adminSummary.loading,
-        error: adminSummary.error,
-      },
-      {
-        key: 'pending-admins',
-        label: 'Pending Admin Approvals',
-        value: adminSummary.data?.pendingAdmins,
-        loading: adminSummary.loading,
-        error: adminSummary.error,
-      }
-    )
-  } else if (role === 'ADMIN') {
-    cards.push(
-      {
-        key: 'active-users',
-        label: 'Active Users',
-        value: adminSummary.data?.activeUsers,
-        loading: adminSummary.loading,
-        error: adminSummary.error,
-      },
-      {
-        key: 'pending-users',
-        label: 'Pending User Approvals',
-        value: adminSummary.data?.pendingUsers,
-        loading: adminSummary.loading,
-        error: adminSummary.error,
-      }
-    )
-  }
+  useEffect(() => {
+    fetchDepartmentNames()
+  }, [fetchDepartmentNames])
+
+  useEffect(() => {
+    fetchReceivedSummary()
+  }, [fetchReceivedSummary])
+
+  useEffect(() => {
+    fetchSentSummary()
+  }, [fetchSentSummary])
+
+  useEffect(() => {
+    fetchTrendSummary()
+  }, [fetchTrendSummary])
+
+  // The received/sent charts need both their own aggregate response
+  // and the shared department-name lookup before they can render a
+  // meaningful label — so each treats a department-name failure as its
+  // own failure, without affecting the direction or trend charts.
+  const receivedLoading = receivedSummary.loading || departmentNames.loading
+  const receivedError = receivedSummary.error || departmentNames.error
+  const sentLoading = sentSummary.loading || departmentNames.loading
+  const sentError = sentSummary.error || departmentNames.error
 
   return (
     <div className={styles.root}>
@@ -228,16 +207,79 @@ export default function DashboardPage() {
           <h1>Dashboard</h1>
           <span className={styles.headerMark} aria-hidden="true" />
         </div>
-        <p className={styles.subtitle}>
-          Current registry activity and quick actions for your role.
-        </p>
+        <p className={styles.subtitle}>Correspondence activity across your registry, at a glance.</p>
       </header>
 
-      <section aria-label="Summary" className={styles.cards}>
-        {cards.map(({ key, ...card }) => (
-          <SummaryCard key={key} {...card} />
-        ))}
+      <section aria-label="Summary" className={styles.headline}>
+        <SummaryCard
+          label="Total Letters"
+          value={totalLetters.value}
+          loading={totalLetters.loading}
+          error={totalLetters.error}
+        />
+        <SummaryCard
+          label="Unread Notifications"
+          value={unreadCount.value}
+          loading={unreadCount.loading}
+          error={unreadCount.error}
+        />
       </section>
+
+      <div className={styles.charts}>
+        <section className={styles.chartSection} aria-labelledby="chart-direction-heading">
+          <div className={styles.sectionHeader}>
+            <h2 id="chart-direction-heading">Incoming vs. Outgoing Correspondence</h2>
+          </div>
+          <HorizontalBarChart
+            title="Incoming vs. Outgoing Correspondence"
+            description="Total correspondence recorded, split by direction."
+            bars={directionBars(directionSummary.buckets)}
+            loading={directionSummary.loading}
+            error={directionSummary.error}
+            emptyMessage="No correspondence recorded yet."
+          />
+        </section>
+
+        <section className={styles.chartSection} aria-labelledby="chart-received-heading">
+          <div className={styles.sectionHeader}>
+            <h2 id="chart-received-heading">Letters Received by Department</h2>
+          </div>
+          <HorizontalBarChart
+            title="Letters Received by Department"
+            description="Which departments are receiving the most correspondence."
+            bars={departmentBars(receivedSummary.buckets, departmentNames.byId)}
+            loading={receivedLoading}
+            error={receivedError}
+            emptyMessage="No correspondence recorded yet."
+          />
+        </section>
+
+        <section className={styles.chartSection} aria-labelledby="chart-sent-heading">
+          <div className={styles.sectionHeader}>
+            <h2 id="chart-sent-heading">Letters Sent by Department</h2>
+          </div>
+          <HorizontalBarChart
+            title="Letters Sent by Department"
+            description="Which departments are sending the most outgoing correspondence."
+            bars={departmentBars(sentSummary.buckets, departmentNames.byId)}
+            loading={sentLoading}
+            error={sentError}
+            emptyMessage="No outgoing correspondence has been dispatched yet."
+          />
+        </section>
+
+        <section className={styles.chartSection} aria-labelledby="chart-trend-heading">
+          <div className={styles.sectionHeader}>
+            <h2 id="chart-trend-heading">Correspondence Activity Over Time</h2>
+          </div>
+          <CorrespondenceTrendChart
+            points={trendSummary.points}
+            loading={trendSummary.loading}
+            error={trendSummary.error}
+            emptyMessage="No correspondence recorded yet."
+          />
+        </section>
+      </div>
 
       <div className={styles.grid}>
         <section className={styles.section}>

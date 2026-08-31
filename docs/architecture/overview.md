@@ -187,9 +187,28 @@ existing `status === 'loading'` window, `AuthContext.jsx` itself
 untouched), Phase 5I.6 performed a final polish/handover audit
 across all nine prior phases (fixing one genuine defect —
 `NotificationBell`'s emoji icon — and confirming everything else
-either already consistent or intentional), and Phase 5I.6A replaced
+either already consistent or intentional), Phase 5I.6A replaced
 the Sidebar's 3-letter navigation monograms with actual geometric
-icons — none of these phases changes any role capability, metric, filter, or
+icons, and Phase 6A (`docs/architecture/correspondence.md`) added
+correspondence direction, Diary Number, and the "Record"/continuation
+lifecycle on top of the Letter model — entirely additive, with the
+existing department-isolation/classified-access boundary completely
+unchanged (`recipient_department_id` keeps its exact pre-existing
+meaning for both directions) and one new, narrow authorization check
+added alongside it, never in place of it, and Phase 6B renamed the
+visible application to "Daak Management System" and introduced the
+actual Government of Balochistan logo and a split-screen Login/Signup
+layout — purely presentational, touching no role, authorization,
+or Phase 6A functionality, and Phase 6C
+(`docs/architecture/dashboard-analytics-api.md`) added a backend-only
+`GET /api/v1/letters/aggregate` endpoint reusing the exact same
+`letter_visibility_filter`/department-derivation authorization logic
+`GET /letters` already used, with no new role, permission, or
+authorization path, and Phase 6D (`docs/architecture/dashboard.md`)
+replaced the Dashboard's eight KPI cards with four charts consuming
+that same endpoint — every chart renders for every role, with the
+aggregate API itself remaining the sole authorization boundary and no
+frontend-side role gating added — none of these phases changes any role capability, metric, filter, or
 the role-to-navigation data described in this document. As of Phase
 4D, a System Admin can also upload, list, and download any Letter's
 documents regardless of department — the one place document access is

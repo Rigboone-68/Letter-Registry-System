@@ -20,6 +20,7 @@ from app.models.enums import (
     ActiveStatus,
     AuthorizationPurpose,
     AuthorizationStatus,
+    LetterDirection,
     UserRole,
     UserStatus,
 )
@@ -122,6 +123,11 @@ def make_letter(
     classification=None,
     received_at=None,
     text_content=None,
+    direction=LetterDirection.INCOMING,
+    dispatch_department=None,
+    diary_number=None,
+    recorded_from=None,
+    continuation_of=None,
 ):
     letter = Letter(
         reference_number=reference_number or f"REF-{uuid.uuid4()}",
@@ -140,6 +146,11 @@ def make_letter(
         received_at=received_at or datetime.now(timezone.utc),
         recorded_by=recorder.id,
         text_content=text_content,
+        direction=direction,
+        dispatch_department_id=dispatch_department.id if dispatch_department else None,
+        diary_number=diary_number,
+        recorded_from_letter_id=recorded_from.id if recorded_from else None,
+        continuation_of_letter_id=continuation_of.id if continuation_of else None,
     )
     db_session.add(letter)
     db_session.flush()

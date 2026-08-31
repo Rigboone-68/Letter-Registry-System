@@ -52,3 +52,22 @@
 .sortIndicator {
   font-size: 0.7em;
 }
+
+/**
+ * Phase 6A (docs/architecture/correspondence.md §9) — a plain text
+ * badge, not a new shape-per-tone system: direction is a two-value,
+ * non-lifecycle field, so `StatusBadge`'s own shape language would be
+ * disproportionate here.
+ */
+.directionBadge {
+  display: inline-block;
+  padding: var(--space-2xs) var(--space-xs);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.diaryCell {
+  font-variant-numeric: tabular-nums;
+}

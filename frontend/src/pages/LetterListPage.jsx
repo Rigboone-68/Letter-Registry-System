@@ -28,6 +28,7 @@ const FILTER_KEYS = [
   'source_name',
   'source_location',
   'status',
+  'direction',
   'category_id',
   'classification_id',
   'department_id',

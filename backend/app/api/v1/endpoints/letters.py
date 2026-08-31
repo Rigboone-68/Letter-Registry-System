@@ -47,16 +47,19 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_user_or_admin
 from app.database.session import get_db
-from app.models.enums import LetterStatus
+from app.models.enums import LetterDirection, LetterStatus
 from app.models.letter import Letter
 from app.models.user import User
 from app.schemas.letter import (
+    LetterAggregateBucket,
+    LetterAggregateResponse,
     LetterCreate,
+    LetterGroupByField,
     LetterListResponse,
     LetterResponse,
     LetterSortField,
@@ -71,8 +74,13 @@ from app.services.exceptions import (
     DepartmentAccessDeniedError,
     DesignationNotActiveError,
     DesignationNotFoundError,
+    DispatchDepartmentNotActiveError,
+    DispatchDepartmentNotAllowedError,
+    DispatchDepartmentNotFoundError,
+    DispatchDepartmentRequiredError,
     InvalidDateRangeError,
     LetterNotFoundError,
+    SelfDispatchNotAllowedError,
     SourceDepartmentNotActiveError,
     SourceDepartmentNotFoundError,
 )
@@ -125,6 +133,29 @@ def _handle_reference_data_errors(exc: Exception) -> HTTPException:
         return HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Designation is not ACTIVE."
         )
+    if isinstance(exc, DispatchDepartmentNotFoundError):
+        return HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Dispatch department not found."
+        )
+    if isinstance(exc, DispatchDepartmentNotActiveError):
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Dispatch department is not ACTIVE."
+        )
+    if isinstance(exc, DispatchDepartmentRequiredError):
+        return HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="dispatch_department_id is required when direction is OUTGOING.",
+        )
+    if isinstance(exc, DispatchDepartmentNotAllowedError):
+        return HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="dispatch_department_id is not allowed when direction is INCOMING.",
+        )
+    if isinstance(exc, SelfDispatchNotAllowedError):
+        return HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="A department cannot dispatch correspondence to itself.",
+        )
     raise exc  # pragma: no cover - defensive, every caller passes a handled type
 
 
@@ -158,9 +189,16 @@ def create_letter(
             classification_id=payload.classification_id,
             received_at=payload.received_at,
             text_content=payload.text_content,
+            direction=payload.direction,
+            dispatch_department_id=payload.dispatch_department_id,
+            continuation_of_letter_id=payload.continuation_of_letter_id,
         )
     except DepartmentAccessDeniedError:
         raise _forbidden()
+    except LetterNotFoundError:
+        # `continuation_of_letter_id` doesn't reference a letter the
+        # caller can access — same 404 as every other Letter lookup.
+        raise _not_found()
     except (
         SourceDepartmentNotFoundError,
         SourceDepartmentNotActiveError,
@@ -170,6 +208,11 @@ def create_letter(
         ClassificationNotActiveError,
         DesignationNotFoundError,
         DesignationNotActiveError,
+        DispatchDepartmentNotFoundError,
+        DispatchDepartmentNotActiveError,
+        DispatchDepartmentRequiredError,
+        DispatchDepartmentNotAllowedError,
+        SelfDispatchNotAllowedError,
     ) as exc:
         raise _handle_reference_data_errors(exc)
 
@@ -184,6 +227,7 @@ def list_letters(
         default=None, description="SYSTEM_ADMIN only — ignored for USER/ADMIN"
     ),
     status_filter: Optional[LetterStatus] = Query(default=None, alias="status"),
+    direction_filter: Optional[LetterDirection] = Query(default=None, alias="direction"),
     category_id: Optional[uuid.UUID] = Query(default=None),
     classification_id: Optional[uuid.UUID] = Query(default=None),
     reference_number: Optional[str] = Query(
@@ -220,6 +264,7 @@ def list_letters(
             user=current_user,
             department_id=department_id,
             status_filter=status_filter,
+            direction_filter=direction_filter,
             category_id=category_id,
             classification_id=classification_id,
             reference_number=reference_number,
@@ -245,6 +290,67 @@ def list_letters(
     return LetterListResponse(
         items=items, total=total, page=page, page_size=page_size, total_pages=total_pages
     )
+
+
+@router.get(
+    "/aggregate",
+    response_model=LetterAggregateResponse,
+    summary="Group-by letter counts for dashboard analytics — same visibility rules as GET /letters",
+)
+def aggregate_letters(
+    group_by: LetterGroupByField = Query(...),
+    department_id: Optional[uuid.UUID] = Query(
+        default=None, description="SYSTEM_ADMIN only — ignored for USER/ADMIN"
+    ),
+    status_filter: Optional[LetterStatus] = Query(default=None, alias="status"),
+    direction_filter: Optional[LetterDirection] = Query(default=None, alias="direction"),
+    category_id: Optional[uuid.UUID] = Query(default=None),
+    classification_id: Optional[uuid.UUID] = Query(default=None),
+    dispatch_department_id: Optional[uuid.UUID] = Query(default=None),
+    received_from: Optional[datetime] = Query(
+        default=None, description="Inclusive lower bound on received_at"
+    ),
+    received_to: Optional[datetime] = Query(
+        default=None, description="Inclusive upper bound on received_at"
+    ),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> LetterAggregateResponse:
+    """Phase 6C (docs/architecture/dashboard-analytics-api.md's own
+    implementation record). Registered **before** `GET /{letter_id}`
+    below — FastAPI/Starlette matches routes in registration order, and
+    `/letters/aggregate` would otherwise be swallowed by the
+    `/letters/{letter_id}` pattern (and rejected with a `422` for
+    failing UUID validation on the literal string `"aggregate"`).
+
+    `get_current_user` only, matching `GET /letters` exactly — every
+    role that can list its own letters can aggregate them too; there is
+    no role this endpoint should be closed to
+    (docs/architecture/dashboard-analytics-api.md §16). Never
+    paginated — see `LetterAggregateResponse`'s own docstring.
+    """
+    service = LetterService(db)
+    try:
+        rows = service.aggregate_letters(
+            user=current_user,
+            group_by=group_by.value,
+            department_id=department_id,
+            status_filter=status_filter,
+            direction_filter=direction_filter,
+            category_id=category_id,
+            classification_id=classification_id,
+            dispatch_department_id=dispatch_department_id,
+            received_from=received_from,
+            received_to=received_to,
+        )
+    except InvalidDateRangeError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="received_from must not be after received_to.",
+        )
+    buckets = [LetterAggregateBucket(key=key, count=count) for key, count in rows]
+    total = sum(bucket.count for bucket in buckets)
+    return LetterAggregateResponse(group_by=group_by, total=total, buckets=buckets)
 
 
 @router.get(
@@ -326,3 +432,45 @@ def archive_letter(
         return service.archive_letter(letter_id, user=current_user)
     except LetterNotFoundError:
         raise _not_found()
+
+
+@router.post(
+    "/{letter_id}/record",
+    response_model=LetterResponse,
+    summary=(
+        "Record an OUTGOING letter dispatched to your own department as your "
+        "own INCOMING correspondence (USER or ADMIN only)"
+    ),
+)
+def record_incoming_correspondence(
+    letter_id: uuid.UUID,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_user_or_admin),
+) -> Letter:
+    """Phase 6A (docs/architecture/correspondence.md §10). `letter_id`
+    identifies the *outgoing* letter (typically reached from a
+    `LETTER_DISPATCHED` notification's own `letter_id`) — not the
+    incoming letter this action creates. `require_user_or_admin` mirrors
+    `create_letter`'s own role scope: SYSTEM_ADMIN has no department to
+    record correspondence into.
+
+    Idempotent by design (§6 of the brief): a second call for the same
+    outgoing letter returns the *existing* incoming letter with `200`,
+    never a duplicate row and never an error — `201` is reserved for the
+    call that actually created it. The server independently re-verifies
+    the dispatch relationship (`assert_dispatch_recipient_access`) rather
+    than trusting that the caller only reached this endpoint because a
+    notification told them to.
+    """
+    service = LetterService(db)
+    try:
+        letter, was_created = service.record_incoming_correspondence(
+            letter_id, recorder=current_user
+        )
+    except DepartmentAccessDeniedError:
+        raise _forbidden()
+    except LetterNotFoundError:
+        raise _not_found()
+    response.status_code = status.HTTP_201_CREATED if was_created else status.HTTP_200_OK
+    return letter

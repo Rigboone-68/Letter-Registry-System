@@ -474,6 +474,18 @@ instruction repeats "do not over-engineer V1 search."
 
 ## 12. What remains genuinely open (not guessed)
 
+**Phase 6A** (`docs/architecture/correspondence.md`) added correspondence
+direction (`direction`, `dispatch_department_id`), a separate operational
+identifier (`diary_number`, generated per department/direction — never
+confused with `reference_number` below), and two self-referential
+relationship fields (`recorded_from_letter_id`/`continuation_of_letter_id`)
+— all additive, nullable/defaulted, and built entirely on top of this
+document's own §5/§8/§9 authorization boundary without changing any of
+it. Item 0 below remains exactly as open as it was before that phase;
+`diary_number`'s own uniqueness scope (department + direction, a
+separate, already-resolved decision) is documented in
+`correspondence.md` §3, not here.
+
 0. **`reference_number`'s uniqueness scope** (global? per receiving
    department? per source? per year?) — PENDING BUSINESS CLARIFICATION,
    identified and corrected during a Phase 4B hardening pass; see §2.3.

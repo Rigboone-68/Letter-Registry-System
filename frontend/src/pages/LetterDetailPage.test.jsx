@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import LetterDetailPage from './LetterDetailPage'
@@ -224,4 +224,87 @@ describe('LetterDetailPage', () => {
       expect(await screen.findByText(/no documents have been uploaded/i)).toBeInTheDocument()
     })
   })
+
+  describe('Correspondence direction (Phase 6A)', () => {
+    it('shows Incoming / Diary and the diary number for an incoming letter', async () => {
+      letterService.get.mockResolvedValue({ ...LETTER, direction: 'INCOMING', diary_number: '7' })
+      renderDetail()
+
+      await screen.findByRole('heading', { name: 'REF-001' })
+      expect(screen.getByText('Incoming / Diary')).toBeInTheDocument()
+      expect(screen.getByText('Diary number')).toBeInTheDocument()
+      expect(screen.getByText('7')).toBeInTheDocument()
+    })
+
+    it('shows Outgoing / Dispatch and the dispatch number for an outgoing letter, with no Create response action', async () => {
+      letterService.get.mockResolvedValue({
+        ...LETTER,
+        direction: 'OUTGOING',
+        diary_number: '3',
+        dispatch_department_id: 'd2',
+      })
+      renderDetail()
+
+      await screen.findByRole('heading', { name: 'REF-001' })
+      expect(screen.getByText('Outgoing / Dispatch')).toBeInTheDocument()
+      expect(screen.getByText('Dispatch number')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /create response/i })).not.toBeInTheDocument()
+    })
+
+    it('shows a plain, non-cross-department "Received via dispatch from" line, never a link, when recorded from a dispatch', async () => {
+      letterService.get.mockResolvedValue({
+        ...LETTER,
+        direction: 'INCOMING',
+        recorded_from_letter_id: 'outgoing-1',
+        source_name: 'Ministry of Finance',
+      })
+      renderDetail()
+
+      await screen.findByRole('heading', { name: 'REF-001' })
+      expect(screen.getByText('Received via dispatch from')).toBeInTheDocument()
+      // "Ministry of Finance" already appears as the Source field too —
+      // the point of this assertion is that recorded_from_letter_id
+      // itself is never rendered as a navigable link.
+      expect(screen.queryByRole('link', { name: /outgoing-1/i })).not.toBeInTheDocument()
+    })
+
+    it('shows a real, working link for "Continuation of"', async () => {
+      letterService.get.mockResolvedValue({ ...LETTER, continuation_of_letter_id: 'original-1' })
+      renderDetail()
+
+      await screen.findByRole('heading', { name: 'REF-001' })
+      expect(screen.getByRole('link', { name: /view original letter/i })).toHaveAttribute(
+        'href',
+        '/app/letters/original-1'
+      )
+    })
+
+    it('navigates to the create form with continuation state when "Create response" is clicked', async () => {
+      letterService.get.mockResolvedValue({ ...LETTER, direction: 'INCOMING' })
+      render(
+        <MemoryRouter initialEntries={['/app/letters/l1']}>
+          <Routes>
+            <Route path="/app/letters/:id" element={<LetterDetailPage />} />
+            <Route
+              path="/app/letters/new"
+              element={
+                <LocationProbe />
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      )
+
+      await screen.findByRole('heading', { name: 'REF-001' })
+      await userEvent.click(screen.getByRole('button', { name: /create response/i }))
+
+      expect(await screen.findByText('l1|REF-001')).toBeInTheDocument()
+    })
+  })
 })
+
+function LocationProbe() {
+  const location = useLocation()
+  const state = location.state ?? {}
+  return <div>{`${state.continuationOfLetterId}|${state.continuationOfReference}`}</div>
+}

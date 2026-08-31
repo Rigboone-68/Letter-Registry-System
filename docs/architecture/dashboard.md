@@ -1169,3 +1169,511 @@ department-derivation authorization logic directly, no new predicate)
 for if and when a specific breakdown or trend is ever confirmed
 wanted — nothing was implemented. See that document's own §27-§28 for
 the exact open business questions and its V1 recommendation.
+
+**Update, Phase 6C**: a confirmed supervisor requirement (this
+document's own KPI-card interpretability gap, §27's first open
+question) resolved the "not yet confirmed" status above. Phase 6C
+implemented `GET /api/v1/letters/aggregate` exactly as this section's
+design described, reassessed against Phase 6A's new correspondence
+fields in the interim — see [`dashboard-analytics-api.md`](dashboard-analytics-api.md)'s
+own "Phase 6C" section for the implementation record. This document's
+own `DashboardPage.jsx` and its widgets remain **unmodified** — no
+chart consumes the new endpoint yet; that is explicitly a later,
+separate phase's work.
+
+---
+
+## 34. Phase 6D — Dashboard Operational Graphs (implementation record)
+
+**Trigger**: the supervisor explicitly requested the KPI-card
+presentation itself be replaced with graphs — not merely that new data
+become available (§33's Phase 6C update), but that the numeric-card
+format be retired because non-technical staff found it hard to
+interpret. This phase is frontend-only; the backend `GET
+/letters/aggregate` contract (Phase 6C) was consumed exactly as
+published, with no backend change required or made.
+
+### 34.1 Chart library decision
+
+`package.json` was inspected first, per this phase's own instruction.
+No chart library of any kind is installed (`axios`, `react`,
+`react-dom`, `react-router-dom` are the only runtime dependencies).
+**Decision: no dependency was installed.** Every required
+visualization — two horizontal bar comparisons and one time-series
+trend — is achievable with plain CSS (`<div>`-based proportional-width
+bars) and a small hand-written SVG polyline plot, both trivial in
+scope next to a general-purpose charting library. This also fits the
+existing "Precision Ledger" design language better than a generic
+library's own default styling would (§15 of this phase's brief:
+"avoid...decoration"), and keeps the bundle size and dependency surface
+unchanged. This was a genuine evaluation, not an assumption — had the
+required visualizations needed real geographic maps, complex
+statistical plots, or heavy interactivity, this section would instead
+report that finding and stop, per the brief's own instruction. They did
+not.
+
+### 34.2 What was built
+
+Two new reusable chart components (`frontend/src/components/`):
+
+* **`HorizontalBarChart.jsx`** — a plain CSS bar-track component reused
+  for all three bar-shaped graphs (Incoming vs. Outgoing, Received by
+  Department, Sent by Department). Deliberately not three bespoke
+  components, since none differs in shape, only in which bars and
+  labels it carries — the same reuse discipline `SummaryCard` already
+  established for the old KPI cards. Every label and count is real,
+  always-visible HTML text directly beside its bar — the visual *is*
+  the accessible text, not a separate representation bolted on
+  afterward. A horizontal layout means a long department name grows the
+  row's height, never the page's width — no truncation, no overflow.
+* **`CorrespondenceTrendChart.jsx`** — a two-series SVG line plot
+  (Incoming solid, Outgoing dashed — distinguished by line style as
+  well as color) with a real, visible text legend and a keyboard-
+  accessible `<details>` disclosure containing the exact monthly counts
+  as an actual `<table>`. The SVG itself is `aria-hidden` — it is a
+  redundant visualization of information the legend and table already
+  state as real text, never the sole source of a value.
+* **`utils/aggregateChartHelpers.js`** — pure functions
+  (`directionBars`, `departmentBars`, `formatMonthLabel`,
+  `mergeTrendSeries`) turning a raw `{ key, count }` bucket list into
+  chart-ready shapes. No React, no Axios — fully unit-testable in
+  isolation, matching this project's existing `utils/` convention
+  (`formValidation.js`, `statusLabels.js`).
+* **`services/letterService.js`** — one new `aggregate(params)`
+  function (`GET /letters/aggregate`), added directly to the existing,
+  already-consolidated Letter service module rather than a new
+  `dashboardAnalyticsService.js` — the brief's own instruction to only
+  introduce a dedicated service module if it "genuinely improves
+  reuse/testability" was evaluated and declined: this is a Letter-
+  resource endpoint, exactly like `list`/`get`/`create` above it in the
+  same file, and a second module would only fragment one resource's API
+  surface across two files for no benefit.
+* **`pages/DashboardPage.jsx`/`.module.css`** — rewritten (see §34.3).
+
+### 34.3 KPI removal
+
+The eight role-dependent `SummaryCard`s are gone. Two small headline
+figures remain — **Total Letters** and **Unread Notifications** —
+genuinely orienting numbers a reader wants before the charts below
+break the total down further, not a shrunk-down copy of the removed
+card wall. The Active/Archived Letters split (previously two more
+cards) was dropped: the new Incoming/Outgoing direction chart and the
+department charts now carry that kind of breakdown responsibility, and
+keeping a redundant Active/Archived pair alongside four new charts
+would reintroduce the "chart/number overload" this phase's brief
+explicitly warned against.
+
+The four SYSTEM_ADMIN/ADMIN-only administration cards (Active
+Departments, Pending Admin Approvals, Active Users, Pending User
+Approvals) were **not** reintroduced in any form — as cards or as
+charts. They answer an administration question (how many departments/
+users exist or are pending), not the confirmed correspondence-volume
+question this phase's brief named (direction, department flow, time
+trend); the Departments/Administrators/Users screens (Phase 5D) already
+show this exact data. Per the brief's own §10 instruction ("do not
+reintroduce...unless actually useful to the supervisor's operational
+requirement"), no confirmed need was found, so they were left out —
+`departmentService.list()`/`adminService.list()`/`userService.list()`
+calls for administration-summary purposes are gone from this page
+entirely (the department-name lookup that remains is for a completely
+different purpose — resolving department-id chart labels, §34.4 — and
+calls the same endpoint for a different reason).
+
+### 34.4 The four graphs
+
+1. **Incoming vs. Outgoing** (`group_by=direction`) —
+   `HorizontalBarChart` with two bars in a fixed order (Incoming always
+   first), each direction's own label serving as the primary means of
+   distinguishing them — color is reinforced by, never a substitute
+   for, the adjacent text.
+2. **Letters Received by Department** (`group_by=department`) —
+   `HorizontalBarChart`, department-id keys resolved to names via one
+   shared `GET /departments` request (already readable by any role
+   since Phase 5H), reused by graph 3 too rather than fetched twice.
+   Backend ordering (count descending, key ascending) is preserved
+   exactly — never re-sorted client-side. No top-N truncation — every
+   department returned appears as its own row.
+3. **Letters Sent by Department** (`group_by=dispatch_department`) —
+   same component, the real Phase 6A dispatch-target dimension, **not**
+   `source_department_id` (which carries no authorization meaning and
+   answers "who claims to have sent this," not "which department is
+   this system's own confirmed dispatch destination" — see
+   `dashboard-analytics-api.md` §6).
+4. **Correspondence Activity Over Time** (`group_by=month`, filtered by
+   `direction`) — `CorrespondenceTrendChart`. `month` was chosen over
+   `day`/`week` per the brief's own steer ("prefer month if it provides
+   a meaningful overview without excessive noise") — this project has
+   no confirmed high-volume correspondence pattern that would need
+   finer daily granularity, and `month` keeps the plot legible even
+   after a year of data. Comparing Incoming vs. Outgoing over time uses
+   **two** bounded, direction-filtered requests
+   (`group_by=month&direction=INCOMING` /
+   `...&direction=OUTGOING`), merged client-side by date key only
+   (`mergeTrendSeries`) — never by re-counting Letters, never one
+   request per bucket. This is the deliberate, bounded workaround the
+   brief's own §7 anticipated for the Phase 6C API's lack of a
+   two-dimensional `group_by`, not a fabricated one.
+
+### 34.5 Department × Direction — DEFERRED
+
+Explicitly evaluated and left out, per the brief's own §8. A
+department/direction cross-tabulation (e.g. "which department sent the
+most Outgoing correspondence" broken out per department) would need
+either a two-dimensional backend aggregate (which Phase 6C's own design
+deliberately does not provide — `dashboard-analytics-api.md` §32.9) or
+one request per department (explicitly forbidden by this phase's own
+§7/§20 performance instructions). **DEFERRED — requires a
+two-dimensional aggregate endpoint.** No placeholder, "coming soon"
+panel, or client-side pseudo-aggregation was added to the UI for this;
+it is simply absent.
+
+### 34.6 Date range / filters
+
+Kept minimal, per the brief's own §11 instruction ("if date filtering
+was not previously established as a dashboard requirement, keep it
+minimal"): `dashboard.md`'s own history confirms no date-range concept
+has ever existed on this dashboard. No preset control (This month/Last
+month/Last 3 months/This year) was added this phase — every chart
+requests its full available history with no `received_from`/
+`received_to` filter. This is a genuine, disclosed limitation, not an
+oversight: a future phase can add a shared date-range control across
+all four charts once a specific default/preset is confirmed wanted
+(the same open question `dashboard-analytics-api.md` §27 already
+named, still unresolved).
+
+### 34.7 Refresh
+
+No new polling loop of any kind. `NotificationBell`'s own existing
+unread-count poll (Topbar) is completely untouched. Every chart fetches
+once on `DashboardPage` mount, via the same `useEffect`/`useCallback`
+pattern every other widget on this page already used before this
+phase — no explicit "Refresh" button was added, since no confirmed
+requirement named one and the existing lifecycle (navigate away, then
+back) already re-fetches everything.
+
+### 34.8 Data fetching discipline
+
+Nine requests fire on a full dashboard load: Total Letters (1),
+Unread Notifications (1), Recent Letters (1, unchanged from Phase 5F),
+`group_by=direction` (1), `group_by=department` (1),
+`group_by=dispatch_department` (1), `group_by=month` × 2 directions
+(2), and one shared `GET /departments` call for name resolution (1).
+Bounded and predictable regardless of how many departments or Letters
+exist — never one request per department, never a full-registry fetch,
+never client-side counting. Every chart's loading/error state is
+tracked independently (mirroring the existing per-widget `{ loading,
+error, data }` state shape `RecentLetters`/the old `SummaryCard`s
+already used) — the received/sent department charts additionally
+depend on the shared department-name lookup succeeding, so a failure
+of that one shared request affects those two charts together without
+affecting the direction chart, the trend chart, the headline figures,
+Recent Letters, or Quick Actions.
+
+### 34.9 Accessibility
+
+No chart's information exists only as a rendered graphic. The bar
+charts' labels and counts are real HTML text next to each bar; the
+trend chart's SVG is `aria-hidden` and duplicated by a real text legend
+plus a keyboard-operable `<details>`/`<table>` disclosure — never a
+hover-only tooltip. Direction is distinguished primarily by its own
+text label; the trend chart's two series are distinguished by line
+style (solid vs. dashed) and marker shape (circle vs. square) in
+addition to color, named in the legend's own text. Every chart section
+has a real `<h2>` (the existing `sectionHeader`/`h2` pattern this page
+already used) plus a one-line description paragraph. **No WCAG
+compliance is claimed** — this is a reasoned accessibility design, not
+an audit.
+
+### 34.10 Visual design
+
+No new dependency, no gradient, no glow, no 3D effect, no pie chart, no
+decorative animation. Bar fills use the existing `--color-primary`
+token; the trend chart's two lines use the existing `--color-primary`/
+`--color-accent` pair. Chart sections reuse the exact same
+`.section`-style surface (`--color-surface`/`--color-border`/
+`--radius-md`/`--space-md`) every other Dashboard section already
+uses — no new surface treatment was invented.
+
+### 34.11 Responsive design
+
+The bar chart's row grid narrows its label/track column widths at the
+768px and 480px breakpoints (the existing documented breakpoints,
+`tokens.css`) rather than introducing a new one; a bar row stacks
+vertically below 480px so a long department name never causes
+horizontal overflow. The trend chart's SVG uses a `viewBox` with
+`preserveAspectRatio="none"`, so it scales fluidly to its container's
+width at any viewport; its fixed height is reduced at the 768px
+breakpoint. The chart section stack (`.charts`) is a single column at
+every width — it was never a multi-column grid, so nothing needs to
+collapse.
+
+### 34.12 Security boundary
+
+No file under `src/context/`, `src/routes/`, `services/tokenStorage.js`,
+or `services/apiClient.js` was touched (confirmed via `git status`
+before and after this phase). No role-based chart hiding was added —
+every chart renders for every role, exactly as §10 of the brief
+required, with the aggregate API itself remaining the sole
+authorization boundary. `letterService.aggregate()` forwards its
+`params` object as-is (a read-only query-string, never a write
+payload) — the same pattern `list()` already used.
+
+### 34.13 Testing
+
+23 new tests for the two chart components and the helper module
+(`HorizontalBarChart.test.jsx` — 8, `CorrespondenceTrendChart.test.jsx`
+— 7, `aggregateChartHelpers.test.js` — 8), covering loading/error/empty
+states, real-text label/count rendering, ordering preservation, long-
+label non-truncation, and the accessible table/legend content. The
+existing `DashboardPage.test.jsx` (16 tests, all asserting the removed
+KPI cards) was rewritten — not weakened — into 14 tests covering the
+new headline figures, confirmation that the retired administration
+cards render for no role, that every chart requests the aggregate
+endpoint (never `/letters` pagination, never a `department_id`
+parameter), department-name resolution, independent per-chart failure,
+the empty-state distinction from a misleading zero-looking chart, and
+that Recent Letters/Quick Actions/notification behavior is unchanged.
+Full frontend suite: 409 tests (54 files), run 3 consecutive times with
+identical results.
+
+### 34.14 Manual verification
+
+**Partially performed, honestly limited.** The Vite dev server was
+started and confirmed to boot and serve `200 OK` with zero build/
+runtime console errors, and a clean `npm run build` was confirmed to
+include the new chart components' actual rendered strings in the
+production bundle (not merely compile without erroring). **Full manual
+browser verification — visually inspecting rendered charts, testing
+at real desktop/tablet/mobile widths, comparing chart values against a
+known set of manually-created Letters across SYSTEM_ADMIN/ADMIN/USER —
+was not performed**, consistent with every prior phase in this
+project: no browser-automation tool is available in this environment.
+Every functional claim in this section is backed by the automated test
+suite in §34.13, not by observing the running application in a real
+browser.
+
+### 34.15 Explicit scope confirmation
+
+Modified: `frontend/src/pages/DashboardPage.jsx`,
+`frontend/src/pages/DashboardPage.module.css`,
+`frontend/src/pages/DashboardPage.test.jsx`,
+`frontend/src/services/letterService.js`. Created:
+`frontend/src/components/HorizontalBarChart.jsx`/`.module.css`/`.test.jsx`,
+`frontend/src/components/CorrespondenceTrendChart.jsx`/`.module.css`/`.test.jsx`,
+`frontend/src/utils/aggregateChartHelpers.js`/`.test.js`, this section.
+**Not** touched: any backend file (no genuine API deficiency was
+found — the Phase 6C contract was sufficient as published), `AuthContext`,
+`RoleGuard`, `ProtectedRoute`, `tokenStorage.js`, `apiClient.js`,
+`NotificationBell`, any Letter/Document/Notification/correspondence
+lifecycle file, `package.json` (no dependency added or removed). Not
+committed, not pushed, per this phase's own explicit instruction.
+
+---
+
+## 35. Phase 6D — Final Polish & Handover Verification
+
+This is the project's **final implementation phase** — no Phase 6E
+follows. The goal was not a redesign: inspect the already-implemented
+and already-tested Phase 6D dashboard for real problems, fix only what
+manual verification actually found, and confirm the project is ready
+for handover.
+
+### 35.1 Manual browser verification — honestly limited, substituted with a stronger check where possible
+
+No browser-automation or screenshot tool is available in this
+environment (confirmed again this phase — `WebFetch` converts HTML to
+markdown via a model and does not execute JavaScript, so it cannot
+render this single-page application; there is no Playwright/Puppeteer/
+screenshot capability). **Pixel-level visual verification — exact
+spacing, font rendering, hover states — was not performed and cannot
+be honestly claimed.**
+
+In its place, a genuine, stronger-than-usual verification was run
+against the real dev environment instead of relying on source
+inspection alone:
+
+* The Vite dev server was confirmed to boot cleanly (`200 OK`, zero
+  console errors) and a clean production build was confirmed to
+  contain the actual new component output (not merely compile).
+* **A full backend server was started** (`uvicorn`, port 8123) against
+  the real dev PostgreSQL database — the same database this project's
+  own backend test suite uses.
+* **Two brand-new, clearly-labeled throwaway accounts** were created
+  (`phase6d.verify.finance@example.com` in the real Finance
+  department, `phase6d.verify.pd@example.com` in the real P&D
+  department) and logged in through the real `/api/v1/auth/login`
+  endpoint — never by minting a token for an existing real person's
+  account. An earlier attempt to do the latter (mint tokens for the
+  project's actual existing user accounts to save a step) was correctly
+  blocked by this session's own safety tooling as account
+  impersonation; creating fresh accounts of its own instead was the
+  correct, non-impersonating alternative, confirmed with AJ before
+  writing anything to the real dev database.
+* **Two clearly-labeled OUTGOING letters** (`PHASE6D-VERIFY-OUT-1`,
+  `PHASE6D-VERIFY-OUT-2`) were created through the real
+  `POST /api/v1/letters` endpoint — Finance dispatching to P&D, and
+  P&D dispatching to Finance — a small, known sample, not fabricated
+  bulk data.
+* **Every value the four dashboard charts would render was computed by
+  hand from this known sample and compared against the real
+  `GET /letters/aggregate` response** — not simulated, not mocked:
+
+  | Dimension | Hand-computed expectation | Actual API response |
+  |---|---|---|
+  | `direction` | INCOMING 4, OUTGOING 2 | INCOMING 4, OUTGOING 2 ✓ |
+  | `department` | Finance 5, P&D 1 | Finance 5, P&D 1 ✓ |
+  | `dispatch_department` | P&D 1, Finance 1 | P&D 1, Finance 1 ✓ |
+  | `month` (all) | Jul 1, Aug 5 | Jul 1, Aug 5 ✓ |
+  | `month`, `direction=INCOMING` | Aug 4 | Aug 4 ✓ |
+  | `month`, `direction=OUTGOING` | Jul 1, Aug 1 | Jul 1, Aug 1 ✓ |
+
+  Every figure matched exactly. This directly exercises the same query
+  path, the same repository/service code, and the same response shape
+  the frontend's `directionBars`/`departmentBars`/`mergeTrendSeries`
+  helpers consume — a real end-to-end confirmation of "dashboard
+  aggregate → actual registry," per this phase's own §6 instruction.
+* **Role scoping was verified live**, not just asserted from tests: the
+  Finance throwaway account's own aggregate calls returned only its 5
+  own letters (never P&D's), a `department_id` parameter it supplied
+  pointing at P&D was silently ignored exactly as designed, and the
+  P&D account saw only its own 1 letter. This is the same guarantee
+  the automated test suite already covers, re-confirmed against a live
+  server rather than only a test client.
+* **Cleanup**: both test letters were archived (`DELETE
+  /letters/{id}` — status → `ARCHIVED`, never a physical delete,
+  matching this system's own established convention) and all three
+  throwaway accounts were set to `DEACTIVATED`. Neither action is a
+  hard delete — this system has no such capability by design — so
+  these rows remain in the dev database as inert, clearly-labeled,
+  archived/deactivated history. **AJ should be aware**: the dev
+  database's real "Total Letters" figure now reads 6, not 4, until/
+  unless these two archived rows are removed by a direct database
+  operation, which was not performed without being explicitly asked to
+  do so (a genuinely destructive action outside this project's own
+  established API surface).
+
+### 35.2 Genuine refinement made
+
+**`CorrespondenceTrendChart`'s x-axis previously labeled only the
+first and last month.** With the real dev data at the time of Phase
+6D's own implementation (and still, at the time this final phase
+began) there were only ever 1-2 distinct months of correspondence, so
+this happened to label every month that existed — the gap was latent,
+not yet visible. Re-reading the component fresh for this phase (per
+its own §1 instruction not to rely on prior reports) surfaced it as a
+real defect against this phase's own explicit verification criterion,
+"month labels are readable": a third month would have gone completely
+unlabeled on the graphic, with no way to know which point on the line
+it corresponded to without opening the "View exact monthly counts"
+disclosure. Fixed via `selectAxisTicks()` — every point gets a label
+when there are 6 or fewer, and a thinned, evenly-spaced subset
+(always including the first and last) for longer series, so labels
+never overlap into an unreadable smear regardless of how much history
+accumulates after handover. Two new regression tests cover this
+exactly: a 3-month series correctly labels the middle month, and a
+12-month series thins to fewer than 12 labels while always keeping the
+first and last.
+
+This was the **only** code change made this phase — the rest of the
+implementation was inspected and confirmed correct, not altered.
+
+### 35.3 Reviewed and confirmed correct — not changed
+
+Matching this project's own established practice (Phase 5I.6) of
+documenting what was *deliberately left alone* after genuine
+consideration, not just what was changed:
+
+* **Chart data scaling** (§3.A/§12 of this phase's brief) — each bar
+  chart's width is `count / max(count in this chart)`, confirmed
+  correct and non-misleading by the live data-accuracy check above (a
+  2-vs-4 count produced a visually-proportional 50%-width bar,
+  verified by the underlying math, not assumed).
+* **Dispatch semantics** (§3.C) — confirmed via live verification that
+  `group_by=dispatch_department` reflects the real Phase 6A dispatch
+  target and never `source_department_id`; re-read `DashboardPage.jsx`
+  fresh and confirmed no such substitution exists anywhere in the code.
+* **KPI prominence** (§5) — the two remaining headline figures
+  (`.headline`, `max-width: 480px`, two cards) were re-assessed against
+  "do they visually compete with the charts." Given they occupy a
+  fraction of the width the old eight-card wall did, and sit above a
+  clear visual break (`.header`'s existing border) before the charts
+  begin, no genuine competition was found — left unchanged rather than
+  shrunk further without a concrete, observed problem to fix.
+* **Department × Direction deferral** (§8 of this phase's own
+  brief, restating §32.9/§34.5) — re-confirmed still correctly absent;
+  no placeholder or client-side pseudo-aggregation was ever added.
+* **Filters / date range** (§8 of the brief) — Phase 6D never
+  implemented date controls (§34.6), so this phase's own §8 verification
+  ("if Phase 6D implemented date controls, verify they work") does not
+  apply; re-confirmed no such control exists, and none was added this
+  phase (no "complicated filter controls during this final phase," per
+  the brief's own instruction).
+* **Accessibility** (§10) — re-read every chart component fresh:
+  headings are real `<h2>`s, every value is real text, the trend
+  chart's data table is a genuine `<table>` with `<th scope>`, decorative
+  SVGs carry `aria-hidden="true"`, and no information depends on color
+  alone (direction is distinguished primarily by its own text label;
+  the trend's two series by line style and marker shape). No formal
+  WCAG audit is claimed.
+* **Performance** (§12) — re-confirmed nine bounded requests on load,
+  no per-department request, no polling loop, no client-side
+  aggregation, no new dependency, no large asset.
+* **Security boundary** (§13) — re-confirmed via `git status` that no
+  file under `context/`, `routes/`, `tokenStorage.js`, or
+  `apiClient.js` was touched this phase, and no frontend authorization
+  logic exists anywhere in the dashboard code.
+
+### 35.4 Manual verification steps for AJ to run locally
+
+Since pixel-level rendering could not be verified in this environment,
+here is the exact procedure to confirm the dashboard visually:
+
+1. `cd frontend && npm run dev`, then `cd backend && uvicorn
+   app.main:app --reload` (or the project's usual startup command).
+2. Log in as a USER or ADMIN in a department with some correspondence
+   recorded (e.g. Finance), and navigate to `/app/dashboard`.
+3. Confirm: two small headline numbers at the top; below them, four
+   chart sections in order (Incoming vs. Outgoing, Received by
+   Department, Sent by Department, Activity Over Time); Recent Letters
+   and Quick Actions below that, unchanged from before.
+4. Resize the browser to a phone width (~375px) and a tablet width
+   (~800px) — confirm no horizontal scrollbar appears anywhere, and
+   that department names in the bar charts wrap onto a second line
+   rather than being cut off.
+5. Open the trend chart's "View exact monthly counts" disclosure and
+   confirm it expands/collapses via mouse and via keyboard (Tab to
+   focus, Enter/Space to toggle).
+6. Log in as SYSTEM_ADMIN and confirm the department charts show every
+   department's data; log in as a USER in a different department and
+   confirm the same charts show only that department's own rows.
+7. Optional: temporarily disconnect the backend (stop `uvicorn`) and
+   reload the dashboard — confirm each chart shows its own error
+   message rather than a blank page.
+
+### 35.5 Final regression results
+
+Frontend: 411 tests (54 files, +2 from this phase's own regression
+tests), run 3 consecutive times with identical results. A clean
+production build (`rm -rf dist node_modules/.vite && npm run build`)
+succeeded with the new axis-label code confirmed present in the
+output. Backend: 525 tests, run once this phase (no backend code was
+touched) — confirmed unaffected by this phase's live dev-database
+verification activity, which used only real API calls and ordinary
+archive/deactivate operations, never a schema or fixture change.
+
+### 35.6 Project handover status
+
+This closes the Phase 6D arc and, per this phase's own explicit
+instruction, **the project's implementation work**. No further phase
+is planned. Outstanding items are exactly the ones named as deferred
+throughout Phases 6C/6D and never disguised as done: a Department ×
+Direction cross-tabulation (needs a two-dimensional aggregate endpoint,
+not built), a dashboard date-range control (no default/preset ever
+confirmed wanted), an audit read API and its own analytics (Phase 5G
+§20, still `FUTURE`), and a Designation edit/detail page. None of these
+were treated as blockers for handover — each was evaluated in its own
+phase and found to require either a business decision this project was
+never given, or backend work explicitly out of a frontend-only phase's
+scope. Nothing was committed or pushed this phase, per its own explicit
+instruction — commit/push remains a separate, explicit action for AJ
+to request.

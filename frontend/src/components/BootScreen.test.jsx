@@ -8,7 +8,7 @@ describe('BootScreen', () => {
     render(<BootScreen />)
 
     const status = screen.getByRole('status')
-    expect(status).toHaveTextContent('Loading Letter Registry System')
+    expect(status).toHaveTextContent('Loading Daak Management System')
   })
 
   it('accepts a custom truthful label without changing the accessible role', () => {
@@ -24,11 +24,11 @@ describe('BootScreen', () => {
     expect(text).not.toMatch(/securing|encrypt|authenticating infrastructure|secure channel|all systems|system operational/)
   })
 
-  it('renders the LRS application identity', () => {
+  it('renders the DMS application identity', () => {
     render(<BootScreen />)
 
-    expect(screen.getByText('Letter Registry System')).toBeInTheDocument()
-    expect(screen.getByText('LRS')).toBeInTheDocument()
+    expect(screen.getByText('Daak Management System')).toBeInTheDocument()
+    expect(screen.getByText('DMS')).toBeInTheDocument()
   })
 
   it('renders the registry glyph as purely decorative', () => {

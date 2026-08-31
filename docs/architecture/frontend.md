@@ -807,7 +807,46 @@ emoji icon, replaced with a CSS-only outline, zero behavior change)
 and documenting several other candidates confirmed correct rather than
 changed. Manual browser verification was not performed — no
 browser-automation tool is available in this environment. The Phase
-5I visual architecture is now considered closed. **Phase 5I.6A** then
+5I visual architecture is now considered closed. **Phase 6A**
+(`docs/architecture/correspondence.md`) then implemented the first
+functional (not visual) enhancement: `LetterFormPage` gained a
+create-only Correspondence Direction control and a conditional
+Dispatch Department selector; `LetterDetailPage` gained a
+Correspondence Direction section (Direction, Diary/Dispatch Number,
+and a safe "Continuation of" link — deliberately never a link to an
+inaccessible cross-department outgoing letter) and a "Create response"
+action; `NotificationItem` gained its one type-specific branch — a
+`Record` button for `LETTER_DISPATCHED` notifications, whose own
+`letter_id` this department cannot open directly; `LetterTable`/
+`LetterFilters` gained a Direction badge/filter and a Diary/Dispatch
+Number column. No existing field, route, or authorization rule
+changed. **Phase 6B** (`docs/architecture/ui-design-system.md` §"Phase
+6B") then renamed the visible application to "Daak Management
+System"/"DMS" (one constant, `constants/app.js`'s `APP_NAME`/
+`APP_SHORT_NAME`, propagates everywhere it's rendered), replaced the
+CSS-drawn brand mark with the actual Government of Balochistan logo in
+the Sidebar/`AuthShell`/`BootScreen` (always decorative, `alt=""`),
+and redesigned Login/Signup into a split-screen layout using the
+supplied institutional photograph — extracting the previously
+per-page-duplicated shell chrome into one shared `AuthShell`
+component. No authentication field, validation rule, or redirect
+changed; no Phase 6A functionality was touched. **Phase 6C**
+(`docs/architecture/dashboard-analytics-api.md` §"Phase 6C") then
+implemented a new backend-only `GET /api/v1/letters/aggregate`
+endpoint for a future dashboard chart — no frontend file, `DashboardPage.jsx`,
+or Login/Signup/branding file was touched; frontend consumption of
+the new endpoint remains a later, separate phase's work. **Phase 6D**
+(`docs/architecture/dashboard.md` §"Phase 6D") then consumed that
+endpoint: the eight role-dependent `SummaryCard`s were removed in
+favor of four new charts (`HorizontalBarChart`, reused for Incoming vs.
+Outgoing / Received-by-Department / Sent-by-Department, and
+`CorrespondenceTrendChart` for the monthly trend), both hand-built in
+plain CSS/SVG after confirming no chart library exists in
+`package.json` and none was warranted — a genuine evaluation, not an
+assumption. Two small headline figures (Total Letters, Unread
+Notifications) remain; the retired SYSTEM_ADMIN/ADMIN administration
+cards were not reintroduced. No backend file was touched. **Phase
+5I.6A** then
 made one small, targeted correction the audit's own manual review
 surfaced — the Sidebar's navigation "icons" were actually 3-letter
 monograms; replaced with 9 small inline SVG icons that follow the same

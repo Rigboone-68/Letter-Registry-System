@@ -32,6 +32,15 @@ function formatDate(value) {
  * omitted entirely (not shown as a raw id) when no map is supplied — see
  * `pages/LetterListPage.jsx` for why only a SYSTEM_ADMIN caller can
  * supply them (the reference-data endpoints are SYSTEM_ADMIN-only).
+ *
+ * Phase 6A (docs/architecture/correspondence.md §9) adds two always-
+ * rendered columns — Direction (a plain text badge, never color-only —
+ * `StatusBadge`'s own shape-per-tone convention would be overkill for a
+ * two-value field with no lifecycle) and Diary/Dispatch No.
+ * (`letter.diary_number`, `—` for the historical letters that predate
+ * this phase) — the operational identifier the business actually uses
+ * day-to-day, shown prominently alongside (never replacing)
+ * `reference_number`.
  */
 export default function LetterTable({
   letters,
@@ -62,6 +71,8 @@ export default function LetterTable({
                 </button>
               </th>
             ))}
+            <th scope="col">Direction</th>
+            <th scope="col">Diary/Dispatch No.</th>
             {departmentById && <th scope="col">Department</th>}
             {categoryById && <th scope="col">Category</th>}
             {classificationById && <th scope="col">Classification</th>}
@@ -77,6 +88,12 @@ export default function LetterTable({
               </th>
               <td>{letter.subject ?? '—'}</td>
               <td>{formatDate(letter.received_at)}</td>
+              <td>
+                <span className={styles.directionBadge}>
+                  {letter.direction === 'OUTGOING' ? 'Outgoing' : 'Incoming'}
+                </span>
+              </td>
+              <td className={styles.diaryCell}>{letter.diary_number ?? '—'}</td>
               {departmentById && <td>{departmentById[letter.recipient_department_id] ?? '—'}</td>}
               {categoryById && <td>{letter.category_id ? categoryById[letter.category_id] ?? '—' : '—'}</td>}
               {classificationById && (

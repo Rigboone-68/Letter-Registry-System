@@ -85,6 +85,86 @@ class NotificationService:
                 exc,
             )
 
+    def notify_letter_dispatched(self, letter: Letter) -> None:
+        """Phase 6A (docs/architecture/correspondence.md §7) — a new,
+        *additional* trigger for an `OUTGOING` letter, notifying the
+        dispatch (destination) department rather than the recording one.
+        Same provisional recipient strategy as `notify_letter_registered`
+        (that department's ACTIVE Admins), same best-effort SAVEPOINT
+        pattern, same message-security discipline (a reference number and
+        the sending department's name — never subject, sender detail, or
+        classification)."""
+        try:
+            with self.session.begin_nested():
+                recipients = self.users.list_admins(
+                    department_id=letter.dispatch_department_id,
+                    status_filter=UserStatus.ACTIVE,
+                )
+                message = (
+                    f"New correspondence (reference: {letter.reference_number}) "
+                    f"has been dispatched to your department from "
+                    f"{letter.recipient_department.name}."
+                )
+                for recipient in recipients:
+                    self.notifications.create(
+                        recipient_user_id=recipient.id,
+                        letter_id=letter.id,
+                        notification_type="LETTER_DISPATCHED",
+                        message=message,
+                    )
+                self.session.flush()
+        except Exception as exc:  # noqa: BLE001 - best-effort by design, see module docstring
+            logger.warning(
+                "Failed to create LETTER_DISPATCHED notification(s) for letter %s: %s",
+                letter.id,
+                exc,
+            )
+
+    def notify_correspondence_recorded(self, *, outgoing_letter: Letter, incoming_letter: Letter) -> None:
+        """Phase 6A (docs/architecture/correspondence.md §7) — the
+        receipt-confirmation trigger: once the dispatch destination
+        department records its own incoming copy, the *originating*
+        (dispatching) department's ACTIVE Admins are notified. Recipient
+        department is `outgoing_letter.recipient_department_id` — the
+        department that owns/recorded the outgoing letter — never a
+        client-supplied id. Same best-effort SAVEPOINT pattern and
+        message-security discipline as every other trigger here.
+
+        `letter_id` is deliberately `outgoing_letter.id`, not
+        `incoming_letter.id` — the recipient of *this* notification
+        (the dispatching department) can access the outgoing letter it
+        already owns, but has no access to the destination department's
+        own incoming letter (`assert_letter_access` would 404 it); a
+        notification must never link its own recipient to a letter that
+        recipient can't open. See docs/architecture/correspondence.md
+        §7 for the same reasoning applied to `notify_letter_dispatched`.
+        """
+        try:
+            with self.session.begin_nested():
+                recipients = self.users.list_admins(
+                    department_id=outgoing_letter.recipient_department_id,
+                    status_filter=UserStatus.ACTIVE,
+                )
+                message = (
+                    f"Your correspondence (reference: {outgoing_letter.reference_number}) "
+                    f"has been received and recorded by "
+                    f"{incoming_letter.recipient_department.name}."
+                )
+                for recipient in recipients:
+                    self.notifications.create(
+                        recipient_user_id=recipient.id,
+                        letter_id=outgoing_letter.id,
+                        notification_type="LETTER_RECORDED",
+                        message=message,
+                    )
+                self.session.flush()
+        except Exception as exc:  # noqa: BLE001 - best-effort by design, see module docstring
+            logger.warning(
+                "Failed to create LETTER_RECORDED notification(s) for outgoing letter %s: %s",
+                outgoing_letter.id,
+                exc,
+            )
+
     # --- Retrieval — always scoped to the caller (§17/§18) --------------------
 
     def list_notifications(

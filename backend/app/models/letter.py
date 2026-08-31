@@ -53,6 +53,61 @@ Classification's own docstring for `restricts_access`) were finalized.
 unchanged from Phase 2's original decision, which nothing in Phase 4B
 asked to reopen. Letters are never physically deleted in normal
 operation.
+
+Phase 6A (docs/architecture/correspondence.md) adds correspondence
+direction/diary tracking on top of the above, without changing any
+existing column's meaning:
+
+`direction` (`LetterDirection`, NOT NULL, `server_default 'INCOMING'`) —
+every letter recorded before this phase already represented "something
+that arrived here and we recorded it," i.e. `INCOMING`; the default
+backfills every historical row with its own true, unchanged meaning, not
+a guess. `OUTGOING` is the new case a department uses to record
+correspondence it is sending elsewhere.
+
+`dispatch_department_id` (nullable FK to `departments`) — the destination
+department for an `OUTGOING` letter, required by the service layer (not a
+DB constraint) exactly when `direction == OUTGOING` and forbidden
+otherwise. Unlike `source_department_id`, this field *does* carry
+authorization meaning, but only for one narrow, additive operation: the
+new `assert_dispatch_recipient_access` (`app/services/authorization.py`)
+that gates the "record incoming correspondence" action. It plays no part
+in `assert_letter_access`/`letter_visibility_filter` — `recipient_department_id`
+remains the one and only ownership/visibility boundary for every letter,
+outgoing or incoming, exactly as before this phase.
+
+`diary_number` (nullable string) — the operational, human-facing
+identifier the supervisor calls out as the practical unique reference in
+real correspondence, deliberately separate from `reference_number`
+(manually entered, never confirmed unique in any scope — see this
+module's own note above and docs/architecture/letter-registry.md §2.3/
+§12, still unresolved and untouched by this phase). Auto-generated at
+creation time via `LetterNumberSequence`, scoped per
+`(recipient_department_id, direction)` — never client-supplied, never
+backfilled onto historical rows (`NULL` there, by design, not an
+oversight — see docs/architecture/correspondence.md §8).
+
+`recorded_from_letter_id` (nullable, self-referential FK) — set only on
+an `INCOMING` letter that was auto-created by the destination
+department's "Record" action against an `OUTGOING` letter dispatched to
+it; points at that `OUTGOING` letter. A partial unique index
+(`__table_args__` below) enforces at the database level that a given
+`OUTGOING` letter can be recorded into at most one `INCOMING` letter —
+the actual duplicate-protection guarantee behind Phase 6A's "Record"
+action, not merely a service-layer check.
+
+`continuation_of_letter_id` (nullable, self-referential FK) — set on a
+new letter that is a response/continuation of a prior one. Deliberately
+not unique: a department may send more than one follow-up referencing
+the same original. A simple self-reference, not a separate correspondence-
+thread subsystem, per this phase's own explicit instruction.
+
+`received_at` is deliberately reused, not duplicated, for `OUTGOING`
+letters too — it represents "the date this correspondence record
+pertains to" (received, for `INCOMING`; dispatched, for `OUTGOING`)
+rather than gaining a parallel `dispatched_at` column that would say the
+same thing under a different name. See
+docs/architecture/correspondence.md §5 for the full reasoning.
 """
 
 import uuid
@@ -64,7 +119,12 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
-from app.models.enums import LetterStatus, letter_status_enum
+from app.models.enums import (
+    LetterDirection,
+    LetterStatus,
+    letter_direction_enum,
+    letter_status_enum,
+)
 from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
@@ -147,11 +207,46 @@ class Letter(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         letter_status_enum, nullable=False, default=LetterStatus.ACTIVE, index=True
     )
 
+    direction: Mapped[LetterDirection] = mapped_column(
+        letter_direction_enum,
+        nullable=False,
+        default=LetterDirection.INCOMING,
+        server_default=LetterDirection.INCOMING.value,
+        index=True,
+    )
+    dispatch_department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("departments.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    diary_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    recorded_from_letter_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("letters.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    continuation_of_letter_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("letters.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+
     recipient_department: Mapped["Department"] = relationship(
         back_populates="letters", foreign_keys=[recipient_department_id]
     )
     source_department: Mapped[Optional["Department"]] = relationship(
         foreign_keys=[source_department_id]
+    )
+    dispatch_department: Mapped[Optional["Department"]] = relationship(
+        foreign_keys=[dispatch_department_id]
+    )
+    recorded_from_letter: Mapped[Optional["Letter"]] = relationship(
+        remote_side="Letter.id", foreign_keys=[recorded_from_letter_id]
+    )
+    continuation_of_letter: Mapped[Optional["Letter"]] = relationship(
+        remote_side="Letter.id", foreign_keys=[continuation_of_letter_id]
     )
     category: Mapped[Optional["Category"]] = relationship(back_populates="letters")
     designation: Mapped[Optional["Designation"]] = relationship(back_populates="letters")
@@ -181,6 +276,19 @@ class Letter(Base, UUIDPrimaryKeyMixin, TimestampMixin):
             "ix_letters_recipient_department_received_at",
             "recipient_department_id",
             "received_at",
+        ),
+        # The actual, database-enforced duplicate-protection guarantee
+        # behind the "Record" action (Phase 6A) — a partial unique index
+        # (not a plain UniqueConstraint) because most letters have
+        # recorded_from_letter_id = NULL, and PostgreSQL already treats
+        # multiple NULLs as distinct; this index only ever needs to
+        # constrain the non-NULL subset. See
+        # docs/architecture/correspondence.md §7.
+        Index(
+            "uq_letters_recorded_from_letter_id",
+            "recorded_from_letter_id",
+            unique=True,
+            postgresql_where=recorded_from_letter_id.isnot(None),
         ),
     )
 

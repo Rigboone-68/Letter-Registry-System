@@ -1,0 +1,166 @@
+/**
+ * The split-screen authentication entrance (Phase 6B, follow-up fix).
+ * Left pane: the supplied `front_page.jpeg`, `object-fit: cover`
+ * (`object-position: center` keeps the image's own visual center
+ * always in frame). Right pane: the real Government of Balochistan
+ * logo, brand text, the form itself, and the credit line — the same
+ * restrained precision-grid background `AuthPages.module.css` used
+ * before, now scoped to this pane only. Below 768px (the same
+ * breakpoint `Sidebar`/`Topbar` already use), the layout stacks: the
+ * image becomes a short header band, never disappearing and never
+ * squeezing the form into an unusably narrow column.
+ *
+ * `.root` is pinned to `height: 100vh` (a hard, definite value — not
+ * `min-height: 100%`, whose percentage has to resolve through several
+ * ancestors and, combined with a `max-height: 100%` further down the
+ * tree, was leaving the page taller than the viewport and producing an
+ * unwanted page-level scrollbar). `overflow: hidden` on `.root` is a
+ * hard backstop: neither pane can ever push the outer page itself into
+ * scrolling. If a form's own content is ever taller than the viewport
+ * (a very short window), `.formPane` — not the page — scrolls
+ * internally; the image pane never does. The image pane's own share
+ * was also reduced (58% → 42%) so the form has more room and the
+ * photograph reads as an accent rather than dominating the screen.
+ */
+
+.root {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.imagePane {
+  flex: 0 0 42%;
+  position: relative;
+  overflow: hidden;
+}
+
+.image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.formPane {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-lg);
+  overflow-y: auto;
+}
+
+.formPane::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(var(--color-border-subtle) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-border-subtle) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 700px 560px at 50% 15%, black, transparent 72%);
+  -webkit-mask-image: radial-gradient(ellipse 700px 560px at 50% 15%, black, transparent 72%);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.formPaneInner {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-lg);
+  animation: shellIn var(--motion-normal) var(--motion-ease);
+}
+
+@keyframes shellIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+/**
+ * The actual Government of Balochistan emblem — `object-fit: contain`
+ * (never `cover`) so the crest is never cropped; modestly sized, not
+ * enormous.
+ */
+.brandMark {
+  height: 40px;
+  width: auto;
+  max-width: 48px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.brandCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brandEyebrow {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.brandName {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+}
+
+.credit {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+@media (max-width: 767px) {
+  .root {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .imagePane {
+    flex: 0 0 auto;
+    height: 160px;
+  }
+
+  .formPane {
+    flex: 1 1 auto;
+    padding: var(--space-md);
+  }
+}
+
+@media (max-width: 420px) {
+  .brandName {
+    font-size: var(--font-size-md);
+  }
+
+  .brandMark {
+    height: 32px;
+  }
+}
