@@ -44,6 +44,14 @@ relies on PostgreSQL-specific behavior (native `ENUM` types, `JSONB`,
 functional unique indexes) that SQLite cannot faithfully reproduce, so a
 passing SQLite-backed suite would not actually verify this schema.
 
+**`lrs_test`/`lrs_test` below is a local-development convention, not a
+credential of any kind** — it names a disposable Postgres role that
+only ever exists on a developer's own machine, is never reachable
+outside `localhost`, and protects nothing of value (the database it
+owns holds only per-test-run schema and rolled-back rows). Treat it the
+same as any other placeholder in this repository, not as a secret to
+rotate or safeguard.
+
 ```sql
 -- run once, as a Postgres superuser, on your local instance only
 CREATE ROLE lrs_test WITH LOGIN PASSWORD 'lrs_test' CREATEDB;

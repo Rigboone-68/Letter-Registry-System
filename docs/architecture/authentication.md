@@ -318,8 +318,12 @@ cd backend
 TEST_DATABASE_URL=postgresql+psycopg2://lrs_test:lrs_test@localhost:5432/lrs_test pytest
 ```
 
-(Or rely on the same default `TEST_DATABASE_URL` conftest.py already falls
-back to — see `docs/database/README.md`.) `SECRET_KEY` must also be set
+(`lrs_test`/`lrs_test` is a local-development convention, not a
+credential — see `docs/database/README.md`, "Providing a local test
+database," for why it carries no confidentiality value. This example
+also matches the same default `TEST_DATABASE_URL` conftest.py already
+falls back to, so the env var can be omitted entirely.) `SECRET_KEY`
+must also be set
 (via `.env`) for the JWT-dependent tests to run at all — see
 `backend/README.md`, "Tests".
 

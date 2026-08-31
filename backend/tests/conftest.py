@@ -32,6 +32,14 @@ from app.database.session import get_db
 # create_all()/drop_all() below.
 import app.models  # noqa: F401
 
+# The fallback below is a documented local-development convention
+# (docs/database/README.md, "Providing a local test database"), not a
+# real credential: it only ever connects to a Postgres instance on
+# `localhost` that each developer creates for themselves, and that
+# database never holds anything beyond disposable, per-test-run schema
+# and rolled-back rows. It carries no confidentiality value and is not
+# a production or shared credential of any kind — override it with the
+# TEST_DATABASE_URL env var for any other environment.
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql+psycopg2://lrs_test:lrs_test@localhost:5432/lrs_test",

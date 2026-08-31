@@ -3579,8 +3579,10 @@ behind each.
   never committed, so this is local-environment-only, not a repository
   or data issue. No actual data was lost: the real `lrs_dev` database
   and its schema/rows were confirmed completely intact afterward
-  (`lrs_dev:lrs_dev` credentials — matching this project's existing
-  `lrs_test:lrs_test` convention — still connect, and its 3 seeded
+  (`lrs_dev`/`lrs_dev` — a local-development convention, not a real
+  credential; it only ever connects to a Postgres instance on
+  `localhost` and protects nothing of value, matching this project's
+  existing `lrs_test`/`lrs_test` convention — still connect, and its 3 seeded
   `categories` rows were reconfirmed unchanged both before and after
   Phase 4D's live verification). `.env` was restored with a freshly
   generated `SECRET_KEY` and `DATABASE_URL` pointed back at `lrs_dev`; a
